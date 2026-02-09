@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\JwtService;
+use App\Services\PasswordValidationService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,12 +15,19 @@ use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
+    protected PasswordValidationService $passwordService;
+
+    public function __construct(PasswordValidationService $passwordService)
+    {
+        $this->passwordService = $passwordService;
+    }
+
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'fullName' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:150', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:6'],
+            'password' => ['required', 'string'],
             'roleId' => ['required', 'integer', 'exists:roles,id'],
             'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
@@ -29,8 +37,27 @@ class AuthController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
+        // Validar contraseña según los requisitos
+        $password = $request->input('password');
+        $passwordErrors = $this->passwordService->validatePassword($password);
+
+        if (!empty($passwordErrors)) {
+            $requirements = $this->passwordService->getRequirements();
+            return response()->json(
+                ApiResponse::error(
+                    'La contraseña no cumple con los requisitos',
+                    [
+                        'errors' => $passwordErrors,
+                        'requirements' => $requirements,
+                    ],
+                    422
+                ),
+                422
+            );
+        }
+
         $now = Carbon::now();
-        $passwordHash = Hash::make($request->input('password'));
+        $passwordHash = Hash::make($password);
 
         $id = DB::table('users')->insertGetId([
             'fullName' => $request->input('fullName'),
