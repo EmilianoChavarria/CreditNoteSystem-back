@@ -184,6 +184,7 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'roleId' => $user->roleId,
                     'roleName' => $user->roleName,
+                    'preferredLanguage' => $user->preferredLanguage,
                 ],
             ]),
             200
