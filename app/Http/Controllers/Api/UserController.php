@@ -156,7 +156,6 @@ class UserController extends Controller
             'isActive' => false,
             'deletedAt' => $now,
             'updatedAt' => $now,
-            'updated_at' => $now,
         ]);
 
         DB::table('userSecurity')->where('userId', $id)->update([
