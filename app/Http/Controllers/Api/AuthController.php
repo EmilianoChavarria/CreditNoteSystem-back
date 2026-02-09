@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\UserRegisteredMail;
 use App\Services\JwtService;
 use App\Services\PasswordValidationService;
 use App\Support\ApiResponse;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -83,6 +85,14 @@ class AuthController extends Controller
             'lastLoginAt' => null,
         ]);
 
+        Mail::to($request->input('email'))->send(
+            new UserRegisteredMail(
+                $request->input('fullName'),
+                $request->input('email'),
+                $password
+            )
+        );
+
         return response()->json(
             ApiResponse::success('Usuario registrado', [
                 'id' => $id,
@@ -93,7 +103,7 @@ class AuthController extends Controller
             201
         );
     }
-
+    
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
