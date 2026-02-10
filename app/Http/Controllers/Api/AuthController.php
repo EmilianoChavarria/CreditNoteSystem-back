@@ -103,9 +103,10 @@ class AuthController extends Controller
             201
         );
     }
-    
+
     public function login(Request $request)
     {
+        // 1. Validación de entrada
         $validator = Validator::make($request->all(), [
             'email' => ['required', 'email'],
             'password' => ['required', 'string', 'min:6'],
@@ -124,12 +125,13 @@ class AuthController extends Controller
         $maxIpAttempts = (int) config('security.max_ip_attempts');
         $lockMinutes = (int) config('security.user_lock_minutes');
 
+        // 2. Seguridad de IP
         $ipRecord = $this->getOrCreateIpRecord($ip);
-
         if ($this->isIpBlocked($ipRecord)) {
             return response()->json(ApiResponse::error('Dirección IP bloqueada permanentemente', null, 423), 423);
         }
 
+        // 3. Búsqueda de usuario
         $user = DB::table('users')
             ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
             ->select('users.*', 'roles.roleName')
@@ -138,39 +140,26 @@ class AuthController extends Controller
 
         if (!$user || !$user->isActive || $user->deletedAt) {
             $this->registerIpFailure($ip, $maxIpAttempts, $now);
-
-            if ($this->isIpBlocked($this->getOrCreateIpRecord($ip))) {
-                return response()->json(ApiResponse::error('Dirección IP bloqueada permanentemente', null, 423), 423);
-            }
-
             return response()->json(ApiResponse::error('Credenciales inválidas', null, 401), 401);
         }
 
+        // 4. Verificación de Bloqueo de Usuario
         $security = $this->getOrCreateUserSecurity($user->id);
-
         if ($security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
             return response()->json(ApiResponse::error('Usuario bloqueado temporalmente', null, 423), 423);
         }
 
+        // 5. Verificación de Contraseña
         if (!Hash::check($request->input('password'), $user->passwordHash)) {
             $this->registerUserFailure($user->id, $maxUserAttempts, $lockMinutes, $now);
             $this->registerIpFailure($ip, $maxIpAttempts, $now);
-
-            $security = $this->getOrCreateUserSecurity($user->id);
-
-            if ($security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
-                return response()->json(ApiResponse::error('Usuario bloqueado temporalmente', null, 423), 423);
-            }
-
-            if ($this->isIpBlocked($this->getOrCreateIpRecord($ip))) {
-                return response()->json(ApiResponse::error('Dirección IP bloqueada permanentemente', null, 423), 423);
-            }
-
             return response()->json(ApiResponse::error('Credenciales inválidas', null, 401), 401);
         }
 
+        // 6. Generación de Token JWT
         $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $user->roleName);
 
+        // 7. Actualización de auditoría y sesión
         DB::table('userSecurity')
             ->where('userId', $user->id)
             ->update([
@@ -183,11 +172,25 @@ class AuthController extends Controller
                 'lastLoginAt' => $now,
             ]);
 
+        // 8. Configuración de la Cookie Segura (HttpOnly)
+        $minutes = (int) config('security.jwt_ttl_minutes', 120);
+
+        // IMPORTANTE: 'access_token' es el nombre que usará el navegador
+        $cookie = cookie(
+            'access_token',    // Nombre de la cookie
+            $token,            // Valor del JWT
+            $minutes,          // Tiempo de vida
+            '/',               // Path disponible en toda la app
+            null,              // Dominio (null para actual)
+            config('app.env') === 'production', // Secure: Solo true en producción (HTTPS)
+            true,              // HttpOnly: El cliente (JS) NO puede leerla
+            false,             // Raw
+            'Lax'              // SameSite: Previene ataques CSRF
+        );
+
+        // 9. Respuesta final SIN el token en el JSON
         return response()->json(
             ApiResponse::success('Login exitoso', [
-                'token' => $token,
-                'tokenType' => 'Bearer',
-                'expiresInMinutes' => (int) config('security.jwt_ttl_minutes'),
                 'user' => [
                     'id' => $user->id,
                     'fullName' => $user->fullName,
@@ -196,9 +199,11 @@ class AuthController extends Controller
                     'roleName' => $user->roleName,
                     'preferredLanguage' => $user->preferredLanguage,
                 ],
+                // Opcional: mandamos la expiración para que Angular sepa cuándo avisar al usuario
+                'expiresIn' => $minutes * 60
             ]),
             200
-        );
+        )->withCookie($cookie);
     }
 
     public function logout(Request $request)
@@ -209,6 +214,7 @@ class AuthController extends Controller
             return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
         }
 
+        // 1. Limpiamos el token en la base de datos
         DB::table('userSecurity')
             ->where('userId', $user->id)
             ->update([
@@ -216,7 +222,36 @@ class AuthController extends Controller
                 'lastActivityAt' => Carbon::now(),
             ]);
 
-        return response()->json(ApiResponse::success('Sesión cerrada'), 200);
+        // 2. Preparamos la respuesta de éxito
+        $response = response()->json(ApiResponse::success('Sesión cerrada'), 200);
+
+        // 3. Invalidamos la cookie en el navegador
+        // withoutCookie crea una cookie con el mismo nombre pero ya expirada
+        return $response->withoutCookie('access_token');
+    }
+
+    public function verify(Request $request)
+    {
+        $user = $request->attributes->get('authUser');
+
+        if (!$user) {
+            return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
+        }
+
+        return response()->json(
+            ApiResponse::success('Cookie válida', [
+                'user' => [
+                    'id' => $user->id,
+                    'fullName' => $user->fullName,
+                    'email' => $user->email,
+                    'roleId' => $user->roleId,
+                    'roleName' => $user->roleName,
+                    'preferredLanguage' => $user->preferredLanguage,
+                ],
+                'isAuthenticated' => true,
+            ], 200),
+            200
+        );
     }
 
     private function getOrCreateUserSecurity(int $userId): object
