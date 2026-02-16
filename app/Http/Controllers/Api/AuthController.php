@@ -290,7 +290,6 @@ class AuthController extends Controller
             'isBlockedPermanently' => false,
             'blockedAt' => null,
             'releasedAt' => null,
-            'adminNotes' => null,
         ]);
 
         return DB::table('blockedIps')->where('ipAddress', $ip)->first();
@@ -349,7 +348,6 @@ class AuthController extends Controller
             'userId' => $userId,
             'action' => $action,
             'reason' => $reason,
-            'ipAddress' => $ipAddress,
             'adminUserId' => $adminUserId,
             'createdAt' => Carbon::now(),
         ]);
@@ -361,7 +359,6 @@ class AuthController extends Controller
             'ipAddress' => $ipAddress,
             'action' => $action,
             'reason' => $reason,
-            'userId' => $userId,
             'adminUserId' => $adminUserId,
             'createdAt' => Carbon::now(),
         ]);
