@@ -18,7 +18,8 @@ class CustomerController extends Controller
     {
         $customers = DB::table('customers')
             ->orderBy('id')
-            ->paginate(15);
+            ->get();
+            // ->paginate(15);
             
         return response()->json(ApiResponse::success('Customers obtenidos exitosamente', $customers));
     }
@@ -37,7 +38,6 @@ class CustomerController extends Controller
             'financeManagerId' => 'required|integer|exists:users,id',
             'marketingManagerId' => 'required|integer|exists:users,id',
             'customerServiceManagerId' => 'required|integer|exists:users,id',
-            'isActive' => 'nullable|boolean',
         ], [
             'customerNumber.required' => 'El número de cliente es requerido',
             'customerNumber.unique' => 'El número de cliente ya existe',
