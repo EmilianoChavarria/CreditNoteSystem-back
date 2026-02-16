@@ -19,8 +19,8 @@ class CustomerController extends Controller
         $customers = DB::table('customers')
             ->orderBy('id')
             ->get();
-            // ->paginate(15);
-            
+        // ->paginate(15);
+
         return response()->json(ApiResponse::success('Customers obtenidos exitosamente', $customers));
     }
 
@@ -38,21 +38,6 @@ class CustomerController extends Controller
             'financeManagerId' => 'required|integer|exists:users,id',
             'marketingManagerId' => 'required|integer|exists:users,id',
             'customerServiceManagerId' => 'required|integer|exists:users,id',
-        ], [
-            'customerNumber.required' => 'El número de cliente es requerido',
-            'customerNumber.unique' => 'El número de cliente ya existe',
-            'customerName.required' => 'El nombre del cliente es requerido',
-            'area.in' => 'El área debe ser AFTERMARKET u ORIGINAL EQUIPMENT',
-            'salesEngineerId.required' => 'El ingeniero de ventas es requerido',
-            'salesEngineerId.exists' => 'El ingeniero de ventas no existe',
-            'salesManagerId.required' => 'El gerente de ventas es requerido',
-            'salesManagerId.exists' => 'El gerente de ventas no existe',
-            'financeManagerId.required' => 'El gerente de finanzas es requerido',
-            'financeManagerId.exists' => 'El gerente de finanzas no existe',
-            'marketingManagerId.required' => 'El gerente de marketing es requerido',
-            'marketingManagerId.exists' => 'El gerente de marketing no existe',
-            'customerServiceManagerId.required' => 'El gerente de servicio al cliente es requerido',
-            'customerServiceManagerId.exists' => 'El gerente de servicio al cliente no existe',
         ]);
 
         if ($validator->fails()) {
@@ -68,9 +53,9 @@ class CustomerController extends Controller
         $data['updatedAt'] = now();
 
         $customerId = DB::table('customers')->insertGetId($data);
-        
+
         $customer = DB::table('customers')->where('id', $customerId)->first();
-        
+
         return response()->json(
             ApiResponse::success('Customer creado exitosamente', $customer),
             201
@@ -83,7 +68,7 @@ class CustomerController extends Controller
     public function show(int $id)
     {
         $customer = DB::table('customers')->where('id', $id)->first();
-        
+
         if (!$customer) {
             return response()->json(
                 ApiResponse::error('Customer no encontrado', null, 404),
@@ -100,7 +85,7 @@ class CustomerController extends Controller
     public function update(Request $request, int $id)
     {
         $customer = DB::table('customers')->where('id', $id)->first();
-        
+
         if (!$customer) {
             return response()->json(
                 ApiResponse::error('Customer no encontrado', null, 404),
@@ -151,9 +136,9 @@ class CustomerController extends Controller
         $data['updatedAt'] = now();
 
         DB::table('customers')->where('id', $id)->update($data);
-        
+
         $customer = DB::table('customers')->where('id', $id)->first();
-        
+
         return response()->json(
             ApiResponse::success('Customer actualizado exitosamente', $customer)
         );
@@ -165,7 +150,7 @@ class CustomerController extends Controller
     public function destroy(int $id)
     {
         $customer = DB::table('customers')->where('id', $id)->whereNull('deletedAt')->first();
-        
+
         if (!$customer) {
             return response()->json(
                 ApiResponse::error('Customer no encontrado', null, 404),
@@ -176,7 +161,7 @@ class CustomerController extends Controller
         DB::table('customers')->where('id', $id)->update([
             'deletedAt' => now()
         ]);
-        
+
         return response()->json(
             ApiResponse::success('Customer eliminado exitosamente', null)
         );
