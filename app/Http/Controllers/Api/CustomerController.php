@@ -1,0 +1,184 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Support\ApiResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+
+class CustomerController extends Controller
+{
+    /**
+     * Listar todos los customers
+     */
+    public function index()
+    {
+        $customers = DB::table('customers')
+            ->orderBy('id')
+            ->paginate(15);
+            
+        return response()->json(ApiResponse::success('Customers obtenidos exitosamente', $customers));
+    }
+
+    /**
+     * Crear un nuevo customer
+     */
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'customerNumber' => 'required|integer|unique:customers,customerNumber',
+            'customerName' => 'required|string|max:255',
+            'area' => 'nullable|in:AFTERMARKET,ORIGINAL EQUIPMENT',
+            'salesEngineerId' => 'required|integer|exists:users,id',
+            'salesManagerId' => 'required|integer|exists:users,id',
+            'financeManagerId' => 'required|integer|exists:users,id',
+            'marketingManagerId' => 'required|integer|exists:users,id',
+            'customerServiceManagerId' => 'required|integer|exists:users,id',
+            'isActive' => 'nullable|boolean',
+        ], [
+            'customerNumber.required' => 'El número de cliente es requerido',
+            'customerNumber.unique' => 'El número de cliente ya existe',
+            'customerName.required' => 'El nombre del cliente es requerido',
+            'area.in' => 'El área debe ser AFTERMARKET u ORIGINAL EQUIPMENT',
+            'salesEngineerId.required' => 'El ingeniero de ventas es requerido',
+            'salesEngineerId.exists' => 'El ingeniero de ventas no existe',
+            'salesManagerId.required' => 'El gerente de ventas es requerido',
+            'salesManagerId.exists' => 'El gerente de ventas no existe',
+            'financeManagerId.required' => 'El gerente de finanzas es requerido',
+            'financeManagerId.exists' => 'El gerente de finanzas no existe',
+            'marketingManagerId.required' => 'El gerente de marketing es requerido',
+            'marketingManagerId.exists' => 'El gerente de marketing no existe',
+            'customerServiceManagerId.required' => 'El gerente de servicio al cliente es requerido',
+            'customerServiceManagerId.exists' => 'El gerente de servicio al cliente no existe',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(
+                ApiResponse::error('Error de validación', $validator->errors(), 422),
+                422
+            );
+        }
+
+        $data = $validator->validated();
+        $data['isActive'] = $data['isActive'] ?? true;
+        $data['createdAt'] = now();
+        $data['updatedAt'] = now();
+
+        $customerId = DB::table('customers')->insertGetId($data);
+        
+        $customer = DB::table('customers')->where('id', $customerId)->first();
+        
+        return response()->json(
+            ApiResponse::success('Customer creado exitosamente', $customer),
+            201
+        );
+    }
+
+    /**
+     * Mostrar un customer específico
+     */
+    public function show(int $id)
+    {
+        $customer = DB::table('customers')->where('id', $id)->first();
+        
+        if (!$customer) {
+            return response()->json(
+                ApiResponse::error('Customer no encontrado', null, 404),
+                404
+            );
+        }
+
+        return response()->json(ApiResponse::success('Customer obtenido exitosamente', $customer));
+    }
+
+    /**
+     * Actualizar un customer
+     */
+    public function update(Request $request, int $id)
+    {
+        $customer = DB::table('customers')->where('id', $id)->first();
+        
+        if (!$customer) {
+            return response()->json(
+                ApiResponse::error('Customer no encontrado', null, 404),
+                404
+            );
+        }
+
+        $validator = Validator::make($request->all(), [
+            'customerNumber' => [
+                'sometimes',
+                'required',
+                'integer',
+                Rule::unique('customers', 'customerNumber')->ignore($id)
+            ],
+            'customerName' => 'sometimes|required|string|max:255',
+            'area' => 'nullable|in:AFTERMARKET,ORIGINAL EQUIPMENT',
+            'salesEngineerId' => 'sometimes|required|integer|exists:users,id',
+            'salesManagerId' => 'sometimes|required|integer|exists:users,id',
+            'financeManagerId' => 'sometimes|required|integer|exists:users,id',
+            'marketingManagerId' => 'sometimes|required|integer|exists:users,id',
+            'customerServiceManagerId' => 'sometimes|required|integer|exists:users,id',
+            'isActive' => 'nullable|boolean',
+        ], [
+            'customerNumber.required' => 'El número de cliente es requerido',
+            'customerNumber.unique' => 'El número de cliente ya existe',
+            'customerName.required' => 'El nombre del cliente es requerido',
+            'area.in' => 'El área debe ser AFTERMARKET u ORIGINAL EQUIPMENT',
+            'salesEngineerId.required' => 'El ingeniero de ventas es requerido',
+            'salesEngineerId.exists' => 'El ingeniero de ventas no existe',
+            'salesManagerId.required' => 'El gerente de ventas es requerido',
+            'salesManagerId.exists' => 'El gerente de ventas no existe',
+            'financeManagerId.required' => 'El gerente de finanzas es requerido',
+            'financeManagerId.exists' => 'El gerente de finanzas no existe',
+            'marketingManagerId.required' => 'El gerente de marketing es requerido',
+            'marketingManagerId.exists' => 'El gerente de marketing no existe',
+            'customerServiceManagerId.required' => 'El gerente de servicio al cliente es requerido',
+            'customerServiceManagerId.exists' => 'El gerente de servicio al cliente no existe',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(
+                ApiResponse::error('Error de validación', $validator->errors(), 422),
+                422
+            );
+        }
+
+        $data = $validator->validated();
+        $data['updatedAt'] = now();
+
+        DB::table('customers')->where('id', $id)->update($data);
+        
+        $customer = DB::table('customers')->where('id', $id)->first();
+        
+        return response()->json(
+            ApiResponse::success('Customer actualizado exitosamente', $customer)
+        );
+    }
+
+    /**
+     * Eliminar un customer (soft delete)
+     */
+    public function destroy(int $id)
+    {
+        $customer = DB::table('customers')->where('id', $id)->whereNull('deletedAt')->first();
+        
+        if (!$customer) {
+            return response()->json(
+                ApiResponse::error('Customer no encontrado', null, 404),
+                404
+            );
+        }
+
+        DB::table('customers')->where('id', $id)->update([
+            'deletedAt' => now()
+        ]);
+        
+        return response()->json(
+            ApiResponse::success('Customer eliminado exitosamente', null)
+        );
+    }
+}
