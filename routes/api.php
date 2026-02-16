@@ -8,3 +8,4 @@ require __DIR__.'/api/protected.php';
 require __DIR__.'/api/roles.php';
 require __DIR__.'/api/users.php';
 require __DIR__.'/api/security.php';
+require __DIR__.'/api/customers.php';
