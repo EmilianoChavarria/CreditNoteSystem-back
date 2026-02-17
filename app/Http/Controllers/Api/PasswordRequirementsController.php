@@ -160,12 +160,7 @@ class PasswordRequirementsController extends Controller
                 'value' => (bool) $requirements->requireSpecialChars,
                 'description' => "La contraseña debe contener al menos uno de: {$requirements->allowedSpecialChars}",
                 'allowedChars' => $requirements->allowedSpecialChars,
-            ],
-            'requireMixedCase' => [
-                'label' => 'Mezcla de mayúsculas y minúsculas',
-                'value' => (bool) $requirements->requireMixedCase,
-                'description' => 'La contraseña debe contener tanto mayúsculas como minúsculas',
-            ],
+            ]
         ];
 
         return response()->json(ApiResponse::success('Requisitos formateados obtenidos', $formatted));

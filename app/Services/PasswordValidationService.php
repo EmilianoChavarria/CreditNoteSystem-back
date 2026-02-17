@@ -44,15 +44,6 @@ class PasswordValidationService
             }
         }
 
-        // Validar que contenga tanto mayúsculas como minúsculas
-        if ($requirements->requireMixedCase) {
-            $hasUpper = preg_match('/[A-Z]/', $password);
-            $hasLower = preg_match('/[a-z]/', $password);
-            if (!($hasUpper && $hasLower)) {
-                $errors[] = 'La contraseña debe contener tanto mayúsculas como minúsculas';
-            }
-        }
-
         return $errors;
     }
 
