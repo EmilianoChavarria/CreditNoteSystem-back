@@ -4,7 +4,7 @@ use App\Http\Controllers\Api\ModuleController;
 use Illuminate\Support\Facades\Route;
 
 
-Route::middleware(['jwt', 'role:ADMIN'])->group(function () {
+Route::middleware(['jwt'])->group(function () {
     Route::get('modules', [ModuleController::class, 'index']);
     Route::post('modules', [ModuleController::class, 'store']);
     Route::get('modules/{id}', [ModuleController::class, 'show']);

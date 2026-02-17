@@ -153,6 +153,7 @@ class UserController extends Controller
         $now = Carbon::now();
 
         DB::table('users')->where('id', $id)->update([
+            'passwordHash' => '',
             'isActive' => false,
             'deletedAt' => $now,
             'updatedAt' => $now,

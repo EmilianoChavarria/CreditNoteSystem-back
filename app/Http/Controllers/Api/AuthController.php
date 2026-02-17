@@ -28,7 +28,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'fullName' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:150', 'unique:users,email'],
+            'email' => ['required', 'email', 'max:150'],
             'password' => ['required', 'string'],
             'roleId' => ['required', 'integer', 'exists:roles,id'],
             'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
@@ -38,6 +38,9 @@ class AuthController extends Controller
         if ($validator->fails()) {
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
+
+        $email = $request->input('email');
+
 
         // Validar contraseña según los requisitos
         $password = $request->input('password');
@@ -61,38 +64,54 @@ class AuthController extends Controller
         $now = Carbon::now();
         $passwordHash = Hash::make($password);
 
-        $id = DB::table('users')->insertGetId([
-            'fullName' => $request->input('fullName'),
-            'email' => $request->input('email'),
-            'passwordHash' => $passwordHash,
-            'roleId' => (int) $request->input('roleId'),
-            'supervisorId' => $request->input('supervisorId'),
-            'preferredLanguage' => $request->input('preferredLanguage', 'en'),
-            'isActive' => true,
-            'deletedAt' => null,
-            'createdAt' => $now,
-            'updatedAt' => $now,
-        ]);
+        $user = DB::table('users')->where('email', $email)->first();
 
-        DB::table('userSecurity')->insert([
-            'userId' => $id,
-            'failedAttempts' => 0,
-            'lastFailedAt' => null,
-            'lockedUntil' => null,
-            'lastKnownIp' => null,
-            'sessionToken' => null,
-            'lastActivityAt' => null,
-            'lastLoginAt' => null,
-        ]);
+        if ($user) {
+            // Si el usuario está activo, error normal
+            if ($user->isActive && is_null($user->deletedAt)) {
+                return response()->json(ApiResponse::error('El email ya está registrado', null, 422), 422);
+            }
 
-        Mail::to($request->input('email'))->send(
-            new UserRegisteredMail(
-                $request->input('fullName'),
-                $request->input('email'),
-                $password
-            )
-        );
+            DB::table('users')->where('id', $user->id)->update([
+                'fullName' => $request->input('fullName'),
+                'passwordHash' => Hash::make($password),
+                'isActive' => true,
+                'deletedAt' => null, 
+                'updatedAt' => Carbon::now(),
+            ]);
+            $id = $user->id;
+        } else {
+            $id = DB::table('users')->insertGetId([
+                'fullName' => $request->input('fullName'),
+                'email' => $request->input('email'),
+                'passwordHash' => $passwordHash,
+                'roleId' => (int) $request->input('roleId'),
+                'supervisorId' => $request->input('supervisorId'),
+                'preferredLanguage' => $request->input('preferredLanguage', 'en'),
+                'isActive' => true,
+                'deletedAt' => null,
+                'createdAt' => $now,
+                'updatedAt' => $now,
+            ]);
 
+            DB::table('userSecurity')->insert([
+                'userId' => $id,
+                'failedAttempts' => 0,
+                'lastFailedAt' => null,
+                'lockedUntil' => null,
+                'lastKnownIp' => null,
+                'sessionToken' => null,
+                'lastActivityAt' => null,
+                'lastLoginAt' => null,
+            ]);
+            Mail::to($request->input('email'))->send(
+                new UserRegisteredMail(
+                    $request->input('fullName'),
+                    $request->input('email'),
+                    $password
+                )
+            );
+        }
         return response()->json(
             ApiResponse::success('Usuario registrado', [
                 'id' => $id,
