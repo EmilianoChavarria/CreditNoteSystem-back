@@ -3,7 +3,7 @@
 use App\Http\Controllers\Api\CustomerController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['jwt', 'role:admin'])->group(function () {
+Route::middleware(['jwt', 'role:ADMIN'])->group(function () {
     Route::get('customers', [CustomerController::class, 'index']);
     Route::get('customers/{id}', [CustomerController::class, 'show']);
     Route::post('customers', [CustomerController::class, 'store']);

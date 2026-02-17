@@ -4,7 +4,7 @@ use App\Http\Controllers\Api\AdminSecurityController;
 use App\Http\Controllers\Api\PasswordRequirementsController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['jwt', 'role:admin'])->group(function () {
+Route::middleware(['jwt', 'role:ADMIN'])->group(function () {
     Route::post('security/users/{id}/unlock', [AdminSecurityController::class, 'unlockUser']);
     Route::post('security/ips/unlock', [AdminSecurityController::class, 'unlockIp']);
 });
@@ -16,6 +16,6 @@ Route::middleware('jwt')->group(function () {
     Route::post('password-requirements/validate', [PasswordRequirementsController::class, 'validatePassword']);
 });
 
-Route::middleware(['jwt', 'role:admin'])->group(function () {
+Route::middleware(['jwt', 'role:ADMIN'])->group(function () {
     Route::put('password-requirements', [PasswordRequirementsController::class, 'updateRequirements']);
 });
