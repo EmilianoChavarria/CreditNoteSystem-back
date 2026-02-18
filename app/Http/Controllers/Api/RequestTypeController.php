@@ -3,17 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\RequestType;
 use App\Support\ApiResponse;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class RequestTypeController extends Controller
 {
     public function getAll()
     {
-        $requestTypes = DB::table('requesttype')->get();
+        $requestTypes = RequestType::all();
         return response()->json(ApiResponse::success('Request Types', $requestTypes));
     }
 
@@ -27,23 +26,16 @@ class RequestTypeController extends Controller
             return response()->json(ApiResponse::error("Invalid data", $validator->errors(), 422));
         }
 
-        $now = Carbon::now();
-
-        $id = DB::table('requesttype')->insertGetId([
+        $requestType = RequestType::create([
             'name' => $request->input('name'),
-            'createdAt' => $now,
-            'updatedAt' => $now,
         ]);
-        
-        $requestObject = DB::table('requesttype')->where('id', $id)->first();
 
-
-        return response()->json(ApiResponse::success('Request type created succesfully', $requestObject, 201), 201);
+        return response()->json(ApiResponse::success('Request type created succesfully', $requestType, 201), 201);
     }
 
     public function updateRequestType(Request $request, $id)
     {
-        $requestType = DB::table('requesttype')->where('id', $id)->first();
+        $requestType = RequestType::find($id);
 
         if (!$requestType) {
             return response()->json(ApiResponse::error('Request type not found', null, 404), 404);
@@ -57,29 +49,22 @@ class RequestTypeController extends Controller
             return response()->json(ApiResponse::error("Invalid data", $validator->errors(), 422));
         }
 
-        $now = Carbon::now();
+        $requestType->update([
+            'name' => $request->input('name'),
+        ]);
 
-        DB::table('requesttype')
-            ->where('id', $id)
-            ->update([
-                'name' => $request->input('name'),
-                'updatedAt' => $now,
-            ]);
-        
-        $requestObject = DB::table('requesttype')->where('id', $id)->first();
-
-        return response()->json(ApiResponse::success('Request type updated successfully', $requestObject));
+        return response()->json(ApiResponse::success('Request type updated successfully', $requestType));
     }
 
     public function deleteRequestType($id)
     {
-        $requestType = DB::table('requesttype')->where('id', $id)->first();
+        $requestType = RequestType::find($id);
 
         if (!$requestType) {
             return response()->json(ApiResponse::error('Request type not found', null, 404), 404);
         }
 
-        DB::table('requesttype')->where('id', $id)->delete();
+        $requestType->delete();
 
         return response()->json(ApiResponse::success('Request type deleted successfully'));
     }

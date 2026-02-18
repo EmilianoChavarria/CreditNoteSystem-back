@@ -3,31 +3,36 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Request as RequestModel;
+use App\Models\RequestReason;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class RequestController extends Controller
 {
+    public function getAll()
+    {
+        $requests = RequestModel::with([
+            'requestType',
+            'user',
+            'customer',
+            'reason',
+            'classification'
+        ])->orderBy('id')->get();
+
+        return response()->json(ApiResponse::success('Requests', $requests));
+    }
+
     public function getAllReasons()
     {
-        $reasons = DB::table('requestreasons')->get();
+        $reasons = RequestReason::all();
 
         return response()->json(ApiResponse::success("Reasons", $reasons));
     }
 
     public function createRequest(Request $request){
-        
-        // $validator = Validator::make($request->all(), [
-        //     'moduleName' => ['required', 'string', 'max:150', 'unique:modules,moduleName'],
-        // ]);
-
-        // if ($validator->fails()) {
-        //     return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
-        // }
-
-        $id = DB::table('requests')->insertGetId([
+        $created = RequestModel::create([
             'requestTypeId' => $request->input('requestTypeId'),
             'userId' => $request->input('userId'),
             'requestDate' => $request->input('requestDate'),
@@ -47,12 +52,8 @@ class RequestController extends Controller
             'totalAmount' => $request->input('totalAmount'),
         ]);
 
-        DB::table('requests')->where('id', $id)->update(['requestNumber' => $id]);
+        $created->update(['requestNumber' => $created->id]);
 
-        $request = DB::table('requests')->where('id', $id)->first();
-
-        return response()->json(ApiResponse::success('Request creado', $request, 201), 201);
+        return response()->json(ApiResponse::success('Request creado', $created->refresh(), 201), 201);
     }
-
-
 }

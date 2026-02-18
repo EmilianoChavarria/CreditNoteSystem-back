@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -16,10 +16,7 @@ class CustomerController extends Controller
      */
     public function index()
     {
-        $customers = DB::table('customers')
-            ->orderBy('id')
-            ->get();
-        // ->paginate(15);
+        $customers = Customer::orderBy('id')->get();
 
         return response()->json(ApiResponse::success('Customers obtenidos exitosamente', $customers));
     }
@@ -52,9 +49,7 @@ class CustomerController extends Controller
         $data['createdAt'] = now();
         $data['updatedAt'] = now();
 
-        $customerId = DB::table('customers')->insertGetId($data);
-
-        $customer = DB::table('customers')->where('id', $customerId)->first();
+        $customer = Customer::create($data);
 
         return response()->json(
             ApiResponse::success('Customer creado exitosamente', $customer),
@@ -67,7 +62,7 @@ class CustomerController extends Controller
      */
     public function show(int $id)
     {
-        $customer = DB::table('customers')->where('id', $id)->first();
+        $customer = Customer::find($id);
 
         if (!$customer) {
             return response()->json(
@@ -84,7 +79,7 @@ class CustomerController extends Controller
      */
     public function update(Request $request, int $id)
     {
-        $customer = DB::table('customers')->where('id', $id)->first();
+        $customer = Customer::find($id);
 
         if (!$customer) {
             return response()->json(
@@ -135,9 +130,7 @@ class CustomerController extends Controller
         $data = $validator->validated();
         $data['updatedAt'] = now();
 
-        DB::table('customers')->where('id', $id)->update($data);
-
-        $customer = DB::table('customers')->where('id', $id)->first();
+        $customer->update($data);
 
         return response()->json(
             ApiResponse::success('Customer actualizado exitosamente', $customer)
@@ -149,18 +142,16 @@ class CustomerController extends Controller
      */
     public function destroy(int $id)
     {
-        $customer = DB::table('customers')->where('id', $id)->whereNull('deletedAt')->first();
+        $customer = Customer::find($id);
 
-        if (!$customer) {
+        if (!$customer || $customer->deletedAt) {
             return response()->json(
                 ApiResponse::error('Customer no encontrado', null, 404),
                 404
             );
         }
 
-        DB::table('customers')->where('id', $id)->update([
-            'deletedAt' => now()
-        ]);
+        $customer->update(['deletedAt' => now()]);
 
         return response()->json(
             ApiResponse::success('Customer eliminado exitosamente', null)

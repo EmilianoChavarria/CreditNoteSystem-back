@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PasswordRequirement;
 use App\Support\ApiResponse;
 use App\Services\PasswordValidationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PasswordRequirementsController extends Controller
@@ -71,11 +71,10 @@ class PasswordRequirementsController extends Controller
             $updateData['createdAt'] = $existRequirements ? $existRequirements->createdAt : now();
             $updateData['updatedAt'] = now();
 
-            DB::table('passwordRequirements')
-                ->updateOrInsert(
-                    ['id' => 1],
-                    $updateData
-                );
+            PasswordRequirement::updateOrCreate(
+                ['id' => 1],
+                $updateData
+            );
 
             return response()->json(ApiResponse::success(
                 'Requisitos de contraseña actualizados correctamente',

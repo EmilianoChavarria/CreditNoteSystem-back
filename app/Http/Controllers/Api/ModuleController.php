@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Module;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -13,20 +13,20 @@ class ModuleController extends Controller
 {
     public function index()
     {
-        $modules = DB::table('modules')->orderBy('id')->get();
+        $modules = Module::orderBy('id')->get();
 
         return response()->json(ApiResponse::success('Modules', $modules));
     }
 
     public function show(int $id)
     {
-        $role = DB::table('modules')->where('id', $id)->first();
+        $module = Module::find($id);
 
-        if (!$role) {
+        if (!$module) {
             return response()->json(ApiResponse::error('Module no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Module', $role));
+        return response()->json(ApiResponse::success('Module', $module));
     }
 
     public function store(Request $request)
@@ -39,13 +39,11 @@ class ModuleController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $id = DB::table('modules')->insertGetId([
+        $module = Module::create([
             'moduleName' => $request->input('moduleName'),
         ]);
 
-        $role = DB::table('modules')->where('id', $id)->first();
-
-        return response()->json(ApiResponse::success('Module creado', $role, 201), 201);
+        return response()->json(ApiResponse::success('Module creado', $module, 201), 201);
     }
 
     public function update(Request $request, int $id)
