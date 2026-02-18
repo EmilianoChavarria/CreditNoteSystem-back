@@ -4,12 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\UserRegisteredMail;
+use App\Models\BlockedIp;
+use App\Models\IpBlockedHistory;
+use App\Models\User;
+use App\Models\UserBlockedHistory;
+use App\Models\UserSecurity;
 use App\Services\JwtService;
 use App\Services\PasswordValidationService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -61,10 +65,9 @@ class AuthController extends Controller
             );
         }
 
-        $now = Carbon::now();
         $passwordHash = Hash::make($password);
 
-        $user = DB::table('users')->where('email', $email)->first();
+        $user = User::where('email', $email)->first();
 
         if ($user) {
             // Si el usuario está activo, error normal
@@ -72,16 +75,15 @@ class AuthController extends Controller
                 return response()->json(ApiResponse::error('El email ya está registrado', null, 422), 422);
             }
 
-            DB::table('users')->where('id', $user->id)->update([
+            $user->update([
                 'fullName' => $request->input('fullName'),
                 'passwordHash' => Hash::make($password),
                 'isActive' => true,
-                'deletedAt' => null, 
-                'updatedAt' => Carbon::now(),
+                'deletedAt' => null,
             ]);
             $id = $user->id;
         } else {
-            $id = DB::table('users')->insertGetId([
+            $user = User::create([
                 'fullName' => $request->input('fullName'),
                 'email' => $request->input('email'),
                 'passwordHash' => $passwordHash,
@@ -90,11 +92,10 @@ class AuthController extends Controller
                 'preferredLanguage' => $request->input('preferredLanguage', 'en'),
                 'isActive' => true,
                 'deletedAt' => null,
-                'createdAt' => $now,
-                'updatedAt' => $now,
             ]);
+            $id = $user->id;
 
-            DB::table('userSecurity')->insert([
+            UserSecurity::create([
                 'userId' => $id,
                 'failedAttempts' => 0,
                 'lastFailedAt' => null,
@@ -151,10 +152,8 @@ class AuthController extends Controller
         }
 
         // 3. Búsqueda de usuario
-        $user = DB::table('users')
-            ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
-            ->select('users.*', 'roles.roleName')
-            ->where('users.email', $request->input('email'))
+        $user = User::with('role')
+            ->where('email', $request->input('email'))
             ->first();
 
         if (!$user || !$user->isActive || $user->deletedAt) {
@@ -176,20 +175,19 @@ class AuthController extends Controller
         }
 
         // 6. Generación de Token JWT
-        $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $user->roleName);
+        $roleName = $user->role?->roleName;
+        $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $roleName);
 
         // 7. Actualización de auditoría y sesión
-        DB::table('userSecurity')
-            ->where('userId', $user->id)
-            ->update([
-                'failedAttempts' => 0,
-                'lastFailedAt' => null,
-                'lockedUntil' => null,
-                'lastKnownIp' => $ip,
-                'sessionToken' => $token,
-                'lastActivityAt' => $now,
-                'lastLoginAt' => $now,
-            ]);
+        $security->update([
+            'failedAttempts' => 0,
+            'lastFailedAt' => null,
+            'lockedUntil' => null,
+            'lastKnownIp' => $ip,
+            'sessionToken' => $token,
+            'lastActivityAt' => $now,
+            'lastLoginAt' => $now,
+        ]);
 
         // 8. Configuración de la Cookie Segura (HttpOnly)
         $minutes = (int) config('security.jwt_ttl_minutes', 120);
@@ -215,7 +213,7 @@ class AuthController extends Controller
                     'fullName' => $user->fullName,
                     'email' => $user->email,
                     'roleId' => $user->roleId,
-                    'roleName' => $user->roleName,
+                    'roleName' => $roleName,
                     'preferredLanguage' => $user->preferredLanguage,
                 ],
                 // Opcional: mandamos la expiración para que Angular sepa cuándo avisar al usuario
@@ -234,8 +232,7 @@ class AuthController extends Controller
         }
 
         // 1. Limpiamos el token en la base de datos
-        DB::table('userSecurity')
-            ->where('userId', $user->id)
+        UserSecurity::where('userId', $user->id)
             ->update([
                 'sessionToken' => null,
                 'lastActivityAt' => Carbon::now(),
@@ -275,13 +272,13 @@ class AuthController extends Controller
 
     private function getOrCreateUserSecurity(int $userId): object
     {
-        $security = DB::table('userSecurity')->where('userId', $userId)->first();
+        $security = UserSecurity::where('userId', $userId)->first();
 
         if ($security) {
             return $security;
         }
 
-        DB::table('userSecurity')->insert([
+        $security = UserSecurity::create([
             'userId' => $userId,
             'failedAttempts' => 0,
             'lastFailedAt' => null,
@@ -292,18 +289,18 @@ class AuthController extends Controller
             'lastLoginAt' => null,
         ]);
 
-        return DB::table('userSecurity')->where('userId', $userId)->first();
+        return $security;
     }
 
     private function getOrCreateIpRecord(string $ip): object
     {
-        $record = DB::table('blockedIps')->where('ipAddress', $ip)->first();
+        $record = BlockedIp::where('ipAddress', $ip)->first();
 
         if ($record) {
             return $record;
         }
 
-        DB::table('blockedIps')->insert([
+        $record = BlockedIp::create([
             'ipAddress' => $ip,
             'failedAttempts' => 0,
             'isBlockedPermanently' => false,
@@ -311,7 +308,7 @@ class AuthController extends Controller
             'releasedAt' => null,
         ]);
 
-        return DB::table('blockedIps')->where('ipAddress', $ip)->first();
+        return $record;
     }
 
     private function isIpBlocked(object $record): bool
@@ -337,7 +334,7 @@ class AuthController extends Controller
             }
         }
 
-        DB::table('userSecurity')->where('userId', $userId)->update($update);
+        UserSecurity::where('userId', $userId)->update($update);
     }
 
     private function registerIpFailure(string $ip, int $maxAttempts, Carbon $now): void
@@ -358,12 +355,12 @@ class AuthController extends Controller
             }
         }
 
-        DB::table('blockedIps')->where('ipAddress', $ip)->update($update);
+        BlockedIp::where('ipAddress', $ip)->update($update);
     }
 
     private function logUserBlock(int $userId, string $action, ?string $reason, ?string $ipAddress, ?int $adminUserId): void
     {
-        DB::table('userBlockedHistory')->insert([
+        UserBlockedHistory::create([
             'userId' => $userId,
             'action' => $action,
             'reason' => $reason,
@@ -374,7 +371,7 @@ class AuthController extends Controller
 
     private function logIpBlock(string $ipAddress, string $action, ?string $reason, ?int $userId, ?int $adminUserId): void
     {
-        DB::table('ipBlockedHistory')->insert([
+        IpBlockedHistory::create([
             'ipAddress' => $ipAddress,
             'action' => $action,
             'reason' => $reason,
