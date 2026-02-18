@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\PasswordRequirement;
 
 class PasswordValidationService
 {
     public function getRequirements()
     {
-        return DB::table('passwordRequirements')->first();
+        return PasswordRequirement::first();
     }
 
     public function validatePassword(string $password, ?object $requirements = null): array
