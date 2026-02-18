@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\RequestClassification;
+use App\Models\RequestType;
 use App\Support\ApiResponse;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class ClassificationController extends Controller
@@ -14,7 +14,6 @@ class ClassificationController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'code' => ['string', 'max:10'],
             'name' => ['required', 'unique:requestClassification,name', 'string', 'max:255'],
             'requestType' => ['required', 'array'],
             'requestType.*' => ['required', 'int', 'exists:requesttype,id']
@@ -24,45 +23,26 @@ class ClassificationController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $now = Carbon::now();
-
-        // Insertar en requestClassification
-        $classificationId = DB::table('requestClassification')->insertGetId([
-            'code' => $request->input('code'),
+        $classification = RequestClassification::create([
             'name' => $request->input('name'),
-            'createdAt' => $now,
-            'updatedAt' => $now
         ]);
 
-        // Insertar en classificationtypes
+        // Asociar tipos de solicitud
         $typeIds = $request->input('requestType');
-        $data = [];
-        foreach ($typeIds as $typeId) {
-            $data[] = [
-                'classificationId' => $classificationId,
-                'typeRequestId' => $typeId
-            ];
-        }
-        DB::table('classificationtypes')->insert($data);
+        $classification->requestTypes()->sync($typeIds);
 
-        $classification = DB::table('requestClassification')
-            ->where('id', $classificationId)
-            ->first();
-
-        return response()->json(ApiResponse::success('Clasificación creada exitosamente', $classification, 201), 201);
+        return response()->json(ApiResponse::success('Clasificación creada exitosamente', $classification->load('requestTypes'), 201), 201);
     }
 
     public function getAllByRequestTypeId($typeRequestId)
     {
-        $classifications = DB::table('requestClassification')
-            ->join('classificationtypes', 'requestClassification.id', '=', 'classificationtypes.classificationId')
-            ->where('classificationtypes.typeRequestId', $typeRequestId)
-            ->select(
-                'requestClassification.id',
-                'requestClassification.name'
-            )
-            ->distinct()
-            ->get();
+        $requestType = RequestType::find($typeRequestId);
+
+        if (!$requestType) {
+            return response()->json(ApiResponse::error('Tipo de solicitud no encontrado', null, 404), 404);
+        }
+
+        $classifications = $requestType->classifications()->get();
 
         if ($classifications->isEmpty()) {
             return response()->json(ApiResponse::success('No hay clasificaciones para este tipo de solicitud', []), 200);
