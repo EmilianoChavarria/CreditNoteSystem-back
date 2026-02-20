@@ -115,8 +115,11 @@ class PasswordRequirementsController extends Controller
         return response()->json(ApiResponse::error(
             'La contraseña no cumple con los requisitos',
             [
-                'errors' => $errors,
+                'isValid' => false,
                 'requirements' => $requirements,
+            ],
+            [
+                'errors' => $errors
             ],
             422
         ), 422);
