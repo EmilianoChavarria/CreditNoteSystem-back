@@ -15,7 +15,8 @@ class UserController extends Controller
 {
     public function index()
     {
-        $users = User::with('role')->orderBy('id')->get();
+        $users = User::with('role')->where('isActive', '1')
+            ->get();
 
         return response()->json(ApiResponse::success('Usuarios', $users));
     }
@@ -70,7 +71,6 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'fullName' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($id)],
-            'password' => ['nullable', 'string', 'min:6'],
             'roleId' => ['required', 'integer', 'exists:roles,id'],
             'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
@@ -81,79 +81,60 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $user = $this->findUser($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $now = Carbon::now();
-        $update = [
+        $user->fill([
             'fullName' => $request->input('fullName'),
             'email' => $request->input('email'),
             'roleId' => (int) $request->input('roleId'),
             'supervisorId' => $request->input('supervisorId'),
             'preferredLanguage' => $request->input('preferredLanguage', 'en'),
             'isActive' => $request->boolean('isActive', true),
-            'updatedAt' => $now,
-        ];
+        ]);
 
-        if ($request->filled('password')) {
-            $passwordHash = Hash::make($request->input('password'));
-            $update['passwordHash'] = $passwordHash;
-            $update['password'] = $passwordHash;
-        }
+        $user->save();
 
-        DB::table('users')->where('id', $id)->update($update);
-
-        $user = $this->findUser($id);
+        $user->load('role');
 
         return response()->json(ApiResponse::success('Usuario actualizado', $user));
     }
 
     public function destroy(int $id)
     {
-        $user = $this->findUser($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $now = Carbon::now();
+        $now = now();
 
-        DB::table('users')->where('id', $id)->update([
+        $user->fill([
             'passwordHash' => '',
             'isActive' => false,
             'deletedAt' => $now,
-            'updatedAt' => $now,
         ]);
 
-        DB::table('userSecurity')->where('userId', $id)->update([
-            'sessionToken' => null,
-            'lastActivityAt' => $now,
-        ]);
+        $user->save();
+
+        $security = $user->security;
+
+        if ($security) {
+            $security->update([
+                'sessionToken' => null,
+                'lastActivityAt' => $now,
+            ]);
+        }
 
         return response()->json(ApiResponse::success('Usuario desactivado'));
     }
 
     private function findUser(int $id): ?object
     {
-        return DB::table('users')
-            ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
-            ->select(
-                'users.id',
-                'users.fullName',
-                'users.email',
-                'users.roleId',
-                'roles.roleName',
-                'users.supervisorId',
-                'users.preferredLanguage',
-                'users.isActive',
-                'users.deletedAt',
-                'users.createdAt',
-                'users.updatedAt'
-            )
-            ->where('users.id', $id)
-            ->first();
+        return User::with('role')->find($id);
     }
 }
