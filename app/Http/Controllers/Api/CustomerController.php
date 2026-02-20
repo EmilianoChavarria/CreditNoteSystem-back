@@ -16,7 +16,13 @@ class CustomerController extends Controller
      */
     public function index()
     {
-        $customers = Customer::orderBy('id')->get();
+        $customers = Customer::with([
+            'salesEngineer',
+            'salesManager',
+            'financeManager',
+            'marketingManager',
+            'customerServiceManager'
+        ])->orderBy('id')->get();
 
         return response()->json(ApiResponse::success('Customers obtenidos exitosamente', $customers));
     }
