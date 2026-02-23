@@ -14,3 +14,4 @@ require __DIR__.'/api/users.php';
 require __DIR__.'/api/security.php';
 require __DIR__.'/api/customers.php';
 require __DIR__.'/api/classifications.php';
+require __DIR__.'/api/batches.php';
