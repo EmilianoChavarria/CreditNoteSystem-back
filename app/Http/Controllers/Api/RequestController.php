@@ -71,9 +71,11 @@ class RequestController extends Controller
 
     public function createRequest(Request $request)
     {
+        $user = $request->attributes->get('authUser');
         $created = RequestModel::create([
+            'requestNumber' => $request->input('requestNumber'),
             'requestTypeId' => $request->input('requestTypeId'),
-            'userId' => $request->input('userId'),
+            'userId' => $user->id,
             'requestDate' => $request->input('requestDate'),
             'currency' => $request->input('currency'),
             'customerId' => $request->input('customerId'),
@@ -85,15 +87,12 @@ class RequestController extends Controller
             'invoiceDate' => $request->input('invoiceDate'),
             'exchangeRate' => $request->input('exchangeRate'),
             'status' => $request->input('status'),
-            'creditNumber' => $request->input('creditNumber'),
             'amount' => $request->input('amount'),
             'hasIva' => $request->input('iva'),
             'totalAmount' => $request->input('totalAmount'),
+            'comments' => $request->input('comments'),
         ]);
 
-        // Generar requestNumber basado en el tipo de solicitud
-        $requestNumber = $this->requestNumberService->generateRequestNumber((int) $created->requestTypeId);
-        $created->update(['requestNumber' => $requestNumber]);
 
         return response()->json(ApiResponse::success('Request creado', $created->refresh(), 201), 201);
     }

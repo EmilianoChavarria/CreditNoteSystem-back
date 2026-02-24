@@ -33,6 +33,7 @@ class Request extends Model
         'amount',
         'hasIva',
         'totalAmount',
+        'comments',
         'creditDebitRefId',
         'newInvoice',
         'sapReturnOrder',
