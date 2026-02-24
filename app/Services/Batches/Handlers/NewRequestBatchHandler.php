@@ -11,14 +11,17 @@ use App\Models\RequestType;
 use App\Models\User;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
+use App\Services\RequestNumberService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
 class NewRequestBatchHandler extends AbstractBatchHandler
 {
-    public function __construct(private readonly BulkFileParser $fileParser)
-    {
+    public function __construct(
+        private readonly BulkFileParser $fileParser,
+        private readonly RequestNumberService $requestNumberService
+    ) {
     }
 
     public function batchType(): string
@@ -179,8 +182,10 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'hasRga' => (bool) ($validated['hasRga'] ?? false),
         ]);
 
+        // Generar requestNumber basado en el tipo de solicitud
+        $requestNumber = $this->requestNumberService->generateRequestNumber((int) $validated['requestTypeId']);
         $request->update([
-            'requestNumber' => (int) $request->id,
+            'requestNumber' => $requestNumber,
         ]);
     }
 
