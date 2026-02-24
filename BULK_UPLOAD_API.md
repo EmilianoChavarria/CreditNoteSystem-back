@@ -229,7 +229,25 @@ Verifica los errores en `GET /api/batches/{id}` en la sección `errors.data`.
 
 - `IVA = amount * 0.16` si `hasIva=true`
 - `totalAmount = amount + IVA`
-- `requestNumber` se asigna automáticamente con el `id` creado
+
+### Número de solicitud (requestNumber)
+
+El sistema genera automáticamente un número consecutivo único por tipo de solicitud con el formato: `PREFIXOXXXXX`
+
+| requestTypeId | Tipo | Prefijo | Ejemplo |
+|----------|------|---------|---------|
+| 1 | Credits | CR | CR00001, CR00002, ... |
+| 2 | Debits | DB | DB00001, DB00002, ... |
+| 3 | Auditor Credits | ACR | ACR00001, ACR00002, ... |
+| 4 | Auditor Debits | ADB | ADB00001, ADB00002, ... |
+| 5 | Re-invoicing | RE | RE00001, RE00002, ... |
+| 6 | Material Return | MR | MR00001, MR00002, ... |
+
+✅ Cada tipo de solicitud tiene su propio contador independiente:
+- Primera nota de crédito: `CR00001`
+- Primera devolución: `DB00001`
+- Primera auditoría de crédito: `ACR00001`
+- etc.
 
 ### Reglas por tipo de request
 
