@@ -81,6 +81,49 @@ class CustomerController extends Controller
     }
 
     /**
+     * Buscar customers por nombre (coincidencia parcial)
+     */
+    public function searchByName(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'search' => 'required|string|min:1|max:255',
+        ], [
+            'search.required' => 'El parámetro de búsqueda es requerido',
+            'search.min' => 'El parámetro de búsqueda debe tener al menos 1 carácter',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(
+                ApiResponse::error('Error de validación', $validator->errors(), 422),
+                422
+            );
+        }
+
+        $searchTerm = $request->input('search');
+
+        $customers = Customer::with([
+            'salesEngineer',
+            'salesManager',
+            'financeManager',
+            'marketingManager',
+            'customerServiceManager'
+        ])
+            ->where('customerName', 'LIKE', "%{$searchTerm}%")
+            ->orderBy('customerName')
+            ->get();
+
+        return response()->json(ApiResponse::success(
+            'Customers encontrados',
+            [
+                'search' => $searchTerm,
+                'count' => $customers->count(),
+                'customers' => $customers
+            ],
+            201
+        ), 201);
+    }
+
+    /**
      * Actualizar un customer
      */
     public function update(Request $request, int $id)
