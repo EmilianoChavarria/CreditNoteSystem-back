@@ -10,8 +10,9 @@ class RolePermission extends Model
     use HasFactory;
 
     protected $table = 'rolespermission';
+    public $timestamps = false;
     protected $fillable = [
-        'moduleId',
+        'requestTypeId',
         'roleId',
         'hasAccess',
     ];
@@ -25,8 +26,8 @@ class RolePermission extends Model
         return $this->belongsTo(Role::class, 'roleId');
     }
 
-    public function module()
+    public function requesttype()
     {
-        return $this->belongsTo(Module::class, 'moduleId');
+        return $this->belongsTo(RequestType::class, 'requestTypeId');
     }
 }
