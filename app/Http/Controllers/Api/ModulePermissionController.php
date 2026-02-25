@@ -12,37 +12,56 @@ class ModulePermissionController extends Controller
 {
     public function assignPermission(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'moduleId' => ['required', 'int', 'exists:modules,id'],
-            'roleId' => ['required', 'int', 'exists:roles,id'],
-            'hasAccess' => ['required', 'boolean']
+        $items = $request->input('permissions', $request->all());
+
+        $validator = Validator::make(['permissions' => $items], [
+            'permissions' => ['required', 'array', 'min:1'],
+            'permissions.*.requestTypeId' => ['required', 'int', 'exists:requesttype,id'],
+            'permissions.*.roleId' => ['required', 'int', 'exists:roles,id'],
+            'permissions.*.hasAccess' => ['required', 'boolean']
         ]);
 
         if ($validator->fails()) {
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $permission = RolePermission::where('moduleId', $request->input('moduleId'))
-            ->where('roleId', $request->input('roleId'))
-            ->first();
+        $created = 0;
+        $updated = 0;
+        $processedPermissions = [];
 
-        if ($permission) {
-            $permission->update(['hasAccess' => $request->input('hasAccess')]);
-            return response()->json(ApiResponse::success('Permiso actualizado correctamente'), 200);
+        foreach ($items as $item) {
+            $permission = RolePermission::where('requestTypeId', $item['requestTypeId'])
+                ->where('roleId', $item['roleId'])
+                ->first();
+
+            if ($permission) {
+                $permission->update(['hasAccess' => $item['hasAccess']]);
+                $updated++;
+            } else {
+                $permission = RolePermission::create([
+                    'requestTypeId' => $item['requestTypeId'],
+                    'roleId' => $item['roleId'],
+                    'hasAccess' => $item['hasAccess']
+                ]);
+                $created++;
+            }
+
+            $processedPermissions[] = $permission->load(['requesttype', 'role']);
         }
 
-        $permission = RolePermission::create([
-            'moduleId' => $request->input('moduleId'),
-            'roleId' => $request->input('roleId'),
-            'hasAccess' => $request->input('hasAccess')
-        ]);
-
-        return response()->json(ApiResponse::success('Permiso asignado correctamente', $permission->load(['module', 'role']), 201), 201);
+        return response()->json(ApiResponse::success('Permisos actualizados correctamente', [
+            'summary' => [
+                'total' => count($items),
+                'created' => $created,
+                'updated' => $updated,
+            ],
+            'permissions' => $processedPermissions,
+        ]), 200);
     }
 
     public function getAll()
     {
-        $permissions = RolePermission::with(['module', 'role'])->orderBy('id')->get();
+        $permissions = RolePermission::with(['requesttype', 'role'])->orderBy('id')->get();
 
         return response()->json(ApiResponse::success('Permisos', $permissions));
     }
