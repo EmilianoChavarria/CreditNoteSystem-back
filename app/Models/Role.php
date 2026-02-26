@@ -16,6 +16,13 @@ class Role extends Model
         'roleName',
     ];
 
+    protected $casts = [
+        'isActive' => 'boolean',
+        'createdAt' => 'datetime',
+        'updatedAt' => 'datetime',
+        'deletedAt' => 'datetime',
+    ];
+
     public function users()
     {
         return $this->hasMany(User::class, 'roleId');
