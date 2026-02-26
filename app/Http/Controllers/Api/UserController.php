@@ -63,7 +63,7 @@ class UserController extends Controller
             'failedAttempts' => 0,
         ]);
 
-        return response()->json(ApiResponse::success('Usuario creado', $user->load('role'), 201), 201);
+        return response()->json(ApiResponse::success('Usuario creado correctamente', $user->load('role'), 201), 201);
     }
 
     public function update(Request $request, int $id)
@@ -130,7 +130,7 @@ class UserController extends Controller
             ]);
         }
 
-        return response()->json(ApiResponse::success('Usuario desactivado'));
+        return response()->json(ApiResponse::success('Usuario desactivado', null, 201));
     }
 
     private function findUser(int $id): ?object
