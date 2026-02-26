@@ -43,7 +43,7 @@ class RoleController extends Controller
             'roleName' => $request->input('roleName'),
         ]);
 
-        return response()->json(ApiResponse::success('Rol creado', $role, 201), 201);
+        return response()->json(ApiResponse::success('Rol creado correctamente', $role, 201), 201);
     }
 
     public function update(Request $request, int $id)
@@ -61,31 +61,40 @@ class RoleController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role = Role::find($id);
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        DB::table('roles')->where('id', $id)->update([
-            'roleName' => $request->input('roleName'),
+        $role->fill([
+            'roleName' => $request->input('roleName')
         ]);
 
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role->save();
 
-        return response()->json(ApiResponse::success('Rol actualizado', $role));
+        $role->load('role');
+
+        return response()->json(ApiResponse::success('Rol actualizado correctamente', $role, 201), 201);
     }
 
     public function destroy(int $id)
     {
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role = Role::find($id);
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        DB::table('roles')->where('id', $id)->delete();
+        $now = now();
 
-        return response()->json(ApiResponse::success('Rol eliminado'));
+        $role->fill([
+            'isActive' => false,
+            'deletedAt' => $now,
+        ]);
+
+        $role->save();
+
+        return response()->json(ApiResponse::success('Rol eliminado correctamente', null, 201), 210);
     }
 }
