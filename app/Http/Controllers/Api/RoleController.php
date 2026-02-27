@@ -33,6 +33,7 @@ class RoleController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'roleName' => ['required', 'string', 'max:150', 'unique:roles,roleName'],
+            'color' => ['required', 'string', 'max:10',],
         ]);
 
         if ($validator->fails()) {
@@ -53,8 +54,9 @@ class RoleController extends Controller
                 'required',
                 'string',
                 'max:150',
-                Rule::unique('roles', 'roleName')->ignore($id),
+                'unique:roles,roleName'
             ],
+            'color' => ['required', 'string', 'max:10',],
         ]);
 
         if ($validator->fails()) {
