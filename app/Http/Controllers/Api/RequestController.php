@@ -29,8 +29,9 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success('Requests', $requests));
     }
 
-    public function getAllByRequestType(int $id)
+    public function getAllByRequestType(Request $request, int $id)
     {
+        $perPage = $request->query('perPage');
         $requests = RequestModel::with([
             'requestType',
             'user',
@@ -39,7 +40,7 @@ class RequestController extends Controller
             'classification'
         ])->orderBy('id')
             ->where('requestTypeId', $id)
-            ->get();
+            ->cursorPaginate($perPage);
 
         return response()->json(ApiResponse::success('Requests', $requests));
     }
