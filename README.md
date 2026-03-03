@@ -1,59 +1,225 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Notas de Crédito - Backend API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Backend en Laravel 12 para la gestión de solicitudes (crédito/débito/auditoría/re-facturación/devolución), usuarios, roles/permisos, clientes, seguridad y cargas masivas asíncronas.
 
-## About Laravel
+## Stack técnico
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- PHP 8.2+
+- Laravel 12
+- JWT (`firebase/php-jwt`)
+- Colas con driver `database`
+- Vite + Tailwind (assets frontend básicos)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Requisitos
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- PHP 8.2 o superior
+- Composer
+- Node.js + npm
+- Base de datos (MySQL recomendado para este proyecto)
 
-## Learning Laravel
+## Instalación rápida
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+npm install
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Configuración de entorno
 
-## Laravel Sponsors
+Variables importantes en `.env`:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```dotenv
+APP_ENV=local
+APP_DEBUG=true
+APP_URL=http://localhost
 
-### Premium Partners
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=notas_credito
+DB_USERNAME=root
+DB_PASSWORD=
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+QUEUE_CONNECTION=database
 
-## Contributing
+# JWT / Seguridad
+JWT_TTL_MINUTES=120
+JWT_ISSUER=backend-notasCredito
+JWT_SECRET=tu_secreto_jwt
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+SECURITY_MAX_USER_ATTEMPTS=5
+SECURITY_MAX_IP_ATTEMPTS=10
+SECURITY_USER_LOCK_MINUTES=1440
 
-## Code of Conduct
+# Carga masiva de usuarios
+BULK_USERS_DEFAULT_PASSWORD=ChangeMe123!
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Ejecución en desarrollo
 
-## Security Vulnerabilities
+### Opción 1: todo con un solo comando
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+composer run dev
+```
 
-## License
+Este comando levanta servidor, worker de cola, logs y Vite en paralelo.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### Opción 2: manual
+
+Terminal 1:
+
+```bash
+php artisan serve
+```
+
+Terminal 2 (requerido para batches):
+
+```bash
+php artisan queue:work database --queue=default --tries=1
+```
+
+Terminal 3 (opcional para assets):
+
+```bash
+npm run dev
+```
+
+## Comandos útiles
+
+```bash
+php artisan route:list
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+php artisan test
+```
+
+## Estructura del proyecto
+
+```text
+app/
+	Http/
+		Controllers/Api/     # Controladores REST
+		Middleware/          # JWT auth
+	Jobs/                  # Procesamiento async de batches
+	Models/                # Entidades Eloquent
+	Services/              # Lógica de negocio (JWT, request numbers, batches)
+config/
+	bulk_upload.php        # Matriz de campos para carga masiva
+	security.php           # Reglas de seguridad/JWT
+routes/
+	api.php                # Registro de módulos API
+	api/*.php              # Rutas segmentadas por dominio
+database/
+	migrations/            # Migraciones
+```
+
+## Autenticación
+
+La API usa middleware `jwt` para rutas protegidas.
+
+- Header requerido: `Authorization: Bearer <token>`
+- Login: `POST /api/auth/login`
+- Verify token: `GET /api/auth/verify`
+- Logout: `POST /api/auth/logout`
+
+## Módulos API actuales
+
+### Salud / público
+
+- `GET /api/hola`
+
+### Usuarios y seguridad
+
+- `GET /api/me`
+- `GET /api/admin/only`
+- CRUD de usuarios (`/api/users`, `/api/users/{id}`, `/api/usersPag`)
+- Desbloqueo de usuario/IP:
+	- `POST /api/security/users/{id}/unlock`
+	- `POST /api/security/ips/unlock`
+- Requisitos de contraseña:
+	- `GET /api/password-requirements`
+	- `GET /api/password-requirements/formatted`
+	- `POST /api/password-requirements/validate`
+	- `PUT /api/password-requirements`
+
+### Catálogos y permisos
+
+- CRUD de roles: `/api/roles`
+- CRUD de módulos: `/api/modules`
+- Permisos de rol-módulo:
+	- `POST /api/rolesPermission/assign`
+	- `GET /api/rolesPermission`
+- Tipos de solicitud: `/api/requestType`
+- Clasificaciones:
+	- `POST /api/classifications`
+	- `GET /api/classifications/requestType/{typeRequestId}`
+- Clientes:
+	- `GET /api/customers`
+	- `GET /api/customers/search`
+	- `GET /api/customers/{id}`
+	- `POST /api/customers`
+	- `PUT /api/customers/{id}`
+	- `DELETE /api/customers/{id}`
+
+### Solicitudes y dashboard
+
+- `GET /api/requests`
+- `GET /api/requests/reasons`
+- `GET /api/requests/next-number/{requestTypeId}`
+- `GET /api/requests/{id}` (filtra por tipo)
+- `POST /api/requests/newRequest`
+- `GET /api/dashboard`
+
+### Workflows
+
+- `GET /api/workflows`
+- `GET /api/workflows/{id}`
+- `POST /api/workflows`
+- `PUT /api/workflows/{id}`
+- `DELETE /api/workflows/{id}`
+
+### Carga masiva (asíncrona)
+
+- `POST /api/batches`
+- `GET /api/batches/{id}`
+
+Documentación detallada: ver `BULK_UPLOAD_API.md`.
+
+## Carga masiva: tipos soportados
+
+`sapScreen`, `creditsData`, `orderNumbers`, `uploadSupport`, `newRequest`, `users`
+
+El procesamiento se hace con jobs:
+
+- `ProcessBatchJob`
+- `ProcessBatchItemJob`
+
+## Convención de respuesta API
+
+Las respuestas se centralizan en `App\Support\ApiResponse` con formato uniforme para éxito/error.
+
+## Testing
+
+Ejecutar pruebas:
+
+```bash
+php artisan test
+```
+
+Actualmente existe la base de pruebas de ejemplo en `tests/Feature` y `tests/Unit`.
+
+## Notas de operación
+
+- Si no aparecen rutas nuevas, limpiar caché de rutas:
+
+```bash
+php artisan route:clear
+```
+
+- Para cargas masivas, verifica que el worker de colas esté activo.
+
