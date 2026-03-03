@@ -3,42 +3,37 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Models\UserSecurity;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    public function index()
+    public function getAll()
     {
-        $users = DB::table('users')
-            ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
-            ->select(
-                'users.id',
-                'users.fullName',
-                'users.email',
-                'users.roleId',
-                'roles.roleName',
-                'users.supervisorId',
-                'users.preferredLanguage',
-                'users.isActive',
-                'users.deletedAt',
-                'users.createdAt',
-                'users.updatedAt'
-            )
-            ->orderBy('users.id')
+
+        $users = User::with('role')->where('isActive', '1')
             ->get();
+
+        return response()->json(ApiResponse::success('Usuarios', $users));
+    }
+
+    public function index(Request $request)
+    {
+        $perPage = $request->query('perPage');
+        $users = User::with('role')->where('isActive', '1')
+            ->cursorPaginate($perPage);
 
         return response()->json(ApiResponse::success('Usuarios', $users));
     }
 
     public function show(int $id)
     {
-        $user = $this->findUser($id);
+        $user = User::with('role')->find($id);
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
@@ -63,36 +58,22 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $now = Carbon::now();
-        $passwordHash = Hash::make($request->input('password'));
-
-        $id = DB::table('users')->insertGetId([
+        $user = User::create([
             'fullName' => $request->input('fullName'),
             'email' => $request->input('email'),
-            'passwordHash' => $passwordHash,
+            'passwordHash' => Hash::make($request->input('password')),
             'roleId' => (int) $request->input('roleId'),
             'supervisorId' => $request->input('supervisorId'),
             'preferredLanguage' => $request->input('preferredLanguage', 'en'),
             'isActive' => $request->boolean('isActive', true),
-            'deletedAt' => null,
-            'createdAt' => $now,
-            'updatedAt' => $now,
         ]);
 
-        DB::table('userSecurity')->insert([
-            'userId' => $id,
+        UserSecurity::create([
+            'userId' => $user->id,
             'failedAttempts' => 0,
-            'lastFailedAt' => null,
-            'lockedUntil' => null,
-            'lastKnownIp' => null,
-            'sessionToken' => null,
-            'lastActivityAt' => null,
-            'lastLoginAt' => null,
         ]);
 
-        $user = $this->findUser($id);
-
-        return response()->json(ApiResponse::success('Usuario creado', $user, 201), 201);
+        return response()->json(ApiResponse::success('Usuario creado correctamente', $user->load('role'), 201), 201);
     }
 
     public function update(Request $request, int $id)
@@ -100,7 +81,6 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'fullName' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($id)],
-            'password' => ['nullable', 'string', 'min:6'],
             'roleId' => ['required', 'integer', 'exists:roles,id'],
             'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
@@ -111,79 +91,60 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $user = $this->findUser($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $now = Carbon::now();
-        $update = [
+        $user->fill([
             'fullName' => $request->input('fullName'),
             'email' => $request->input('email'),
             'roleId' => (int) $request->input('roleId'),
             'supervisorId' => $request->input('supervisorId'),
             'preferredLanguage' => $request->input('preferredLanguage', 'en'),
             'isActive' => $request->boolean('isActive', true),
-            'updatedAt' => $now,
-            'updated_at' => $now,
-        ];
+        ]);
 
-        if ($request->filled('password')) {
-            $passwordHash = Hash::make($request->input('password'));
-            $update['passwordHash'] = $passwordHash;
-            $update['password'] = $passwordHash;
-        }
+        $user->save();
 
-        DB::table('users')->where('id', $id)->update($update);
-
-        $user = $this->findUser($id);
+        $user->load('role');
 
         return response()->json(ApiResponse::success('Usuario actualizado', $user));
     }
 
     public function destroy(int $id)
     {
-        $user = $this->findUser($id);
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $now = Carbon::now();
+        $now = now();
 
-        DB::table('users')->where('id', $id)->update([
+        $user->fill([
+            'passwordHash' => '',
             'isActive' => false,
             'deletedAt' => $now,
-            'updatedAt' => $now,
         ]);
 
-        DB::table('userSecurity')->where('userId', $id)->update([
-            'sessionToken' => null,
-            'lastActivityAt' => $now,
-        ]);
+        $user->save();
 
-        return response()->json(ApiResponse::success('Usuario desactivado'));
+        $security = $user->security;
+
+        if ($security) {
+            $security->update([
+                'sessionToken' => null,
+                'lastActivityAt' => $now,
+            ]);
+        }
+
+        return response()->json(ApiResponse::success('Usuario desactivado', null, 201));
     }
 
     private function findUser(int $id): ?object
     {
-        return DB::table('users')
-            ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
-            ->select(
-                'users.id',
-                'users.fullName',
-                'users.email',
-                'users.roleId',
-                'roles.roleName',
-                'users.supervisorId',
-                'users.preferredLanguage',
-                'users.isActive',
-                'users.deletedAt',
-                'users.createdAt',
-                'users.updatedAt'
-            )
-            ->where('users.id', $id)
-            ->first();
+        return User::with('role')->find($id);
     }
 }

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Role;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -13,14 +13,14 @@ class RoleController extends Controller
 {
     public function index()
     {
-        $roles = DB::table('roles')->orderBy('id')->get();
+        $roles = Role::orderBy('id')->get();
 
         return response()->json(ApiResponse::success('Roles', $roles));
     }
 
     public function show(int $id)
     {
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role = Role::find($id);
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
@@ -33,19 +33,19 @@ class RoleController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'roleName' => ['required', 'string', 'max:150', 'unique:roles,roleName'],
+            'color' => ['required', 'string', 'max:10',],
         ]);
 
         if ($validator->fails()) {
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $id = DB::table('roles')->insertGetId([
+        $role = Role::create([
             'roleName' => $request->input('roleName'),
+            'color' => $request->input('color'),
         ]);
 
-        $role = DB::table('roles')->where('id', $id)->first();
-
-        return response()->json(ApiResponse::success('Rol creado', $role, 201), 201);
+        return response()->json(ApiResponse::success('Rol creado correctamente', $role, 201), 201);
     }
 
     public function update(Request $request, int $id)
@@ -55,39 +55,49 @@ class RoleController extends Controller
                 'required',
                 'string',
                 'max:150',
-                Rule::unique('roles', 'roleName')->ignore($id),
+                'unique:roles,roleName'
             ],
+            'color' => ['required', 'string', 'max:10',],
         ]);
 
         if ($validator->fails()) {
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role = Role::find($id);
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        DB::table('roles')->where('id', $id)->update([
-            'roleName' => $request->input('roleName'),
+        $role->fill([
+            'roleName' => $request->input('roleName')
         ]);
 
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role->save();
 
-        return response()->json(ApiResponse::success('Rol actualizado', $role));
+        $role->load('role');
+
+        return response()->json(ApiResponse::success('Rol actualizado correctamente', $role, 201), 201);
     }
 
     public function destroy(int $id)
     {
-        $role = DB::table('roles')->where('id', $id)->first();
+        $role = Role::find($id);
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        DB::table('roles')->where('id', $id)->delete();
+        $now = now();
 
-        return response()->json(ApiResponse::success('Rol eliminado'));
+        $role->fill([
+            'isActive' => false,
+            'deletedAt' => $now,
+        ]);
+
+        $role->save();
+
+        return response()->json(ApiResponse::success('Rol eliminado correctamente', null, 201), 210);
     }
 }

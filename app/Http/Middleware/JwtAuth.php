@@ -14,7 +14,7 @@ class JwtAuth
 {
     public function handle(Request $request, Closure $next)
     {
-        $token = $this->extractBearerToken($request);
+        $token = $this->extractToken($request);
 
         if (!$token) {
             return response()->json(ApiResponse::error('Token no proporcionado', null, 401), 401);
@@ -55,19 +55,19 @@ class JwtAuth
 
         $request->attributes->set('authUser', $user);
         $request->attributes->set('authRole', $user->roleName);
-        $request->setUserResolver(fn () => $user);
+        $request->setUserResolver(fn() => $user);
 
         return $next($request);
     }
 
-    private function extractBearerToken(Request $request): ?string
+    private function extractToken(Request $request): ?string
     {
-        $header = $request->header('Authorization');
 
-        if (!$header || !str_starts_with($header, 'Bearer ')) {
-            return null;
+        $header = $request->header('Authorization');
+        if ($header && str_starts_with($header, 'Bearer ')) {
+            return trim(substr($header, 7));
         }
 
-        return trim(substr($header, 7));
+        return $request->cookie('access_token');
     }
 }

@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PasswordRequirement;
 use App\Support\ApiResponse;
 use App\Services\PasswordValidationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PasswordRequirementsController extends Controller
@@ -71,11 +71,10 @@ class PasswordRequirementsController extends Controller
             $updateData['createdAt'] = $existRequirements ? $existRequirements->createdAt : now();
             $updateData['updatedAt'] = now();
 
-            DB::table('passwordRequirements')
-                ->updateOrInsert(
-                    ['id' => 1],
-                    $updateData
-                );
+            PasswordRequirement::updateOrCreate(
+                ['id' => 1],
+                $updateData
+            );
 
             return response()->json(ApiResponse::success(
                 'Requisitos de contraseña actualizados correctamente',
@@ -116,8 +115,11 @@ class PasswordRequirementsController extends Controller
         return response()->json(ApiResponse::error(
             'La contraseña no cumple con los requisitos',
             [
-                'errors' => $errors,
+                'isValid' => false,
                 'requirements' => $requirements,
+            ],
+            [
+                'errors' => $errors
             ],
             422
         ), 422);
@@ -160,12 +162,7 @@ class PasswordRequirementsController extends Controller
                 'value' => (bool) $requirements->requireSpecialChars,
                 'description' => "La contraseña debe contener al menos uno de: {$requirements->allowedSpecialChars}",
                 'allowedChars' => $requirements->allowedSpecialChars,
-            ],
-            'requireMixedCase' => [
-                'label' => 'Mezcla de mayúsculas y minúsculas',
-                'value' => (bool) $requirements->requireMixedCase,
-                'description' => 'La contraseña debe contener tanto mayúsculas como minúsculas',
-            ],
+            ]
         ];
 
         return response()->json(ApiResponse::success('Requisitos formateados obtenidos', $formatted));

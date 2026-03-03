@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\PasswordRequirement;
 
 class PasswordValidationService
 {
     public function getRequirements()
     {
-        return DB::table('passwordRequirements')->first();
+        return PasswordRequirement::first();
     }
 
     public function validatePassword(string $password, ?object $requirements = null): array
@@ -41,15 +41,6 @@ class PasswordValidationService
             $specialCharsPattern = preg_quote($requirements->allowedSpecialChars);
             if (!preg_match("/[{$specialCharsPattern}]/", $password)) {
                 $errors[] = "La contraseña debe contener al menos uno de estos caracteres especiales: {$requirements->allowedSpecialChars}";
-            }
-        }
-
-        // Validar que contenga tanto mayúsculas como minúsculas
-        if ($requirements->requireMixedCase) {
-            $hasUpper = preg_match('/[A-Z]/', $password);
-            $hasLower = preg_match('/[a-z]/', $password);
-            if (!($hasUpper && $hasLower)) {
-                $errors[] = 'La contraseña debe contener tanto mayúsculas como minúsculas';
             }
         }
 
