@@ -13,6 +13,15 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    public function getAll()
+    {
+
+        $users = User::with('role')->where('isActive', '1')
+            ->get();
+
+        return response()->json(ApiResponse::success('Usuarios', $users));
+    }
+
     public function index(Request $request)
     {
         $perPage = $request->query('perPage');
