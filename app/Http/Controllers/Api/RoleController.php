@@ -42,6 +42,7 @@ class RoleController extends Controller
 
         $role = Role::create([
             'roleName' => $request->input('roleName'),
+            'color' => $request->input('color'),
         ]);
 
         return response()->json(ApiResponse::success('Rol creado correctamente', $role, 201), 201);
