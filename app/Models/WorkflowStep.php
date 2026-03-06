@@ -66,4 +66,14 @@ class WorkflowStep extends Model
     {
         return $this->hasMany(WorkflowRequestCurrentStep::class, 'workflowStepId');
     }
+
+    public function outgoingTransitions()
+    {
+        return $this->hasMany(WorkflowStepTransition::class, 'fromStepId');
+    }
+
+    public function incomingTransitions()
+    {
+        return $this->hasMany(WorkflowStepTransition::class, 'toStepId');
+    }
 }
