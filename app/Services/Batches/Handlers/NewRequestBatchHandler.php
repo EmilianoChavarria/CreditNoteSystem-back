@@ -5,6 +5,7 @@ namespace App\Services\Batches\Handlers;
 use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\Request as RequestModel;
+use App\Models\RequestCustomer;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\RequestType;
@@ -61,6 +62,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         ];
 
         $requiredFields = [];
+        $resolvedCustomer = null;
 
         foreach ((array) $moduleConfig['fields'] as $fieldConfig) {
             $fieldName = (string) ($fieldConfig['name'] ?? '');
@@ -69,8 +71,25 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             }
 
             $aliases = (array) ($fieldConfig['aliases'] ?? []);
-            if ($fieldName === 'customerId') {
-                $payload['customerId'] = $this->resolveCustomerId($row, $aliases);
+            if ($fieldName === 'customerId' || $fieldName === 'idCustomer') {
+                $resolvedCustomer = $this->resolveCustomer($row, $aliases);
+                $payload['idCustomer'] = (string) ($resolvedCustomer->customerNumber ?? '');
+
+                if (!array_key_exists('salesEngineerId', $payload)) {
+                    $payload['salesEngineerId'] = $resolvedCustomer->salesEngineerId;
+                }
+                if (!array_key_exists('salesManagerId', $payload)) {
+                    $payload['salesManagerId'] = $resolvedCustomer->salesManagerId;
+                }
+                if (!array_key_exists('financeManagerId', $payload)) {
+                    $payload['financeManagerId'] = $resolvedCustomer->financeManagerId;
+                }
+                if (!array_key_exists('marketingManagerId', $payload)) {
+                    $payload['marketingManagerId'] = $resolvedCustomer->marketingManagerId;
+                }
+                if (!array_key_exists('customerServiceManagerId', $payload)) {
+                    $payload['customerServiceManagerId'] = $resolvedCustomer->customerServiceManagerId;
+                }
             } elseif ($fieldName === 'reasonId') {
                 $payload['reasonId'] = $this->resolveReasonId($row, $aliases);
             } elseif ($fieldName === 'classificationId') {
@@ -80,7 +99,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             }
 
             if (($fieldConfig['required'] ?? false) === true) {
-                $requiredFields[] = $fieldName;
+                $requiredFields[] = $fieldName === 'customerId' ? 'idCustomer' : $fieldName;
             }
         }
 
@@ -104,10 +123,15 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'userId' => ['required', 'integer', Rule::exists((new User())->getTable(), 'id')],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
-            'customerId' => ['nullable', 'integer', Rule::exists((new Customer())->getTable(), 'id')],
+            'idCustomer' => ['nullable', 'string', 'max:45'],
             'area' => ['nullable', 'string', 'max:150'],
             'reasonId' => ['nullable', 'integer', Rule::exists((new RequestReason())->getTable(), 'id')],
             'classificationId' => ['nullable', 'integer', Rule::exists((new RequestClassification())->getTable(), 'id')],
+            'salesEngineerId' => ['nullable', 'integer', Rule::exists((new User())->getTable(), 'id')],
+            'salesManagerId' => ['nullable', 'integer', Rule::exists((new User())->getTable(), 'id')],
+            'financeManagerId' => ['nullable', 'integer', Rule::exists((new User())->getTable(), 'id')],
+            'marketingManagerId' => ['nullable', 'integer', Rule::exists((new User())->getTable(), 'id')],
+            'customerServiceManagerId' => ['nullable', 'integer', Rule::exists((new User())->getTable(), 'id')],
             'deliveryNote' => ['nullable', 'string', 'max:255'],
             'invoiceNumber' => ['nullable', 'string', 'max:255'],
             'invoiceDate' => ['nullable', 'date'],
@@ -157,7 +181,6 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'orderNumber' => $validated['orderNumber'] ?? null,
             'requestDate' => $validated['requestDate'],
             'currency' => $validated['currency'],
-            'customerId' => (int) $validated['customerId'],
             'area' => $validated['area'] ?? null,
             'reasonId' => (int) $validated['reasonId'],
             'classificationId' => (int) $validated['classificationId'],
@@ -182,6 +205,34 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'hasRga' => (bool) ($validated['hasRga'] ?? false),
         ]);
 
+        if (!empty($validated['idCustomer']) || $resolvedCustomer !== null) {
+            $salesEngineerId = (int) ($validated['salesEngineerId'] ?? $resolvedCustomer?->salesEngineerId ?? 0);
+            $salesManagerId = (int) ($validated['salesManagerId'] ?? $resolvedCustomer?->salesManagerId ?? 0);
+            $financeManagerId = (int) ($validated['financeManagerId'] ?? $resolvedCustomer?->financeManagerId ?? 0);
+            $marketingManagerId = (int) ($validated['marketingManagerId'] ?? $resolvedCustomer?->marketingManagerId ?? 0);
+            $customerServiceManagerId = (int) ($validated['customerServiceManagerId'] ?? $resolvedCustomer?->customerServiceManagerId ?? 0);
+
+            if (
+                $salesEngineerId <= 0 ||
+                $salesManagerId <= 0 ||
+                $financeManagerId <= 0 ||
+                $marketingManagerId <= 0 ||
+                $customerServiceManagerId <= 0
+            ) {
+                throw new RuntimeException('No se pudieron resolver todos los responsables para requestscutomers.');
+            }
+
+            RequestCustomer::create([
+                'idRequest' => $request->id,
+                'idCustomer' => (string) ($validated['idCustomer'] ?? $resolvedCustomer?->customerNumber),
+                'salesEngineerId' => $salesEngineerId,
+                'salesManagerId' => $salesManagerId,
+                'financeManagerId' => $financeManagerId,
+                'marketingManagerId' => $marketingManagerId,
+                'customerServiceManagerId' => $customerServiceManagerId,
+            ]);
+        }
+
         // Generar requestNumber basado en el tipo de solicitud
         $requestNumber = $this->requestNumberService->generateRequestNumber((int) $validated['requestTypeId']);
         $request->update([
@@ -193,7 +244,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
      * @param array<string, mixed> $row
      * @param array<int, string> $aliases
      */
-    private function resolveCustomerId(array $row, array $aliases): ?int
+    private function resolveCustomer(array $row, array $aliases): ?Customer
     {
         $value = $this->value($row, $aliases);
 
@@ -207,25 +258,25 @@ class NewRequestBatchHandler extends AbstractBatchHandler
 
             $customerById = Customer::find($number);
             if ($customerById) {
-                return (int) $customerById->id;
+                return $customerById;
             }
 
             $customerByNumber = Customer::where('customerNumber', $number)->first();
             if ($customerByNumber) {
-                return (int) $customerByNumber->id;
+                return $customerByNumber;
             }
         }
 
         // Buscar por customerNumber (string)
         $customer = Customer::where('customerNumber', (string) $value)->first();
         if ($customer) {
-            return (int) $customer->id;
+            return $customer;
         }
 
         // Buscar por customerName
         $customer = Customer::where('customerName', (string) $value)->first();
         if ($customer) {
-            return (int) $customer->id;
+            return $customer;
         }
 
         // No se encontró el cliente

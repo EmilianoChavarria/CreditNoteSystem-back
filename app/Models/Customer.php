@@ -32,9 +32,9 @@ class Customer extends Model
         'deletedAt' => 'datetime',
     ];
 
-    public function requests()
+    public function requestCustomers()
     {
-        return $this->hasMany(Request::class, 'customerId');
+        return $this->hasMany(RequestCustomer::class, 'idCustomer', 'customerNumber');
     }
 
     public function salesEngineer()
