@@ -19,6 +19,7 @@ class WorkflowStepPermission extends Model
         'roleId',
         'canApprove',
         'canReject',
+        'canEdit',
         'canCancel',
         'canDelete',
     ];
@@ -29,6 +30,7 @@ class WorkflowStepPermission extends Model
         'canApprove' => 'boolean',
         'canReject' => 'boolean',
         'canCancel' => 'boolean',
+        'canEdit' => 'boolean',
         'canDelete' => 'boolean',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
