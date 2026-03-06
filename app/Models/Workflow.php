@@ -19,7 +19,7 @@ class Workflow extends Model
         'description',
         'isActive',
         'requestTypeId',
-        'classificationId',
+        'classificationType',
         'deletedAt',
     ];
 
