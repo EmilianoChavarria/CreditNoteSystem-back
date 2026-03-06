@@ -40,7 +40,7 @@ class WorkflowController extends Controller
             'description' => ['required', 'string'],
             'isActive' => ['nullable', 'boolean'],
             'requestTypeId' => ['required', 'integer', 'exists:' . $requestTypeTable . ',id'],
-            'classificationId' => ['nullable', 'integer', 'exists:' . $classificationTable . ',id'],
+            'classificationType' => ['nullable', 'string'],
         ]);
 
         if ($validator->fails()) {
@@ -52,7 +52,7 @@ class WorkflowController extends Controller
             'description' => $request->input('description'),
             'isActive' => $request->input('isActive', true),
             'requestTypeId' => $request->input('requestTypeId'),
-            'classificationId' => $request->input('classificationId'),
+            'classificationType' => $request->input('classificationType'),
         ]);
 
         return response()->json(
@@ -77,7 +77,7 @@ class WorkflowController extends Controller
             'description' => ['sometimes', 'required', 'string'],
             'isActive' => ['sometimes', 'nullable', 'boolean'],
             'requestTypeId' => ['sometimes', 'required', 'integer', 'exists:' . $requestTypeTable . ',id'],
-            'classificationId' => ['sometimes', 'nullable', 'integer', 'exists:' . $classificationTable . ',id'],
+            'classificationType' => ['sometimes', 'nullable', 'integer', 'exists:' . $classificationTable . ',id'],
         ]);
 
         if ($validator->fails()) {
@@ -89,7 +89,7 @@ class WorkflowController extends Controller
             'description',
             'isActive',
             'requestTypeId',
-            'classificationId',
+            'classificationType',
         ]));
 
         return response()->json(ApiResponse::success('Workflow updated successfully', $workflow->load(['requestType', 'classification'])));
