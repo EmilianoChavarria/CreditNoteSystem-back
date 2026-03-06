@@ -6,15 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\Workflow;
 use App\Models\WorkflowStep;
+use App\Models\WorkflowStepTransition;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class WorkflowStepController extends Controller
 {
     public function getAll()
     {
-        $steps = WorkflowStep::with(['workflow', 'role'])
+        $steps = WorkflowStep::with(['workflow', 'role', 'outgoingTransitions.toStep'])
             ->orderBy('workflowId')
             ->orderBy('stepOrder')
             ->get();
@@ -24,7 +27,7 @@ class WorkflowStepController extends Controller
 
     public function getById(int $id)
     {
-        $step = WorkflowStep::with(['workflow', 'role'])->find($id);
+        $step = WorkflowStep::with(['workflow', 'role', 'outgoingTransitions.toStep'])->find($id);
 
         if (!$step) {
             return response()->json(ApiResponse::error('Workflow step not found', null, 404), 404);
@@ -33,10 +36,30 @@ class WorkflowStepController extends Controller
         return response()->json(ApiResponse::success('Workflow step', $step));
     }
 
+    public function getByWorkflowId(int $workflowId)
+    {
+        $workflow = Workflow::with(['requestType', 'classification'])->find($workflowId);
+
+        if (!$workflow) {
+            return response()->json(ApiResponse::error('Workflow not found', null, 404), 404);
+        }
+
+        $steps = WorkflowStep::with(['role', 'outgoingTransitions.toStep'])
+            ->where('workflowId', $workflowId)
+            ->orderBy('stepOrder')
+            ->get();
+
+        return response()->json(ApiResponse::success('Workflow with steps', [
+            'workflow' => $workflow,
+            'steps' => $steps,
+        ]));
+    }
+
     public function store(Request $request)
     {
         $workflowTable = (new Workflow())->getTable();
         $roleTable = (new Role())->getTable();
+        $stepTable = (new WorkflowStep())->getTable();
 
         $validator = Validator::make($request->all(), [
             'workflowId' => ['required', 'integer', 'exists:' . $workflowTable . ',id'],
@@ -45,6 +68,12 @@ class WorkflowStepController extends Controller
             'roleId' => ['required', 'integer', 'exists:' . $roleTable . ',id'],
             'isInitialStep' => ['nullable', 'boolean'],
             'isFinalStep' => ['nullable', 'boolean'],
+            'transitions' => ['sometimes', 'array'],
+            'transitions.*.toStepId' => ['required', 'integer', 'exists:' . $stepTable . ',id'],
+            'transitions.*.conditionField' => ['nullable', 'string', 'max:100'],
+            'transitions.*.conditionOperator' => ['nullable', 'string', 'max:20'],
+            'transitions.*.conditionValue' => ['nullable', 'string', 'max:100'],
+            'transitions.*.priority' => ['nullable', 'integer', 'min:1'],
         ]);
 
         if ($validator->fails()) {
@@ -80,17 +109,29 @@ class WorkflowStepController extends Controller
             }
         }
 
-        $step = WorkflowStep::create([
-            'workflowId' => $request->input('workflowId'),
-            'stepName' => $request->input('stepName'),
-            'stepOrder' => $request->input('stepOrder'),
-            'roleId' => $request->input('roleId'),
-            'isInitialStep' => $isInitialStep,
-            'isFinalStep' => $isFinalStep,
-        ]);
+        try {
+            $step = DB::transaction(function () use ($request, $isInitialStep, $isFinalStep) {
+                $createdStep = WorkflowStep::create([
+                    'workflowId' => $request->input('workflowId'),
+                    'stepName' => $request->input('stepName'),
+                    'stepOrder' => $request->input('stepOrder'),
+                    'roleId' => $request->input('roleId'),
+                    'isInitialStep' => $isInitialStep,
+                    'isFinalStep' => $isFinalStep,
+                ]);
+
+                if ($request->filled('transitions')) {
+                    $this->syncTransitionsForStep($createdStep, (array) $request->input('transitions'), false);
+                }
+
+                return $createdStep;
+            });
+        } catch (ValidationException $e) {
+            return response()->json(ApiResponse::error('Invalid data', $e->errors(), 422), 422);
+        }
 
         return response()->json(
-            ApiResponse::success('Workflow step created successfully', $step->load(['workflow', 'role']), 201),
+            ApiResponse::success('Workflow step created successfully', $step->load(['workflow', 'role', 'outgoingTransitions.toStep']), 201),
             201
         );
     }
@@ -105,6 +146,7 @@ class WorkflowStepController extends Controller
 
         $workflowTable = (new Workflow())->getTable();
         $roleTable = (new Role())->getTable();
+        $stepTable = (new WorkflowStep())->getTable();
 
         $validator = Validator::make($request->all(), [
             'workflowId' => ['sometimes', 'required', 'integer', 'exists:' . $workflowTable . ',id'],
@@ -113,6 +155,12 @@ class WorkflowStepController extends Controller
             'roleId' => ['sometimes', 'required', 'integer', 'exists:' . $roleTable . ',id'],
             'isInitialStep' => ['sometimes', 'nullable', 'boolean'],
             'isFinalStep' => ['sometimes', 'nullable', 'boolean'],
+            'transitions' => ['sometimes', 'array'],
+            'transitions.*.toStepId' => ['required', 'integer', 'exists:' . $stepTable . ',id'],
+            'transitions.*.conditionField' => ['nullable', 'string', 'max:100'],
+            'transitions.*.conditionOperator' => ['nullable', 'string', 'max:20'],
+            'transitions.*.conditionValue' => ['nullable', 'string', 'max:100'],
+            'transitions.*.priority' => ['nullable', 'integer', 'min:1'],
         ]);
 
         if ($validator->fails()) {
@@ -155,16 +203,26 @@ class WorkflowStepController extends Controller
             }
         }
 
-        $step->update($request->only([
-            'workflowId',
-            'stepName',
-            'stepOrder',
-            'roleId',
-            'isInitialStep',
-            'isFinalStep',
-        ]));
+        try {
+            DB::transaction(function () use ($request, $step) {
+                $step->update($request->only([
+                    'workflowId',
+                    'stepName',
+                    'stepOrder',
+                    'roleId',
+                    'isInitialStep',
+                    'isFinalStep',
+                ]));
 
-        return response()->json(ApiResponse::success('Workflow step updated successfully', $step->load(['workflow', 'role'])));
+                if ($request->has('transitions')) {
+                    $this->syncTransitionsForStep($step, (array) $request->input('transitions'), true);
+                }
+            });
+        } catch (ValidationException $e) {
+            return response()->json(ApiResponse::error('Invalid data', $e->errors(), 422), 422);
+        }
+
+        return response()->json(ApiResponse::success('Workflow step updated successfully', $step->load(['workflow', 'role', 'outgoingTransitions.toStep'])));
     }
 
     public function delete(int $id)
@@ -178,5 +236,49 @@ class WorkflowStepController extends Controller
         $step->delete();
 
         return response()->json(ApiResponse::success('Workflow step deleted successfully'));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $transitions
+     */
+    private function syncTransitionsForStep(WorkflowStep $step, array $transitions, bool $replaceExisting): void
+    {
+        if ($replaceExisting) {
+            WorkflowStepTransition::where('fromStepId', $step->id)->delete();
+        }
+
+        foreach ($transitions as $transition) {
+            $toStepId = (int) ($transition['toStepId'] ?? 0);
+
+            if ($toStepId <= 0) {
+                continue;
+            }
+
+            $targetStep = WorkflowStep::where('id', $toStepId)
+                ->where('workflowId', $step->workflowId)
+                ->first();
+
+            if (!$targetStep) {
+                throw ValidationException::withMessages([
+                    'transitions' => ['El toStepId debe pertenecer al mismo workflow'],
+                ]);
+            }
+
+            if ($targetStep->id === $step->id) {
+                throw ValidationException::withMessages([
+                    'transitions' => ['No se permite una transición al mismo paso'],
+                ]);
+            }
+
+            WorkflowStepTransition::create([
+                'workflowId' => $step->workflowId,
+                'fromStepId' => $step->id,
+                'toStepId' => $targetStep->id,
+                'conditionField' => $transition['conditionField'] ?? null,
+                'conditionOperator' => $transition['conditionOperator'] ?? null,
+                'conditionValue' => $transition['conditionValue'] ?? null,
+                'priority' => (int) ($transition['priority'] ?? 1),
+            ]);
+        }
     }
 }
