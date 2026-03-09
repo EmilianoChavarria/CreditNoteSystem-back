@@ -9,33 +9,26 @@ class Customer extends Model
 {
     use HasFactory;
 
-    const CREATED_AT = 'createdAt';
-    const UPDATED_AT = 'updatedAt';
-
     protected $table = 'customers';
+    protected $primaryKey = 'idCustomer';
+    public $timestamps = false;
+
     protected $fillable = [
-        'customerNumber',
-        'customerName',
+        'idClient',
         'area',
         'salesEngineerId',
         'salesManagerId',
         'financeManagerId',
         'marketingManagerId',
         'customerServiceManagerId',
-        'isActive',
     ];
 
     protected $casts = [
-        'isActive' => 'boolean',
-        'createdAt' => 'datetime',
-        'updatedAt' => 'datetime',
-        'deletedAt' => 'datetime',
+        'idCustomer' => 'integer',
+        'idClient' => 'integer',
     ];
 
-    public function requestCustomers()
-    {
-        return $this->hasMany(RequestCustomer::class, 'idCustomer', 'customerNumber');
-    }
+
 
     public function salesEngineer()
     {
