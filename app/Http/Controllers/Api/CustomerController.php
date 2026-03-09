@@ -150,6 +150,30 @@ class CustomerController extends Controller
         );
     }
 
+    public function storeInLocalTable(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'idClient' => ['required', 'string', 'max:255'],
+            'salesEngineerId' => ['required', 'integer'],
+            'salesManagerId' => ['required', 'integer'],
+            'financeManagerId' => ['required', 'integer'],
+            'marketingManagerId' => ['required', 'integer'],
+            'customerServiceManagerId' => ['required', 'integer'],
+            'area' => ['required', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+        }
+
+        $data = $validator->validated();
+
+        $customer = Customer::create($data);
+
+
+        return response()->json(ApiResponse::success('Usuario creado correctamente', $customer, 201), 201);
+    }
+
     /**
      * Mostrar un customer específico
      */
