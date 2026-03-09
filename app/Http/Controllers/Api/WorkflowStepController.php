@@ -36,6 +36,25 @@ class WorkflowStepController extends Controller
         return response()->json(ApiResponse::success('Workflow step', $step));
     }
 
+    public function getByWorkflowId(int $workflowId)
+    {
+        $workflow = Workflow::with(['requestType', 'classification'])->find($workflowId);
+
+        if (!$workflow) {
+            return response()->json(ApiResponse::error('Workflow not found', null, 404), 404);
+        }
+
+        $steps = WorkflowStep::with(['role', 'outgoingTransitions.toStep'])
+            ->where('workflowId', $workflowId)
+            ->orderBy('stepOrder')
+            ->get();
+
+        return response()->json(ApiResponse::success('Workflow with steps', [
+            'workflow' => $workflow,
+            'steps' => $steps,
+        ]));
+    }
+
     public function store(Request $request)
     {
         $workflowTable = (new Workflow())->getTable();
