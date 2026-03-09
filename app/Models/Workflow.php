@@ -37,6 +37,16 @@ class Workflow extends Model
 
     public function classification()
     {
-        return $this->belongsTo(RequestClassification::class, 'classificationId');
+        return $this->hasOne(RequestClassification::class, 'type', 'classificationType');
+    }
+
+    public function steps()
+    {
+        return $this->hasMany(WorkflowStep::class, 'workflowId');
+    }
+
+    public function requestCurrentSteps()
+    {
+        return $this->hasMany(WorkflowRequestCurrentStep::class, 'workflowId');
     }
 }
