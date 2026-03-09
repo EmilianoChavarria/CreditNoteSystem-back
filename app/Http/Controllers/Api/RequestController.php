@@ -5,13 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Request as RequestModel;
+use App\Models\RequestClassification;
 use App\Models\RequestCustomer;
 use App\Models\RequestReason;
+use App\Models\User;
+use App\Models\Workflow;
+use App\Models\WorkflowRequestCurrentStep;
+use App\Models\WorkflowRequestHistory;
+use App\Models\WorkflowRequestStep;
+use App\Models\WorkflowStep;
 use App\Services\RequestNumberService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class RequestController extends Controller
 {
@@ -114,11 +122,94 @@ class RequestController extends Controller
                 ]);
             }
 
+            $this->assignRequestToWorkflow($createdRequest, (int) $user->id);
+
             return $createdRequest;
         });
 
 
         return response()->json(ApiResponse::success('Request creado', $created->refresh(), 201), 201);
+    }
+
+    private function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId): void
+    {
+        $classification = RequestClassification::find($requestModel->classificationId);
+
+        if (!$classification) {
+            throw ValidationException::withMessages([
+                'classificationId' => ['No existe la clasificacion seleccionada.'],
+            ]);
+        }
+
+        $isTypeLinkedToClassification = $classification->requestTypes()
+            ->where('id', $requestModel->requestTypeId)
+            ->exists();
+
+        if (!$isTypeLinkedToClassification) {
+            throw ValidationException::withMessages([
+                'classificationId' => ['La clasificacion no pertenece al tipo de solicitud indicado.'],
+            ]);
+        }
+
+        $workflow = Workflow::query()
+            ->where('requestTypeId', $requestModel->requestTypeId)
+            ->where('classificationType', $classification->type)
+            ->where('isActive', true)
+            ->orderBy('id')
+            ->first();
+
+        if (!$workflow) {
+            throw ValidationException::withMessages([
+                'workflow' => ['No existe un workflow activo para el tipo de solicitud y la clasificacion.type.'],
+            ]);
+        }
+
+        $initialStep = WorkflowStep::query()
+            ->where('workflowId', $workflow->id)
+            ->where('isInitialStep', true)
+            ->orderBy('stepOrder')
+            ->first();
+
+        if (!$initialStep) {
+            throw ValidationException::withMessages([
+                'workflowStep' => ['El workflow seleccionado no tiene paso inicial configurado.'],
+            ]);
+        }
+
+        $assignedUser = User::query()
+            ->where('roleId', $initialStep->roleId)
+            ->where('isActive', true)
+            ->orderBy('id')
+            ->first();
+
+        $assignedTo = (int) ($assignedUser?->id ?? $actionUserId);
+
+        $requestStep = WorkflowRequestStep::create([
+            'requestId' => $requestModel->id,
+            'workflowStepId' => $initialStep->id,
+            'assignedTo' => $assignedTo,
+            'status' => 'pending',
+            'startedAt' => now(),
+        ]);
+
+        WorkflowRequestCurrentStep::updateOrCreate(
+            ['requestId' => $requestModel->id],
+            [
+                'workflowId' => $workflow->id,
+                'workflowStepId' => $initialStep->id,
+                'assignedTo' => $assignedTo,
+                'status' => 'pending',
+            ]
+        );
+
+        WorkflowRequestHistory::create([
+            'requestWorkflowStepId' => $requestStep->id,
+            'requestId' => $requestModel->id,
+            'workflowStepId' => $initialStep->id,
+            'actionUserId' => $actionUserId,
+            'actionType' => 'created',
+            'comments' => 'Solicitud creada y asignada al flujo inicial.',
+        ]);
     }
 
     private function resolveCustomer(mixed $customerInput): ?Customer
