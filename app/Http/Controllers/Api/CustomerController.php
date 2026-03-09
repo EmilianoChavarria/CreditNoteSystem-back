@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -14,15 +16,104 @@ class CustomerController extends Controller
     /**
      * Listar todos los customers
      */
-    public function index()
+    public function index(Request $request)
     {
-        $customers = Customer::with([
-            'salesEngineer',
-            'salesManager',
-            'financeManager',
-            'marketingManager',
-            'customerServiceManager'
-        ])->orderBy('id')->get();
+        $perPage = $request->query('perPage');
+
+        $customerTable = (new Customer())->getTable();
+        $clientTable = 'clientes_tme700618rc7';
+
+        $clientColumns = Schema::hasTable($clientTable)
+            ? Schema::getColumnListing($clientTable)
+            : [];
+
+        $canReadClients = in_array('idCliente', $clientColumns, true);
+
+        if (!$canReadClients) {
+            return response()->json(ApiResponse::success('Customers obtenidos exitosamente', []));
+        }
+
+        $selectColumns = [
+            'c.idCustomer',
+            'c.idClient',
+            'c.salesEngineerId',
+            'c.salesManagerId',
+            'c.financeManagerId',
+            'c.marketingManagerId',
+            'c.customerServiceManagerId',
+            'c.area',
+            'se.id as salesEngineer_id',
+            'se.fullName as salesEngineer_name',
+            'sm.id as salesManager_id',
+            'sm.fullName as salesManager_name',
+            'fm.id as financeManager_id',
+            'fm.fullName as financeManager_name',
+            'mm.id as marketingManager_id',
+            'mm.fullName as marketingManager_name',
+            'csm.id as customerServiceManager_id',
+            'csm.fullName as customerServiceManager_name',
+        ];
+
+        foreach ($clientColumns as $column) {
+            $selectColumns[] = 'cl.' . $column . ' as client_' . $column;
+        }
+
+        $query = DB::table($clientTable . ' as cl')
+            ->leftJoin($customerTable . ' as c', 'c.idClient', '=', 'cl.idCliente')
+            ->leftJoin('users as se', 'c.salesEngineerId', '=', 'se.id')
+            ->leftJoin('users as sm', 'c.salesManagerId', '=', 'sm.id')
+            ->leftJoin('users as fm', 'c.financeManagerId', '=', 'fm.id')
+            ->leftJoin('users as mm', 'c.marketingManagerId', '=', 'mm.id')
+            ->leftJoin('users as csm', 'c.customerServiceManagerId', '=', 'csm.id')
+            ->orderBy('cl.idCliente')
+            ->select($selectColumns);
+
+        $customers = $query->cursorPaginate($perPage);
+
+        $customers->through(function ($row) use ($clientColumns) {
+            $clientData = [];
+
+            foreach ($clientColumns as $column) {
+                $clientData[$column] = $row->{'client_' . $column} ?? null;
+            }
+
+            $customerData = null;
+
+            if ($row->idCustomer !== null) {
+                $customerData = [
+                    'idCustomer' => $row->idCustomer,
+                    'idClient' => $row->idClient,
+                    'area' => $row->area,
+                    'salesEngineerId' => $row->salesEngineerId,
+                    'salesManagerId' => $row->salesManagerId,
+                    'financeManagerId' => $row->financeManagerId,
+                    'marketingManagerId' => $row->marketingManagerId,
+                    'customerServiceManagerId' => $row->customerServiceManagerId,
+                    'salesEngineer' => [
+                        'id' => $row->salesEngineer_id,
+                        'fullName' => $row->salesEngineer_name,
+                    ],
+                    'salesManager' => [
+                        'id' => $row->salesManager_id,
+                        'fullName' => $row->salesManager_name,
+                    ],
+                    'financeManager' => [
+                        'id' => $row->financeManager_id,
+                        'fullName' => $row->financeManager_name,
+                    ],
+                    'marketingManager' => [
+                        'id' => $row->marketingManager_id,
+                        'fullName' => $row->marketingManager_name,
+                    ],
+                    'customerServiceManager' => [
+                        'id' => $row->customerServiceManager_id,
+                        'fullName' => $row->customerServiceManager_name,
+                    ],
+                ];
+            }
+
+            return array_merge($clientData, ['customer' => $customerData]);
+        });
 
         return response()->json(ApiResponse::success('Customers obtenidos exitosamente', $customers));
     }
@@ -33,9 +124,8 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'customerNumber' => 'required|integer|unique:customers,customerNumber',
-            'customerName' => 'required|string|max:255',
-            'area' => 'nullable|in:AFTERMARKET,ORIGINAL EQUIPMENT',
+            'idClient' => 'required|integer|unique:customers,idClient',
+            'area' => 'required|in:sales,aftermarket',
             'salesEngineerId' => 'required|integer|exists:users,id',
             'salesManagerId' => 'required|integer|exists:users,id',
             'financeManagerId' => 'required|integer|exists:users,id',
@@ -51,9 +141,6 @@ class CustomerController extends Controller
         }
 
         $data = $validator->validated();
-        $data['isActive'] = $data['isActive'] ?? true;
-        $data['createdAt'] = now();
-        $data['updatedAt'] = now();
 
         $customer = Customer::create($data);
 
@@ -101,16 +188,105 @@ class CustomerController extends Controller
 
         $searchTerm = $request->input('search');
 
-        $customers = Customer::with([
-            'salesEngineer',
-            'salesManager',
-            'financeManager',
-            'marketingManager',
-            'customerServiceManager'
-        ])
-            ->where('customerName', 'LIKE', "%{$searchTerm}%")
-            ->orderBy('customerName')
-            ->get();
+        $customerTable = (new Customer())->getTable();
+        $clientTable = 'clientes_tme700618rc7';
+        $clientColumns = Schema::hasTable($clientTable)
+            ? Schema::getColumnListing($clientTable)
+            : [];
+
+        $canReadClients = in_array('idCliente', $clientColumns, true)
+            && in_array('razonSocial', $clientColumns, true);
+
+        if (!$canReadClients) {
+            return response()->json(ApiResponse::success(
+                'Customers encontrados',
+                [
+                    'search' => $searchTerm,
+                    'count' => 0,
+                    'customers' => [],
+                ],
+                201
+            ), 201);
+        }
+
+        $selectColumns = [
+            'c.idCustomer',
+            'c.idClient',
+            'c.salesEngineerId',
+            'c.salesManagerId',
+            'c.financeManagerId',
+            'c.marketingManagerId',
+            'c.customerServiceManagerId',
+            'c.area',
+            'se.id as salesEngineer_id',
+            'se.fullName as salesEngineer_name',
+            'sm.id as salesManager_id',
+            'sm.fullName as salesManager_name',
+            'fm.id as financeManager_id',
+            'fm.fullName as financeManager_name',
+            'mm.id as marketingManager_id',
+            'mm.fullName as marketingManager_name',
+            'csm.id as customerServiceManager_id',
+            'csm.fullName as customerServiceManager_name',
+        ];
+
+        foreach ($clientColumns as $column) {
+            $selectColumns[] = 'cl.' . $column . ' as client_' . $column;
+        }
+
+        $customers = DB::table($clientTable . ' as cl')
+            ->leftJoin($customerTable . ' as c', 'c.idClient', '=', 'cl.idCliente')
+            ->leftJoin('users as se', 'c.salesEngineerId', '=', 'se.id')
+            ->leftJoin('users as sm', 'c.salesManagerId', '=', 'sm.id')
+            ->leftJoin('users as fm', 'c.financeManagerId', '=', 'fm.id')
+            ->leftJoin('users as mm', 'c.marketingManagerId', '=', 'mm.id')
+            ->leftJoin('users as csm', 'c.customerServiceManagerId', '=', 'csm.id')
+            ->whereNotNull('c.idCustomer')
+            ->where('cl.razonSocial', 'LIKE', '%' . $searchTerm . '%')
+            ->orderBy('cl.idCliente')
+            ->select($selectColumns)
+            ->get()
+            ->map(function ($row) use ($clientColumns) {
+                $clientData = [];
+
+                foreach ($clientColumns as $column) {
+                    $clientData[$column] = $row->{'client_' . $column} ?? null;
+                }
+
+                $customerData = [
+                    'idCustomer' => $row->idCustomer,
+                    'idClient' => $row->idClient,
+                    'area' => $row->area,
+                    'salesEngineerId' => $row->salesEngineerId,
+                    'salesManagerId' => $row->salesManagerId,
+                    'financeManagerId' => $row->financeManagerId,
+                    'marketingManagerId' => $row->marketingManagerId,
+                    'customerServiceManagerId' => $row->customerServiceManagerId,
+                    'salesEngineer' => [
+                        'id' => $row->salesEngineer_id,
+                        'fullName' => $row->salesEngineer_name,
+                    ],
+                    'salesManager' => [
+                        'id' => $row->salesManager_id,
+                        'fullName' => $row->salesManager_name,
+                    ],
+                    'financeManager' => [
+                        'id' => $row->financeManager_id,
+                        'fullName' => $row->financeManager_name,
+                    ],
+                    'marketingManager' => [
+                        'id' => $row->marketingManager_id,
+                        'fullName' => $row->marketingManager_name,
+                    ],
+                    'customerServiceManager' => [
+                        'id' => $row->customerServiceManager_id,
+                        'fullName' => $row->customerServiceManager_name,
+                    ],
+                ];
+
+                return array_merge($clientData, ['customer' => $customerData]);
+            })
+            ->values();
 
         return response()->json(ApiResponse::success(
             'Customers encontrados',
@@ -138,25 +314,22 @@ class CustomerController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'customerNumber' => [
+            'idClient' => [
                 'sometimes',
                 'required',
                 'integer',
-                Rule::unique('customers', 'customerNumber')->ignore($id)
+                Rule::unique('customers', 'idClient')->ignore($id, 'idCustomer')
             ],
-            'customerName' => 'sometimes|required|string|max:255',
-            'area' => 'nullable|in:AFTERMARKET,ORIGINAL EQUIPMENT',
+            'area' => 'sometimes|required|in:sales,aftermarket',
             'salesEngineerId' => 'sometimes|required|integer|exists:users,id',
             'salesManagerId' => 'sometimes|required|integer|exists:users,id',
             'financeManagerId' => 'sometimes|required|integer|exists:users,id',
             'marketingManagerId' => 'sometimes|required|integer|exists:users,id',
             'customerServiceManagerId' => 'sometimes|required|integer|exists:users,id',
-            'isActive' => 'nullable|boolean',
         ], [
-            'customerNumber.required' => 'El número de cliente es requerido',
-            'customerNumber.unique' => 'El número de cliente ya existe',
-            'customerName.required' => 'El nombre del cliente es requerido',
-            'area.in' => 'El área debe ser AFTERMARKET u ORIGINAL EQUIPMENT',
+            'idClient.required' => 'El idClient es requerido',
+            'idClient.unique' => 'El idClient ya existe',
+            'area.in' => 'El area debe ser sales o aftermarket',
             'salesEngineerId.required' => 'El ingeniero de ventas es requerido',
             'salesEngineerId.exists' => 'El ingeniero de ventas no existe',
             'salesManagerId.required' => 'El gerente de ventas es requerido',
@@ -177,7 +350,6 @@ class CustomerController extends Controller
         }
 
         $data = $validator->validated();
-        $data['updatedAt'] = now();
 
         $customer->update($data);
 
@@ -193,14 +365,14 @@ class CustomerController extends Controller
     {
         $customer = Customer::find($id);
 
-        if (!$customer || $customer->deletedAt) {
+        if (!$customer) {
             return response()->json(
                 ApiResponse::error('Customer no encontrado', null, 404),
                 404
             );
         }
 
-        $customer->update(['deletedAt' => now()]);
+        $customer->delete();
 
         return response()->json(
             ApiResponse::success('Customer eliminado exitosamente', null)
