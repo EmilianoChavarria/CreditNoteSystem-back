@@ -40,7 +40,7 @@ class WorkflowController extends Controller
             'description' => ['required', 'string'],
             'isActive' => ['nullable', 'boolean'],
             'requestTypeId' => ['required', 'integer', 'exists:' . $requestTypeTable . ',id'],
-            'classificationType' => ['nullable', 'string'],
+            'classificationType' => ['nullable', 'string', 'exists:' . $classificationTable . ',type'],
         ]);
 
         if ($validator->fails()) {
@@ -77,7 +77,7 @@ class WorkflowController extends Controller
             'description' => ['sometimes', 'required', 'string'],
             'isActive' => ['sometimes', 'nullable', 'boolean'],
             'requestTypeId' => ['sometimes', 'required', 'integer', 'exists:' . $requestTypeTable . ',id'],
-            'classificationType' => ['sometimes', 'nullable', 'integer', 'exists:' . $classificationTable . ',id'],
+            'classificationType' => ['sometimes', 'nullable', 'string', 'exists:' . $classificationTable . ',type'],
         ]);
 
         if ($validator->fails()) {
