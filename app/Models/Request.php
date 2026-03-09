@@ -82,4 +82,19 @@ class Request extends Model
     {
         return $this->hasMany(RequestCustomer::class, 'idRequest');
     }
+
+    public function workflowCurrentStep()
+    {
+        return $this->hasOne(WorkflowRequestCurrentStep::class, 'requestId');
+    }
+
+    public function workflowSteps()
+    {
+        return $this->hasMany(WorkflowRequestStep::class, 'requestId');
+    }
+
+    public function workflowHistory()
+    {
+        return $this->hasMany(WorkflowRequestHistory::class, 'requestId');
+    }
 }
