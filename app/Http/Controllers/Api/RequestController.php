@@ -32,7 +32,6 @@ class RequestController extends Controller
         $requests = RequestModel::with([
             'requestType',
             'user',
-            'requestCustomers',
             'reason',
             'classification'
         ])->orderBy('id')->get();
@@ -46,7 +45,6 @@ class RequestController extends Controller
         $requests = RequestModel::with([
             'requestType',
             'user',
-            'requestCustomers',
             'reason',
             'classification'
         ])->orderBy('id')
@@ -89,6 +87,7 @@ class RequestController extends Controller
                 'requestNumber' => $request->input('requestNumber'),
                 'requestTypeId' => $request->input('requestTypeId'),
                 'userId' => $user->id,
+                'customerId' => $request->input('customerId'),
                 'requestDate' => $request->input('requestDate'),
                 'currency' => $request->input('currency'),
                 'area' => $request->input('area'),
@@ -105,22 +104,7 @@ class RequestController extends Controller
                 'comments' => $request->input('comments'),
             ]);
 
-            $customerInput = $request->input('idCustomer', $request->input('customerId'));
-            $resolvedCustomer = $this->resolveCustomer($customerInput);
-
-            if ($customerInput !== null || $resolvedCustomer !== null) {
-                RequestCustomer::create([
-                    'idRequest' => $createdRequest->id,
-                    'idCustomer' => (string) ($request->input('idCustomer')
-                        ?? ($resolvedCustomer?->customerNumber)
-                        ?? $customerInput),
-                    'salesEngineerId' => (int) ($request->input('salesEngineerId') ?? $resolvedCustomer?->salesEngineerId),
-                    'salesManagerId' => (int) ($request->input('salesManagerId') ?? $resolvedCustomer?->salesManagerId),
-                    'financeManagerId' => (int) ($request->input('financeManagerId') ?? $resolvedCustomer?->financeManagerId),
-                    'marketingManagerId' => (int) ($request->input('marketingManagerId') ?? $resolvedCustomer?->marketingManagerId),
-                    'customerServiceManagerId' => (int) ($request->input('customerServiceManagerId') ?? $resolvedCustomer?->customerServiceManagerId),
-                ]);
-            }
+            
 
             $this->assignRequestToWorkflow($createdRequest, (int) $user->id);
 
