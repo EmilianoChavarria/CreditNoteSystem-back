@@ -10,4 +10,6 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/next-number/{requestTypeId}', [RequestController::class, 'getNextRequestNumber']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);
     Route::post('requests/newRequest', [RequestController::class, 'createRequest']);
+    Route::post('requests/{requestId}/approve', [RequestController::class, 'approve']);
+    Route::post('requests/{requestId}/reject', [RequestController::class, 'reject']);
 });
