@@ -17,7 +17,7 @@ class WorkflowRequestStep extends Model
     protected $fillable = [
         'requestId',
         'workflowStepId',
-        'assignedTo',
+        'assignedRoleId',
         'status',
         'startedAt',
         'completedAt',
@@ -26,7 +26,7 @@ class WorkflowRequestStep extends Model
     protected $casts = [
         'requestId' => 'integer',
         'workflowStepId' => 'integer',
-        'assignedTo' => 'integer',
+        'assignedRoleId' => 'integer',
         'startedAt' => 'datetime',
         'completedAt' => 'datetime',
         'createdAt' => 'datetime',
@@ -43,9 +43,9 @@ class WorkflowRequestStep extends Model
         return $this->belongsTo(WorkflowStep::class, 'workflowStepId');
     }
 
-    public function assignedUser()
+    public function assignedRole()
     {
-        return $this->belongsTo(User::class, 'assignedTo');
+        return $this->belongsTo(Role::class, 'assignedRoleId');
     }
 
     public function history()

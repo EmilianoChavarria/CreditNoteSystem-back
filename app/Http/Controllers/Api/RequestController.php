@@ -8,7 +8,6 @@ use App\Models\Request as RequestModel;
 use App\Models\RequestClassification;
 use App\Models\RequestCustomer;
 use App\Models\RequestReason;
-use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowRequestCurrentStep;
 use App\Models\WorkflowRequestHistory;
@@ -160,18 +159,10 @@ class RequestController extends Controller
             ]);
         }
 
-        $assignedUser = User::query()
-            ->where('roleId', $initialStep->roleId)
-            ->where('isActive', true)
-            ->orderBy('id')
-            ->first();
-
-        $assignedTo = (int) ($assignedUser?->id ?? $actionUserId);
-
         $requestStep = WorkflowRequestStep::create([
             'requestId' => $requestModel->id,
             'workflowStepId' => $initialStep->id,
-            'assignedTo' => $assignedTo,
+            'assignedRoleId' => $initialStep->roleId,
             'status' => 'pending',
             'startedAt' => now(),
         ]);
@@ -181,7 +172,7 @@ class RequestController extends Controller
             [
                 'workflowId' => $workflow->id,
                 'workflowStepId' => $initialStep->id,
-                'assignedTo' => $assignedTo,
+                'assignedRoleId' => $initialStep->roleId,
                 'status' => 'pending',
             ]
         );
@@ -194,33 +185,5 @@ class RequestController extends Controller
             'actionType' => 'created',
             'comments' => 'Solicitud creada y asignada al flujo inicial.',
         ]);
-    }
-
-    private function resolveCustomer(mixed $customerInput): ?Customer
-    {
-        if ($customerInput === null || $customerInput === '') {
-            return null;
-        }
-
-        if (is_numeric($customerInput)) {
-            $number = (int) $customerInput;
-
-            $customerById = Customer::find($number);
-            if ($customerById) {
-                return $customerById;
-            }
-
-            $customerByNumber = Customer::where('customerNumber', $number)->first();
-            if ($customerByNumber) {
-                return $customerByNumber;
-            }
-        }
-
-        $customerByNumber = Customer::where('customerNumber', (string) $customerInput)->first();
-        if ($customerByNumber) {
-            return $customerByNumber;
-        }
-
-        return Customer::where('customerName', (string) $customerInput)->first();
     }
 }
