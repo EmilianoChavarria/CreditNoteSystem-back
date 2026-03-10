@@ -14,8 +14,10 @@ use App\Models\WorkflowRequestHistory;
 use App\Models\WorkflowRequestStep;
 use App\Models\WorkflowStep;
 use App\Models\WorkflowStepTransition;
+use App\Services\RequestHistoryService;
 use App\Services\RequestNumberService;
 use App\Support\ApiResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -23,8 +25,45 @@ use Illuminate\Validation\ValidationException;
 
 class RequestController extends Controller
 {
-    public function __construct(private readonly RequestNumberService $requestNumberService)
+    public function __construct(
+        private readonly RequestNumberService $requestNumberService,
+        private readonly RequestHistoryService $requestHistoryService
+    )
     {
+    }
+
+    public function getRequestHistoryById(int $requestId)
+    {
+        try {
+            $history = $this->requestHistoryService->getHistoryByRequestId($requestId);
+
+            return response()->json(ApiResponse::success('Request history', $history));
+        } catch (ModelNotFoundException $e) {
+            return response()->json(ApiResponse::error('Request no encontrada', null, 404), 404);
+        }
+    }
+
+    public function getPendingByRole(Request $request, int $id)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        $requests = RequestModel::with([
+            'requestType',
+            'user',
+            'reason',
+            'classification',
+            'workflowCurrentStep.assignedRole',
+        ])
+            ->whereHas('workflowCurrentStep', function ($query) use ($authUser) {
+                $query->where('assignedRoleId', $authUser->roleId)
+                    ->where('status', 'pending');
+            })
+            // ->where('status', 'created')
+            ->where('requestTypeId', $id)
+            ->orderBy('id')
+            ->get();
+        // var_dump($requests);
+        return response()->json(ApiResponse::success('Pending requests for your role', $requests));
     }
 
     public function getAll()
@@ -46,7 +85,8 @@ class RequestController extends Controller
             'requestType',
             'user',
             'reason',
-            'classification'
+            'classification',
+            'workflowCurrentStep.assignedRole',
         ])->orderBy('id')
             ->where('requestTypeId', $id)
             ->cursorPaginate($perPage);
@@ -104,7 +144,7 @@ class RequestController extends Controller
                 'comments' => $request->input('comments'),
             ]);
 
-            
+
 
             $this->assignRequestToWorkflow($createdRequest, (int) $user->id);
 
