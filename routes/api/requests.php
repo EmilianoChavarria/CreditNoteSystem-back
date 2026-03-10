@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['jwt'])->group(function () {
     Route::get('requests', [RequestController::class, 'getAll']);
+    Route::get('requests/pending/{id}', [RequestController::class, 'getPendingByRole']);
+    Route::get('requests/{requestId}/history', [RequestController::class, 'getRequestHistoryById']);
     Route::get('requests/reasons', [RequestController::class, 'getAllReasons']);
     Route::get('requests/next-number/{requestTypeId}', [RequestController::class, 'getNextRequestNumber']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);
