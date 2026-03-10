@@ -55,6 +55,22 @@ class WorkflowStepController extends Controller
         ]));
     }
 
+    public function getAllWorkflowsWithSteps()
+    {
+        $workflows = Workflow::with([
+            'requestType',
+            'classification',
+            'steps' => function ($query) {
+                $query->with(['role', 'outgoingTransitions.toStep'])
+                    ->orderBy('stepOrder');
+            },
+        ])
+            ->orderBy('id')
+            ->get();
+
+        return response()->json(ApiResponse::success('Workflows with steps', $workflows));
+    }
+
     public function store(Request $request)
     {
         $workflowTable = (new Workflow())->getTable();
@@ -111,12 +127,26 @@ class WorkflowStepController extends Controller
 
         try {
             $step = DB::transaction(function () use ($request, $isInitialStep, $isFinalStep) {
+                $workflowId = (int) $request->input('workflowId');
+                $requestedStepOrder = (int) $request->input('stepOrder');
+
+                $maxStepOrder = (int) WorkflowStep::where('workflowId', $workflowId)
+                    ->lockForUpdate()
+                    ->max('stepOrder');
+
+                $stepOrderToInsert = min($requestedStepOrder, $maxStepOrder + 1);
+                $effectiveIsInitialStep = $maxStepOrder === 0 ? true : $isInitialStep;
+
+                WorkflowStep::where('workflowId', $workflowId)
+                    ->where('stepOrder', '>=', $stepOrderToInsert)
+                    ->increment('stepOrder');
+
                 $createdStep = WorkflowStep::create([
-                    'workflowId' => $request->input('workflowId'),
+                    'workflowId' => $workflowId,
                     'stepName' => $request->input('stepName'),
-                    'stepOrder' => $request->input('stepOrder'),
+                    'stepOrder' => $stepOrderToInsert,
                     'roleId' => $request->input('roleId'),
-                    'isInitialStep' => $isInitialStep,
+                    'isInitialStep' => $effectiveIsInitialStep,
                     'isFinalStep' => $isFinalStep,
                 ]);
 
