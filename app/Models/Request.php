@@ -17,6 +17,7 @@ class Request extends Model
         'requestNumber',
         'requestTypeId',
         'userId',
+        'customerId',
         'status',
         'orderNumber',
         'requestDate',
@@ -76,11 +77,6 @@ class Request extends Model
     public function classification()
     {
         return $this->belongsTo(RequestClassification::class, 'classificationId');
-    }
-
-    public function requestCustomers()
-    {
-        return $this->hasMany(RequestCustomer::class, 'idRequest');
     }
 
     public function workflowCurrentStep()
