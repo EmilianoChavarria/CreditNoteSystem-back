@@ -33,4 +33,14 @@ class Role extends Model
     {
         return $this->hasMany(RolePermission::class, 'roleId');
     }
+
+    public function modulePermissions()
+    {
+        return $this->hasMany(Permission::class, 'roleid');
+    }
+
+    public function requestTypePermissions()
+    {
+        return $this->hasMany(RequestTypePermission::class, 'role_id');
+    }
 }
