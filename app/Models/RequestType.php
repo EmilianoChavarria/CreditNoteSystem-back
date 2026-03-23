@@ -30,4 +30,9 @@ class RequestType extends Model
             'classificationId'
         );
     }
+
+    public function permissions()
+    {
+        return $this->hasMany(RequestTypePermission::class, 'request_type_id');
+    }
 }
