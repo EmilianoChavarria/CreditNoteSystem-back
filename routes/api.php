@@ -10,6 +10,8 @@ require __DIR__.'/api/requestType.php';
 require __DIR__.'/api/requests.php';
 require __DIR__.'/api/dashboard.php';
 require __DIR__.'/api/rolesPermission.php';
+require __DIR__.'/api/requestTypePermissions.php';
+require __DIR__.'/api/actions.php';
 require __DIR__.'/api/modules.php';
 require __DIR__.'/api/users.php';
 require __DIR__.'/api/security.php';
