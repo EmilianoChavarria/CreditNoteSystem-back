@@ -10,6 +10,13 @@ use Illuminate\Support\Facades\Validator;
 
 class ActionController extends Controller
 {
+    public function getAll()
+    {
+        $actions = Action::all();
+
+        return response()->json(ApiResponse::success('Actions', $actions));
+    }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
