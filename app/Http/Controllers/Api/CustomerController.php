@@ -68,7 +68,7 @@ class CustomerController extends Controller
             ->orderBy('cl.idCliente')
             ->select($selectColumns);
 
-        $customers = $query->paginate();
+        $customers = $query->paginate($perPage ?? 15);
 
         $customers->through(function ($row) use ($clientColumns) {
             $clientData = [];
