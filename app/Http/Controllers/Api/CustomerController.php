@@ -221,8 +221,10 @@ class CustomerController extends Controller
             ? Schema::getColumnListing($clientExtTable)
             : [];
 
-        $canReadClients = in_array('idCliente', $clientColumns, true)
-            && in_array('razonSocial', $clientColumns, true);
+        $hasIdClienteColumn = in_array('idCliente', $clientColumns, true);
+        $hasRazonSocialColumn = in_array('razonSocial', $clientColumns, true);
+
+        $canReadClients = $hasIdClienteColumn;
 
         if (!$canReadClients) {
             return response()->json(ApiResponse::success(
@@ -252,7 +254,15 @@ class CustomerController extends Controller
 
         $customers = DB::table($clientTable . ' as cl')
             ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
-            ->where('cl.razonSocial', 'LIKE', '%' . $searchTerm . '%')
+            ->where(function ($query) use ($searchTerm, $hasRazonSocialColumn, $hasIdClienteColumn) {
+                if ($hasRazonSocialColumn) {
+                    $query->where('cl.razonSocial', 'LIKE', '%' . $searchTerm . '%');
+                }
+
+                if ($hasIdClienteColumn) {
+                    $query->orWhere('cl.idCliente', 'LIKE', '%' . $searchTerm . '%');
+                }
+            })
             ->orderBy('cl.idCliente')
             ->select($selectColumns)
             ->get()
