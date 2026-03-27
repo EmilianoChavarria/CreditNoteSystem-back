@@ -29,7 +29,7 @@ class CreditsDataBatchHandler extends AbstractBatchHandler
         return $this->fileParser->parseByStoredFile((string) $file['storedPath'], (string) $file['extension']);
     }
 
-    public function process(array $row, Batch $batch): void
+    public function process(array $row, Batch $batch): ?int
     {
         $data = $this->validateRow([
             'requestNumber' => $this->value($row, ['requestnumber', 'request_number']),
@@ -48,5 +48,7 @@ class CreditsDataBatchHandler extends AbstractBatchHandler
         $request->update([
             'creditNumber' => (string) $data['creditNumber'],
         ]);
+
+        return (int) $request->id;
     }
 }
