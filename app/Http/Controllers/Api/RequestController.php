@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Request as RequestModel;
 use App\Models\RequestClassification;
-use App\Models\RequestCustomer;
 use App\Models\RequestReason;
 use App\Models\Workflow;
 use App\Models\WorkflowRequestCurrentStep;
@@ -80,7 +79,7 @@ class RequestController extends Controller
 
     public function getAllByRequestType(Request $request, int $id)
     {
-        $perPage = $request->query('perPage');
+        $perPage = $request->query('per_page', 15);
         $requests = RequestModel::with([
             'requestType',
             'user',
@@ -89,7 +88,7 @@ class RequestController extends Controller
             'workflowCurrentStep.assignedRole',
         ])->orderBy('id')
             ->where('requestTypeId', $id)
-            ->cursorPaginate($perPage);
+            ->paginate($perPage);
 
         return response()->json(ApiResponse::success('Requests', $requests));
     }
@@ -139,7 +138,7 @@ class RequestController extends Controller
                 'exchangeRate' => $request->input('exchangeRate'),
                 'status' => $request->input('status', 'created'),
                 'amount' => $request->input('amount'),
-                'hasIva' => $request->input('iva'),
+                'hasIva' => $request->input('hasIva', $request->input('iva')),
                 'totalAmount' => $request->input('totalAmount'),
                 'comments' => $request->input('comments'),
             ];
