@@ -123,7 +123,7 @@ class RequestController extends Controller
     {
         $user = $request->attributes->get('authUser');
         $created = DB::transaction(function () use ($request, $user) {
-            $createdRequest = RequestModel::create([
+            $requestData = [
                 'requestNumber' => $request->input('requestNumber'),
                 'requestTypeId' => $request->input('requestTypeId'),
                 'userId' => $user->id,
@@ -137,16 +137,40 @@ class RequestController extends Controller
                 'invoiceNumber' => $request->input('invoiceNumber'),
                 'invoiceDate' => $request->input('invoiceDate'),
                 'exchangeRate' => $request->input('exchangeRate'),
-                'status' => $request->input('status'),
+                'status' => $request->input('status', 'created'),
                 'amount' => $request->input('amount'),
                 'hasIva' => $request->input('iva'),
                 'totalAmount' => $request->input('totalAmount'),
                 'comments' => $request->input('comments'),
-            ]);
+            ];
 
+            $createdRequest = null;
 
+            if ($request->filled('requestNumber')) {
+                $draft = RequestModel::query()
+                    ->where('userId', $user->id)
+                    ->where('status', 'draft')
+                    ->where('requestNumber', $request->input('requestNumber'))
+                    ->lockForUpdate()
+                    ->first();
 
-            $this->assignRequestToWorkflow($createdRequest, (int) $user->id);
+                if ($draft) {
+                    $draft->update($requestData);
+                    $createdRequest = $draft;
+                }
+            }
+
+            if (!$createdRequest) {
+                $createdRequest = RequestModel::create($requestData);
+            }
+
+            $alreadyAssignedToWorkflow = WorkflowRequestCurrentStep::query()
+                ->where('requestId', $createdRequest->id)
+                ->exists();
+
+            if (!$alreadyAssignedToWorkflow) {
+                $this->assignRequestToWorkflow($createdRequest, (int) $user->id);
+            }
 
             return $createdRequest;
         });
@@ -602,5 +626,155 @@ class RequestController extends Controller
             '!=', '<>' => $leftString !== $rightString,
             default => false,
         };
+    }
+
+    public function saveDraft(Request $request)
+    {
+        $user = $request->attributes->get('authUser');
+
+        $validation = Validator::make($request->all(), [
+            'id' => ['nullable', 'integer', 'exists:requests,id'],
+            'requestTypeId' => ['required', 'integer', 'exists:requesttype,id'],
+            'customerId' => ['nullable', 'integer'],
+            'requestNumber' => ['nullable', 'string', 'max:50'],
+            'requestDate' => ['nullable', 'date'],
+            'currency' => ['nullable', 'string', 'max:10'],
+            'area' => ['nullable', 'string', 'max:255'],
+            'reasonId' => ['nullable', 'integer', 'exists:requestreasons,id'],
+            'classificationId' => ['nullable', 'integer', 'exists:requestclassification,id'],
+            'deliveryNote' => ['nullable', 'string', 'max:255'],
+            'invoiceNumber' => ['nullable', 'string', 'max:50'],
+            'invoiceDate' => ['nullable', 'date'],
+            'exchangeRate' => ['nullable', 'numeric'],
+            'amount' => ['nullable', 'numeric'],
+            'hasIva' => ['nullable', 'boolean'],
+            'totalAmount' => ['nullable', 'numeric'],
+            'comments' => ['nullable', 'string', 'max:1000'],
+            'creditNumber' => ['nullable', 'string', 'max:50'],
+            'creditDebitRefId' => ['nullable', 'string', 'max:255'],
+            'newInvoice' => ['nullable', 'string', 'max:255'],
+            'sapReturnOrder' => ['nullable', 'string', 'max:255'],
+            'hasRga' => ['nullable', 'boolean'],
+            'warehouseCode' => ['nullable', 'string', 'max:50'],
+            'replenishmentAmount' => ['nullable', 'numeric'],
+            'hasReplenishmentIva' => ['nullable', 'boolean'],
+            'replenishmentTotal' => ['nullable', 'numeric'],
+            'warehouseAmount' => ['nullable', 'numeric'],
+            'hasWarehouseIva' => ['nullable', 'boolean'],
+            'warehouseTotal' => ['nullable', 'numeric'],
+        ]);
+
+        if ($validation->fails()) {
+            return response()->json(ApiResponse::error('Datos inválidos', $validation->errors(), 422), 422);
+        }
+
+        try {
+            $draftData = [
+                'requestTypeId' => $request->input('requestTypeId'),
+                'customerId' => $request->input('customerId'),
+                'requestNumber' => $request->input('requestNumber'),
+                'requestDate' => $request->input('requestDate'),
+                'currency' => $request->input('currency'),
+                'area' => $request->input('area'),
+                'reasonId' => $request->input('reasonId'),
+                'classificationId' => $request->input('classificationId'),
+                'deliveryNote' => $request->input('deliveryNote'),
+                'invoiceNumber' => $request->input('invoiceNumber'),
+                'invoiceDate' => $request->input('invoiceDate'),
+                'exchangeRate' => $request->input('exchangeRate'),
+                'amount' => $request->input('amount'),
+                'hasIva' => $request->input('hasIva', false),
+                'totalAmount' => $request->input('totalAmount'),
+                'comments' => $request->input('comments'),
+                'creditNumber' => $request->input('creditNumber'),
+                'creditDebitRefId' => $request->input('creditDebitRefId'),
+                'newInvoice' => $request->input('newInvoice'),
+                'sapReturnOrder' => $request->input('sapReturnOrder'),
+                'hasRga' => $request->input('hasRga', false),
+                'warehouseCode' => $request->input('warehouseCode'),
+                'replenishmentAmount' => $request->input('replenishmentAmount'),
+                'hasReplenishmentIva' => $request->input('hasReplenishmentIva', false),
+                'replenishmentTotal' => $request->input('replenishmentTotal'),
+                'warehouseAmount' => $request->input('warehouseAmount'),
+                'hasWarehouseIva' => $request->input('hasWarehouseIva', false),
+                'warehouseTotal' => $request->input('warehouseTotal'),
+                'status' => 'draft',
+                'userId' => $user->id,
+            ];
+
+            $draftId = $request->input('id');
+            $requestNumber = $request->input('requestNumber');
+
+            if (!$draftId && $requestNumber) {
+                $existingDraft = RequestModel::query()
+                    ->where('userId', $user->id)
+                    ->where('status', 'draft')
+                    ->where('requestNumber', $requestNumber)
+                    ->first();
+
+                if ($existingDraft) {
+                    $existingDraft->update($draftData);
+                    $result = $existingDraft->load(['requestType', 'user', 'reason', 'classification']);
+
+                    return response()->json(ApiResponse::success('Borrador actualizado', $result, 200), 200);
+                }
+            }
+
+            if ($draftId) {
+                // Actualizar borrador existente
+                $draft = RequestModel::find($draftId);
+
+                if (!$draft) {
+                    return response()->json(ApiResponse::error('Borrador no encontrado', null, 404), 404);
+                }
+
+                // Verificar que el borrador pertenezca al usuario
+                if ($draft->userId !== $user->id) {
+                    return response()->json(ApiResponse::error('No tienes permisos para actualizar este borrador', null, 403), 403);
+                }
+
+                $draft->update($draftData);
+                $result = $draft->load(['requestType', 'user', 'reason', 'classification']);
+
+                return response()->json(ApiResponse::success('Borrador actualizado', $result, 200), 200);
+            } else {
+                // Crear nuevo borrador
+                $draft = RequestModel::create($draftData);
+                $result = $draft->load(['requestType', 'user', 'reason', 'classification']);
+
+                return response()->json(ApiResponse::success('Borrador guardado', $result, 201), 201);
+            }
+        } catch (\Exception $e) {
+            return response()->json(ApiResponse::error('Error al guardar el borrador', ['error' => $e->getMessage()], 500), 500);
+        }
+    }
+
+    public function getDrafts(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $perPage = $request->query('perPage', 15);
+        $page = $request->query('page', 1);
+
+        try {
+            $drafts = RequestModel::with([
+                'requestType',
+                'user',
+                'reason',
+                'classification'
+            ])
+                ->where('userId', (int) $authUser->id)
+                ->where('status', 'draft')
+                ->orderByDesc('updatedAt')
+                ->paginate($perPage, ['*'], 'page', $page);
+
+            return response()->json(ApiResponse::success('Borradores', $drafts));
+        } catch (\Exception $e) {
+            return response()->json(ApiResponse::error('Error al obtener borradores', ['error' => $e->getMessage()], 500), 500);
+        }
     }
 }
