@@ -33,7 +33,7 @@ class SapScreenBatchHandler extends AbstractBatchHandler
         return $rows;
     }
 
-    public function process(array $row, Batch $batch): void
+    public function process(array $row, Batch $batch): ?int
     {
         if (($row['formatError'] ?? false) === true) {
             throw new RuntimeException('Nombre de archivo inválido. Formato esperado: {requestNumber}_{creditNumber}.pdf');
@@ -57,5 +57,7 @@ class SapScreenBatchHandler extends AbstractBatchHandler
         if ($creditNumber !== null && $creditNumber !== '') {
             $request->update(['creditNumber' => (string) $creditNumber]);
         }
+
+        return (int) $request->id;
     }
 }
