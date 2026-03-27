@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\SocketMessageSent;
 use App\Http\Requests\Batches\StoreBatchRequest;
 use App\Jobs\ProcessBatchJob;
 use App\Models\Batch;
@@ -196,9 +197,15 @@ class BatchService
                 }
 
                 $handler = $this->resolveHandler((string) $batch->batchType);
-                $handler->process($row, $batch);
+                $requestId = $handler->process($row, $batch);
+
+                $resolvedRequestId = $requestId;
+                if ($resolvedRequestId === null && isset($row['requestId']) && is_numeric($row['requestId'])) {
+                    $resolvedRequestId = (int) $row['requestId'];
+                }
 
                 BatchItem::where('id', $item->id)->update([
+                    'requestId' => $resolvedRequestId,
                     'status' => 'success',
                     'errorLog' => null,
                     'processedAt' => now(),
@@ -260,6 +267,8 @@ class BatchService
             return;
         }
 
+        $previousStatus = (string) $batch->status;
+
         $batch->processedRecords = (int) $batch->processedRecords + 1;
         $batch->processingRecords = max(0, (int) $batch->processingRecords - 1);
 
@@ -274,6 +283,41 @@ class BatchService
         }
 
         $batch->save();
+
+        $isFinalTransition =
+            !in_array($previousStatus, ['completed', 'failed'], true)
+            && in_array((string) $batch->status, ['completed', 'failed'], true);
+
+        if ($isFinalTransition) {
+            $this->notifyBatchFinished($batch);
+        }
+    }
+
+    private function notifyBatchFinished(Batch $batch): void
+    {
+        $status = (string) $batch->status;
+        $isCompleted = $status === 'completed';
+
+        $payload = [
+            'title' => $isCompleted ? 'Batch procesado correctamente' : 'Batch procesado con errores',
+            'message' => $isCompleted
+                ? "El batch #{$batch->id} finalizo exitosamente."
+                : "El batch #{$batch->id} finalizo con errores.",
+            'type' => $isCompleted ? 'success' : 'error',
+            'event' => 'batch.finished',
+            'batch' => [
+                'id' => (int) $batch->id,
+                'batchType' => (string) $batch->batchType,
+                'status' => $status,
+                'totalRecords' => (int) $batch->totalRecords,
+                'processedRecords' => (int) $batch->processedRecords,
+                'errorRecords' => (int) $batch->errorRecords,
+                'processingRecords' => (int) $batch->processingRecords,
+            ],
+            'sentAt' => now()->toIso8601String(),
+        ];
+
+        broadcast(new SocketMessageSent($payload));
     }
 
     private function buildErrorLog(Throwable $e): string
