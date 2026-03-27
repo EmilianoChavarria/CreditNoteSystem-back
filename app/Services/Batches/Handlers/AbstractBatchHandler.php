@@ -79,5 +79,5 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
         ]);
     }
 
-    abstract public function process(array $row, Batch $batch): void;
+    abstract public function process(array $row, Batch $batch): ?int;
 }
