@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Events\SocketMessageSent;
 use App\Http\Requests\Batches\StoreBatchRequest;
 use App\Jobs\ProcessBatchJob;
+use App\Mail\BatchFinishedMail;
 use App\Models\Batch;
 use App\Models\BatchItem;
 use App\Services\Batches\BatchInputContext;
@@ -18,6 +19,8 @@ use App\Services\Batches\Handlers\UsersBatchHandler;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -318,6 +321,39 @@ class BatchService
         ];
 
         broadcast(new SocketMessageSent($payload));
+
+        $batchWithUser = Batch::query()
+            ->with('user:id,fullName,email')
+            ->find((int) $batch->id);
+
+        $recipientEmail = $batchWithUser?->user?->email;
+
+        if (!$recipientEmail) {
+            return;
+        }
+
+        try {
+            Mail::to($recipientEmail)->send(
+                new BatchFinishedMail(
+                    batchId: (int) $batch->id,
+                    batchType: (string) $batch->batchType,
+                    status: $status,
+                    totalRecords: (int) $batch->totalRecords,
+                    processedRecords: (int) $batch->processedRecords,
+                    errorRecords: (int) $batch->errorRecords,
+                    processingRecords: (int) $batch->processingRecords,
+                    fullName: (string) ($batchWithUser?->user?->fullName ?? 'Usuario')
+                )
+            );
+        } catch (Throwable $e) {
+            // El batch ya finalizo; si el correo falla solo se registra para diagnostico.
+            Log::warning('No se pudo enviar correo de finalizacion de batch', [
+                'batchId' => (int) $batch->id,
+                'userId' => (int) $batch->userId,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function buildErrorLog(Throwable $e): string
