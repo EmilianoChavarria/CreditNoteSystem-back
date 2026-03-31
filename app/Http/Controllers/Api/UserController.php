@@ -31,7 +31,7 @@ class UserController extends Controller
 
         return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $users));
     }
-    
+
     public function me(Request $request)
     {
         $authUser = $request->attributes->get('authUser');
@@ -43,9 +43,6 @@ class UserController extends Controller
         $user = User::with([
             'role',
             'supervisor',
-            'subordinates',
-            'requests',
-            'security',
         ])->find((int) $authUser->id);
 
         if (!$user) {
