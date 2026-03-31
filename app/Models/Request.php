@@ -17,11 +17,11 @@ class Request extends Model
         'requestNumber',
         'requestTypeId',
         'userId',
+        'customerId',
         'status',
         'orderNumber',
         'requestDate',
         'currency',
-        'customerId',
         'area',
         'reasonId',
         'classificationId',
@@ -56,6 +56,7 @@ class Request extends Model
         'hasWarehouseIva' => 'boolean',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
+        'deletedAt' => 'datetime',
     ];
 
     public function requestType()
@@ -68,11 +69,6 @@ class Request extends Model
         return $this->belongsTo(User::class, 'userId');
     }
 
-    public function customer()
-    {
-        return $this->belongsTo(Customer::class, 'customerId');
-    }
-
     public function reason()
     {
         return $this->belongsTo(RequestReason::class, 'reasonId');
@@ -81,5 +77,20 @@ class Request extends Model
     public function classification()
     {
         return $this->belongsTo(RequestClassification::class, 'classificationId');
+    }
+
+    public function workflowCurrentStep()
+    {
+        return $this->hasOne(WorkflowRequestCurrentStep::class, 'requestId');
+    }
+
+    public function workflowSteps()
+    {
+        return $this->hasMany(WorkflowRequestStep::class, 'requestId');
+    }
+
+    public function workflowHistory()
+    {
+        return $this->hasMany(WorkflowRequestHistory::class, 'requestId');
     }
 }

@@ -43,7 +43,7 @@ class UploadSupportBatchHandler extends AbstractBatchHandler
         return $rows;
     }
 
-    public function process(array $row, Batch $batch): void
+    public function process(array $row, Batch $batch): ?int
     {
         $data = $this->validateRow([
             'requestId' => $this->value($row, ['requestId', 'requestid']),
@@ -57,5 +57,7 @@ class UploadSupportBatchHandler extends AbstractBatchHandler
         }
 
         $this->createAttachment($request, (array) ($row['file'] ?? []));
+
+        return (int) $request->id;
     }
 }

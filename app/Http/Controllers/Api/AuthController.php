@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\UserRegisteredMail;
 use App\Models\BlockedIp;
 use App\Models\IpBlockedHistory;
+use App\Models\Role;
 use App\Models\User;
 use App\Models\UserBlockedHistory;
 use App\Models\UserSecurity;
@@ -37,10 +38,26 @@ class AuthController extends Controller
             'roleId' => ['required', 'integer', 'exists:roles,id'],
             'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
+            'clientId' => ['nullable', 'string', 'max:15'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+        }
+
+        $clientId = $request->input('clientId');
+        $roleId = (int) $request->input('roleId');
+        $role = Role::query()->select('id', 'roleName')->find($roleId);
+
+        if (!empty($clientId) && strtoupper((string) $role?->roleName) !== 'CUSTOMER') {
+            return response()->json(
+                ApiResponse::error(
+                    'Datos inválidos',
+                    ['clientId' => ['Solo se permite agregar un cliente cuando el rol de usuario es CUSTOMER']],
+                    422
+                ),
+                422
+            );
         }
 
         $email = $request->input('email');
@@ -90,6 +107,7 @@ class AuthController extends Controller
                 'roleId' => (int) $request->input('roleId'),
                 'supervisorId' => $request->input('supervisorId'),
                 'preferredLanguage' => $request->input('preferredLanguage', 'en'),
+                'clientId' => $request->input('clientId'),
                 'isActive' => true,
                 'deletedAt' => null,
             ]);
@@ -215,6 +233,7 @@ class AuthController extends Controller
                     'roleId' => $user->roleId,
                     'roleName' => $roleName,
                     'preferredLanguage' => $user->preferredLanguage,
+                    'clientId' => $user->clientId
                 ],
                 // Opcional: mandamos la expiración para que Angular sepa cuándo avisar al usuario
                 'expiresIn' => $minutes * 60

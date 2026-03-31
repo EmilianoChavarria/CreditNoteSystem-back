@@ -9,12 +9,18 @@ use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\RequestType;
 use App\Models\User;
+use App\Models\Workflow;
+use App\Models\WorkflowRequestCurrentStep;
+use App\Models\WorkflowRequestHistory;
+use App\Models\WorkflowRequestStep;
+use App\Models\WorkflowStep;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
 use App\Services\RequestNumberService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Validation\Rule;
 use RuntimeException;
+use Illuminate\Validation\ValidationException;
 
 class NewRequestBatchHandler extends AbstractBatchHandler
 {
@@ -46,7 +52,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         return $rows;
     }
 
-    public function process(array $row, Batch $batch): void
+    public function process(array $row, Batch $batch): ?int
     {
         $requestTypeId = (int) $this->value($row, ['requesttypeid', 'request_type_id']);
 
@@ -58,9 +64,12 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         $payload = [
             'requestTypeId' => $requestTypeId,
             'userId' => (int) $this->value($row, ['userid', 'user_id', 'defaultuserid'], (int) $batch->userId),
+            'requestNumber' => $this->value($row, ['requestnumber', 'request_number']),
+            'status' => (string) $this->value($row, ['status'], 'created'),
         ];
 
         $requiredFields = [];
+        $resolvedCustomer = null;
 
         foreach ((array) $moduleConfig['fields'] as $fieldConfig) {
             $fieldName = (string) ($fieldConfig['name'] ?? '');
@@ -69,8 +78,9 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             }
 
             $aliases = (array) ($fieldConfig['aliases'] ?? []);
-            if ($fieldName === 'customerId') {
-                $payload['customerId'] = $this->resolveCustomerId($row, $aliases);
+            if ($fieldName === 'customerId' || $fieldName === 'idCustomer') {
+                $resolvedCustomer = $this->resolveCustomer($row, $aliases);
+                $payload['customerId'] = (int) $resolvedCustomer->idCustomer;
             } elseif ($fieldName === 'reasonId') {
                 $payload['reasonId'] = $this->resolveReasonId($row, $aliases);
             } elseif ($fieldName === 'classificationId') {
@@ -80,7 +90,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             }
 
             if (($fieldConfig['required'] ?? false) === true) {
-                $requiredFields[] = $fieldName;
+                $requiredFields[] = $fieldName === 'idCustomer' ? 'customerId' : $fieldName;
             }
         }
 
@@ -102,9 +112,11 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         $rules = [
             'requestTypeId' => ['required', 'integer', Rule::exists((new RequestType())->getTable(), 'id')],
             'userId' => ['required', 'integer', Rule::exists((new User())->getTable(), 'id')],
+            'requestNumber' => ['nullable', 'string', 'max:50'],
+            'status' => ['nullable', 'string', 'max:50'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
-            'customerId' => ['nullable', 'integer', Rule::exists((new Customer())->getTable(), 'id')],
+            'customerId' => ['nullable', 'integer', Rule::exists((new Customer())->getTable(), 'idCustomer')],
             'area' => ['nullable', 'string', 'max:150'],
             'reasonId' => ['nullable', 'integer', Rule::exists((new RequestReason())->getTable(), 'id')],
             'classificationId' => ['nullable', 'integer', Rule::exists((new RequestClassification())->getTable(), 'id')],
@@ -125,6 +137,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'hasWarehouseIva' => ['nullable', 'boolean'],
             'sapReturnOrder' => ['nullable', 'string', 'max:255'],
             'hasRga' => ['nullable', 'boolean'],
+            'comments' => ['nullable', 'string', 'max:1000'],
         ];
 
         foreach ($requiredFields as $field) {
@@ -150,17 +163,21 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         $warehouseIvaValue = $hasWarehouseIva ? round($warehouseAmount * 0.16, 2) : 0;
         $warehouseTotal = round($warehouseAmount + $warehouseIvaValue, 2);
 
+        $requestNumber = $validated['requestNumber']
+            ?? $this->requestNumberService->generateRequestNumber((int) $validated['requestTypeId']);
+
         $request = RequestModel::create([
+            'requestNumber' => $requestNumber,
             'requestTypeId' => (int) $validated['requestTypeId'],
             'userId' => (int) $validated['userId'],
-            'status' => 'pending',
+            'customerId' => $validated['customerId'] ?? null,
+            'status' => $validated['status'] ?? 'created',
             'orderNumber' => $validated['orderNumber'] ?? null,
             'requestDate' => $validated['requestDate'],
             'currency' => $validated['currency'],
-            'customerId' => (int) $validated['customerId'],
             'area' => $validated['area'] ?? null,
-            'reasonId' => (int) $validated['reasonId'],
-            'classificationId' => (int) $validated['classificationId'],
+            'reasonId' => isset($validated['reasonId']) ? (int) $validated['reasonId'] : null,
+            'classificationId' => isset($validated['classificationId']) ? (int) $validated['classificationId'] : null,
             'deliveryNote' => $validated['deliveryNote'] ?? null,
             'invoiceNumber' => $validated['invoiceNumber'] ?? null,
             'invoiceDate' => $validated['invoiceDate'] ?? null,
@@ -180,20 +197,19 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'warehouseTotal' => $warehouseTotal,
             'sapReturnOrder' => $validated['sapReturnOrder'] ?? null,
             'hasRga' => (bool) ($validated['hasRga'] ?? false),
+            'comments' => $validated['comments'] ?? null,
         ]);
 
-        // Generar requestNumber basado en el tipo de solicitud
-        $requestNumber = $this->requestNumberService->generateRequestNumber((int) $validated['requestTypeId']);
-        $request->update([
-            'requestNumber' => $requestNumber,
-        ]);
+        $this->assignRequestToWorkflow($request, (int) $validated['userId']);
+
+        return (int) $request->id;
     }
 
     /**
      * @param array<string, mixed> $row
      * @param array<int, string> $aliases
      */
-    private function resolveCustomerId(array $row, array $aliases): ?int
+    private function resolveCustomer(array $row, array $aliases): ?Customer
     {
         $value = $this->value($row, $aliases);
 
@@ -201,35 +217,102 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             return null;
         }
 
-        // Si es numérico, buscar por ID o customerNumber
+        // Si es numérico, intentar por idCustomer y luego por idClient
         if (is_numeric($value)) {
             $number = (int) $value;
 
-            $customerById = Customer::find($number);
+            $customerById = Customer::query()->where('idCustomer', $number)->first();
             if ($customerById) {
-                return (int) $customerById->id;
+                return $customerById;
             }
 
-            $customerByNumber = Customer::where('customerNumber', $number)->first();
-            if ($customerByNumber) {
-                return (int) $customerByNumber->id;
+            $customerByClientId = Customer::query()->where('idClient', $number)->first();
+            if ($customerByClientId) {
+                return $customerByClientId;
             }
         }
 
-        // Buscar por customerNumber (string)
-        $customer = Customer::where('customerNumber', (string) $value)->first();
+        // En este sistema, también permitimos idClient como texto
+        $customer = Customer::query()->where('idClient', (int) $value)->first();
         if ($customer) {
-            return (int) $customer->id;
-        }
-
-        // Buscar por customerName
-        $customer = Customer::where('customerName', (string) $value)->first();
-        if ($customer) {
-            return (int) $customer->id;
+            return $customer;
         }
 
         // No se encontró el cliente
         throw new RuntimeException("Cliente no encontrado: '{$value}'");
+    }
+
+    private function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId): void
+    {
+        $classification = RequestClassification::find($requestModel->classificationId);
+
+        if (!$classification) {
+            throw ValidationException::withMessages([
+                'classificationId' => ['No existe la clasificacion seleccionada.'],
+            ]);
+        }
+
+        $isTypeLinkedToClassification = $classification->requestTypes()
+            ->where('id', $requestModel->requestTypeId)
+            ->exists();
+
+        if (!$isTypeLinkedToClassification) {
+            throw ValidationException::withMessages([
+                'classificationId' => ['La clasificacion no pertenece al tipo de solicitud indicado.'],
+            ]);
+        }
+
+        $workflow = Workflow::query()
+            ->where('requestTypeId', $requestModel->requestTypeId)
+            ->where('classificationType', $classification->type)
+            ->where('isActive', true)
+            ->orderBy('id')
+            ->first();
+
+        if (!$workflow) {
+            throw ValidationException::withMessages([
+                'workflow' => ['No existe un workflow activo para el tipo de solicitud y la clasificacion.type.'],
+            ]);
+        }
+
+        $initialStep = WorkflowStep::query()
+            ->where('workflowId', $workflow->id)
+            ->where('isInitialStep', true)
+            ->orderBy('stepOrder')
+            ->first();
+
+        if (!$initialStep) {
+            throw ValidationException::withMessages([
+                'workflowStep' => ['El workflow seleccionado no tiene paso inicial configurado.'],
+            ]);
+        }
+
+        $requestStep = WorkflowRequestStep::create([
+            'requestId' => $requestModel->id,
+            'workflowStepId' => $initialStep->id,
+            'assignedRoleId' => $initialStep->roleId,
+            'status' => 'pending',
+            'startedAt' => now(),
+        ]);
+
+        WorkflowRequestCurrentStep::updateOrCreate(
+            ['requestId' => $requestModel->id],
+            [
+                'workflowId' => $workflow->id,
+                'workflowStepId' => $initialStep->id,
+                'assignedRoleId' => $initialStep->roleId,
+                'status' => 'pending',
+            ]
+        );
+
+        WorkflowRequestHistory::create([
+            'requestWorkflowStepId' => $requestStep->id,
+            'requestId' => $requestModel->id,
+            'workflowStepId' => $initialStep->id,
+            'actionUserId' => $actionUserId,
+            'actionType' => 'created',
+            'comments' => 'Solicitud creada y asignada al flujo inicial.',
+        ]);
     }
 
     /**

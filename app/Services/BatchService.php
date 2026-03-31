@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Events\SocketMessageSent;
 use App\Http\Requests\Batches\StoreBatchRequest;
 use App\Jobs\ProcessBatchJob;
+use App\Mail\BatchFinishedMail;
 use App\Models\Batch;
 use App\Models\BatchItem;
 use App\Services\Batches\BatchInputContext;
@@ -17,6 +19,8 @@ use App\Services\Batches\Handlers\UsersBatchHandler;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -196,9 +200,15 @@ class BatchService
                 }
 
                 $handler = $this->resolveHandler((string) $batch->batchType);
-                $handler->process($row, $batch);
+                $requestId = $handler->process($row, $batch);
+
+                $resolvedRequestId = $requestId;
+                if ($resolvedRequestId === null && isset($row['requestId']) && is_numeric($row['requestId'])) {
+                    $resolvedRequestId = (int) $row['requestId'];
+                }
 
                 BatchItem::where('id', $item->id)->update([
+                    'requestId' => $resolvedRequestId,
                     'status' => 'success',
                     'errorLog' => null,
                     'processedAt' => now(),
@@ -260,6 +270,8 @@ class BatchService
             return;
         }
 
+        $previousStatus = (string) $batch->status;
+
         $batch->processedRecords = (int) $batch->processedRecords + 1;
         $batch->processingRecords = max(0, (int) $batch->processingRecords - 1);
 
@@ -274,6 +286,74 @@ class BatchService
         }
 
         $batch->save();
+
+        $isFinalTransition =
+            !in_array($previousStatus, ['completed', 'failed'], true)
+            && in_array((string) $batch->status, ['completed', 'failed'], true);
+
+        if ($isFinalTransition) {
+            $this->notifyBatchFinished($batch);
+        }
+    }
+
+    private function notifyBatchFinished(Batch $batch): void
+    {
+        $status = (string) $batch->status;
+        $isCompleted = $status === 'completed';
+
+        $payload = [
+            'title' => $isCompleted ? 'Batch procesado correctamente' : 'Batch procesado con errores',
+            'message' => $isCompleted
+                ? "El batch #{$batch->id} finalizo exitosamente."
+                : "El batch #{$batch->id} finalizo con errores.",
+            'type' => $isCompleted ? 'success' : 'error',
+            'event' => 'batch.finished',
+            'batch' => [
+                'id' => (int) $batch->id,
+                'batchType' => (string) $batch->batchType,
+                'status' => $status,
+                'totalRecords' => (int) $batch->totalRecords,
+                'processedRecords' => (int) $batch->processedRecords,
+                'errorRecords' => (int) $batch->errorRecords,
+                'processingRecords' => (int) $batch->processingRecords,
+            ],
+            'sentAt' => now()->toIso8601String(),
+        ];
+
+        broadcast(new SocketMessageSent($payload));
+
+        $batchWithUser = Batch::query()
+            ->with('user:id,fullName,email')
+            ->find((int) $batch->id);
+
+        $recipientEmail = $batchWithUser?->user?->email;
+
+        if (!$recipientEmail) {
+            return;
+        }
+
+        try {
+            Mail::to($recipientEmail)->send(
+                new BatchFinishedMail(
+                    batchId: (int) $batch->id,
+                    batchType: (string) $batch->batchType,
+                    status: $status,
+                    totalRecords: (int) $batch->totalRecords,
+                    processedRecords: (int) $batch->processedRecords,
+                    errorRecords: (int) $batch->errorRecords,
+                    processingRecords: (int) $batch->processingRecords,
+                    fullName: (string) ($batchWithUser?->user?->fullName ?? 'Usuario')
+                )
+            );
+        } catch (Throwable $e) {
+            // El batch ya finalizo; si el correo falla solo se registra para diagnostico.
+            Log::warning('No se pudo enviar correo de finalizacion de batch', [
+                'batchId' => (int) $batch->id,
+                'userId' => (int) $batch->userId,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function buildErrorLog(Throwable $e): string

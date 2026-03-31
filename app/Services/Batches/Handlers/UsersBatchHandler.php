@@ -33,7 +33,7 @@ class UsersBatchHandler extends AbstractBatchHandler
         return $this->fileParser->parseByStoredFile((string) $file['storedPath'], (string) $file['extension']);
     }
 
-    public function process(array $row, Batch $batch): void
+    public function process(array $row, Batch $batch): ?int
     {
         $payload = [
             'fullName' => $this->value($row, ['fullname', 'full_name']),
@@ -69,6 +69,8 @@ class UsersBatchHandler extends AbstractBatchHandler
             'userId' => $user->id,
             'failedAttempts' => 0,
         ]);
+
+        return null;
     }
 
     /**

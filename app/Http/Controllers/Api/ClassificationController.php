@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\RequestClassification;
 use App\Models\RequestType;
 use App\Support\ApiResponse;
+use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use function PHPUnit\Framework\returnArgument;
 
 class ClassificationController extends Controller
 {
@@ -32,6 +34,15 @@ class ClassificationController extends Controller
         $classification->requestTypes()->sync($typeIds);
 
         return response()->json(ApiResponse::success('Clasificación creada exitosamente', $classification->load('requestTypes'), 201), 201);
+    }
+
+    public function getClassificationGrouped()
+    {
+        $classification = RequestClassification::select('type')
+            ->groupBy('type')
+            ->get();
+
+        return response()->json(ApiResponse::success('Classifications', $classification, 201), 201);
     }
 
     public function getAllByRequestTypeId($typeRequestId)

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Module;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -31,17 +32,37 @@ class ModuleController extends Controller
 
     public function store(Request $request)
     {
+        $payload = [
+            'name' => $request->input('name', $request->input('moduleName')),
+            // 'moduleName' => $request->input('moduleName', $request->input('name')),
+            'parentid' => $request->input('parentid'),
+            'url' => $request->input('url'),
+            'icon' => $request->input('icon'),
+            'orderindex' => $request->input('orderindex', 0),
+            'requiredactionid' => $request->input('requiredactionid'),
+        ];
+
         $validator = Validator::make($request->all(), [
-            'moduleName' => ['required', 'string', 'max:150', 'unique:modules,moduleName'],
+            'name' => ['nullable', 'string', 'max:100'],
+            // 'moduleName' => ['nullable', 'string', 'max:150'],
+            'parentid' => ['nullable', 'int', 'exists:modules,id'],
+            'url' => ['nullable', 'string', 'max:255'],
+            'icon' => ['nullable', 'string', 'max:50'],
+            'orderindex' => ['nullable', 'integer', 'min:0'],
+            'requiredactionid' => ['nullable', 'int', 'exists:actions,id'],
         ]);
+
+        $validator->after(function ($validator) use ($payload) {
+            if (blank($payload['name'])) {
+                $validator->errors()->add('name', 'Debe enviar name.');
+            }
+        });
 
         if ($validator->fails()) {
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $module = Module::create([
-            'moduleName' => $request->input('moduleName'),
-        ]);
+        $module = Module::create($payload);
 
         return response()->json(ApiResponse::success('Module creado', $module, 201), 201);
     }
@@ -49,11 +70,11 @@ class ModuleController extends Controller
     public function update(Request $request, int $id)
     {
         $validator = Validator::make($request->all(), [
-            'moduleName' => [
+            'name' => [
                 'required',
                 'string',
                 'max:150',
-                Rule::unique('modules', 'moduleName')->ignore($id),
+                Rule::unique('modules', 'name')->ignore($id),
             ],
         ]);
 

@@ -14,6 +14,41 @@ use Throwable;
 
 class BatchController extends Controller
 {
+    public function index(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $perPage = max(1, min(200, (int) $request->query('perPage', 15)));
+
+        $batches = Batch::query()
+            ->where('userId', (int) $authUser->id)
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->through(function (Batch $batch) {
+                $total = max(1, (int) $batch->totalRecords);
+
+                return [
+                    'id' => $batch->id,
+                    'userId' => $batch->userId,
+                    'fileName' => $batch->fileName,
+                    'batchType' => $batch->batchType,
+                    'status' => $batch->status,
+                    'totalRecords' => (int) $batch->totalRecords,
+                    'processedRecords' => (int) $batch->processedRecords,
+                    'processingRecords' => (int) $batch->processingRecords,
+                    'errorRecords' => (int) $batch->errorRecords,
+                    'progressPercent' => round(((int) $batch->processedRecords / $total) * 100, 2),
+                    'createdAt' => $batch->createdAt,
+                ];
+            });
+
+        return response()->json(ApiResponse::success('Batches', $batches));
+    }
+
     public function store(StoreBatchRequest $request, BatchService $batchService)
     {
         try {
@@ -111,6 +146,61 @@ class BatchController extends Controller
                     'lastPage' => $errorItems->lastPage(),
                 ],
             ],
+        ]));
+    }
+
+    public function requests(int $id, Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $batch = Batch::query()
+            ->where('id', $id)
+            ->where('userId', (int) $authUser->id)
+            ->first();
+
+        if (!$batch) {
+            return response()->json(ApiResponse::error('Batch no encontrado', null, 404), 404);
+        }
+
+        $perPage = max(1, min(200, (int) $request->query('perPage', 25)));
+
+        $items = BatchItem::query()
+            ->with(['request.requestType', 'request.reason', 'request.classification'])
+            ->where('batchId', $batch->id)
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->through(function (BatchItem $item) {
+                $rawData = is_array($item->rawData)
+                    ? $item->rawData
+                    : (json_decode((string) $item->rawData, true) ?: []);
+
+                $errorLog = is_array($item->errorLog) ? $item->errorLog : null;
+
+                return [
+                    'id' => $item->id,
+                    'status' => $item->status,
+                    'processedAt' => $item->processedAt,
+                    'requestId' => $item->requestId,
+                    'request' => $item->request,
+                    'errorLog' => $errorLog,
+                    'rawData' => $rawData,
+                ];
+            });
+
+        return response()->json(ApiResponse::success('Solicitudes del batch', [
+            'batch' => [
+                'id' => $batch->id,
+                'batchType' => $batch->batchType,
+                'status' => $batch->status,
+                'totalRecords' => (int) $batch->totalRecords,
+                'processedRecords' => (int) $batch->processedRecords,
+                'errorRecords' => (int) $batch->errorRecords,
+            ],
+            'items' => $items,
         ]));
     }
 }

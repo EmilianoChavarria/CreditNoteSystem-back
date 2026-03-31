@@ -14,7 +14,9 @@ class RequestClassification extends Model
 
     protected $table = 'requestClassification';
     protected $fillable = [
+        'code',
         'name',
+        'type'
     ];
 
     protected $casts = [

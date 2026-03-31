@@ -17,5 +17,5 @@ interface BatchTypeHandler
     /**
      * @param array<string, mixed> $row
      */
-    public function process(array $row, Batch $batch): void;
+    public function process(array $row, Batch $batch): ?int;
 }

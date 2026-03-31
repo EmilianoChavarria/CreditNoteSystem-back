@@ -8,4 +8,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['jwt'])->group(function () {
     Route::post('rolesPermission/assign', [ModulePermissionController::class, 'assignPermission']);
     Route::get('rolesPermission', [ModulePermissionController::class, 'getAll']);
+    Route::get('rolesPermission/role/{roleId}', [ModulePermissionController::class, 'getByRole']);
+    Route::get('rolesPermission/sidebar', [ModulePermissionController::class, 'getSidebarForCurrentUser']);
+    Route::get('rolesPermission/sidebar/{roleId}', [ModulePermissionController::class, 'getSidebarByRole']);
+    Route::post('rolesPermission/check', [ModulePermissionController::class, 'canAccess']);
 });

@@ -24,6 +24,7 @@ class User extends Authenticatable
         'supervisorId',
         'preferredLanguage',
         'isActive',
+        'clientId'
     ];
 
     protected $hidden = [

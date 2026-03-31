@@ -13,11 +13,42 @@ class Module extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'moduleName',
+        'name',
+        'parentid',
+        'url',
+        'icon',
+        'orderindex',
+        'requiredactionid',
+    ];
+
+    protected $casts = [
+        'parentid' => 'integer',
+        'orderindex' => 'integer',
+        'requiredactionid' => 'integer',
     ];
 
     public function rolePermissions()
     {
         return $this->hasMany(RolePermission::class, 'moduleId');
+    }
+
+    public function permissions()
+    {
+        return $this->hasMany(Permission::class, 'moduleid');
+    }
+
+    public function parent()
+    {
+        return $this->belongsTo(self::class, 'parentid');
+    }
+
+    public function children()
+    {
+        return $this->hasMany(self::class, 'parentid')->orderBy('orderindex')->orderBy('id');
+    }
+
+    public function requiredAction()
+    {
+        return $this->belongsTo(Action::class, 'requiredactionid');
     }
 }

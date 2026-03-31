@@ -13,6 +13,25 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    public function usersBySalesAndManagerRoles()
+    {
+        $allowedRoles = [
+            'SALES ENGINEER / MANAGER',
+            'SALES ENGINEER',
+            'MANAGER',
+        ];
+
+        $users = User::with('role')
+            ->where('isActive', '1')
+            ->whereHas('role', function ($query) use ($allowedRoles) {
+                $query->whereIn('roleName', $allowedRoles);
+            })
+            ->orderBy('fullName')
+            ->get();
+
+        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $users));
+    }
+
     public function getAll()
     {
 
