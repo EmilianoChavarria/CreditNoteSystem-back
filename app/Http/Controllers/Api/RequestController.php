@@ -7,6 +7,8 @@ use App\Models\Customer;
 use App\Models\Request as RequestModel;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
+use App\Models\User;
+use App\Models\UserAssignment;
 use App\Models\Workflow;
 use App\Models\WorkflowRequestCurrentStep;
 use App\Models\WorkflowRequestHistory;
@@ -19,6 +21,7 @@ use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -52,9 +55,10 @@ class RequestController extends Controller
             'reason',
             'classification',
             'workflowCurrentStep.assignedRole',
+            'workflowCurrentStep.assignedUser',
         ])
             ->whereHas('workflowCurrentStep', function ($query) use ($authUser) {
-                $query->where('assignedRoleId', $authUser->roleId)
+                $query->where('assignedUserId', (int) $authUser->id)
                     ->where('status', 'pending');
             })
             // ->where('status', 'created')
@@ -63,6 +67,38 @@ class RequestController extends Controller
             ->get();
         // var_dump($requests);
         return response()->json(ApiResponse::success('Pending requests for your role', $requests));
+    }
+
+    public function getMyPending(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id, $authUser->roleId)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $query = RequestModel::with([
+            'requestType',
+            'user',
+            'reason',
+            'classification',
+            'workflowCurrentStep.assignedRole',
+            'workflowCurrentStep.assignedUser',
+        ])
+            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser) {
+                $workflowQuery->where('assignedUserId', (int) $authUser->id)
+                    ->where('status', 'pending');
+            })
+            ->orderBy('id');
+
+        if ($request->filled('requestTypeId')) {
+            $query->where('requestTypeId', (int) $request->input('requestTypeId'));
+        }
+
+        $perPage = $request->query('perPage');
+        $requests = $perPage ? $query->paginate((int) $perPage) : $query->get();
+
+        return response()->json(ApiResponse::success('Pending requests for current user', $requests));
     }
 
     public function getAll()
@@ -86,6 +122,7 @@ class RequestController extends Controller
             'reason',
             'classification',
             'workflowCurrentStep.assignedRole',
+            'workflowCurrentStep.assignedUser',
         ])->orderBy('id')
             ->where('requestTypeId', $id)
             ->paginate($perPage);
@@ -215,11 +252,11 @@ class RequestController extends Controller
                     ];
                 }
 
-                if ((int) $authUser->roleId !== (int) $currentStep->assignedRoleId) {
+                if ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id) {
                     return [
                         'ok' => false,
                         'status' => 403,
-                        'payload' => ApiResponse::error('No tienes permisos para aprobar esta solicitud en el paso actual', null, 403),
+                        'payload' => ApiResponse::error('No tienes permisos para aprobar esta solicitud en el paso actual (asignación por usuario)', null, 403),
                     ];
                 }
 
@@ -281,10 +318,13 @@ class RequestController extends Controller
                     ];
                 }
 
+                $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
+
                 $nextRequestStep = WorkflowRequestStep::create([
                     'requestId' => $requestId,
                     'workflowStepId' => $nextStep->id,
                     'assignedRoleId' => $nextStep->roleId,
+                    'assignedUserId' => $nextAssignedUserId,
                     'status' => 'pending',
                     'startedAt' => now(),
                 ]);
@@ -295,6 +335,7 @@ class RequestController extends Controller
                         'workflowId' => $currentStep->workflowId,
                         'workflowStepId' => $nextStep->id,
                         'assignedRoleId' => $nextStep->roleId,
+                        'assignedUserId' => $nextAssignedUserId,
                         'status' => 'pending',
                     ]
                 );
@@ -361,11 +402,11 @@ class RequestController extends Controller
                 ];
             }
 
-            if ((int) $authUser->roleId !== (int) $currentStep->assignedRoleId) {
+            if ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id) {
                 return [
                     'ok' => false,
                     'status' => 403,
-                    'payload' => ApiResponse::error('No tienes permisos para rechazar esta solicitud en el paso actual', null, 403),
+                    'payload' => ApiResponse::error('No tienes permisos para rechazar esta solicitud en el paso actual (asignación por usuario)', null, 403),
                 ];
             }
 
@@ -427,10 +468,13 @@ class RequestController extends Controller
                 ];
             }
 
+            $previousAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $previousStep);
+
             $previousRequestStep = WorkflowRequestStep::create([
                 'requestId' => $requestId,
                 'workflowStepId' => $previousStep->id,
                 'assignedRoleId' => $previousStep->roleId,
+                'assignedUserId' => $previousAssignedUserId,
                 'status' => 'pending',
                 'startedAt' => now(),
             ]);
@@ -441,6 +485,7 @@ class RequestController extends Controller
                     'workflowId' => $currentStep->workflowId,
                     'workflowStepId' => $previousStep->id,
                     'assignedRoleId' => $previousStep->roleId,
+                    'assignedUserId' => $previousAssignedUserId,
                     'status' => 'pending',
                 ]
             );
@@ -517,6 +562,7 @@ class RequestController extends Controller
             'requestId' => $requestModel->id,
             'workflowStepId' => $initialStep->id,
             'assignedRoleId' => $initialStep->roleId,
+            'assignedUserId' => $this->resolveAssignedUserIdForStep($requestModel, $initialStep),
             'status' => 'pending',
             'startedAt' => now(),
         ]);
@@ -527,6 +573,7 @@ class RequestController extends Controller
                 'workflowId' => $workflow->id,
                 'workflowStepId' => $initialStep->id,
                 'assignedRoleId' => $initialStep->roleId,
+                'assignedUserId' => $this->resolveAssignedUserIdForStep($requestModel, $initialStep),
                 'status' => 'pending',
             ]
         );
@@ -625,6 +672,119 @@ class RequestController extends Controller
             '!=', '<>' => $leftString !== $rightString,
             default => false,
         };
+    }
+
+    private function resolveAssignedUserIdForStep(RequestModel $requestModel, WorkflowStep $step): ?int
+    {
+        $step->loadMissing('role');
+        $roleName = mb_strtoupper((string) optional($step->role)->roleName);
+
+        if (str_contains($roleName, 'CS LEADER')) {
+            $userId = $this->resolveCsLeaderAssignedUserId($requestModel);
+            if ($userId !== null) {
+                return $userId;
+            }
+        }
+
+        if (str_contains($roleName, 'MANAGER')) {
+            $userId = $this->resolveManagerAssignedUserId($requestModel);
+            if ($userId !== null) {
+                return $userId;
+            }
+        }
+
+        return $this->resolveFirstUserByRoleId((int) $step->roleId);
+    }
+
+    private function resolveManagerAssignedUserId(RequestModel $requestModel): ?int
+    {
+        $customerId = (int) ($requestModel->customerId ?? 0);
+        if ($customerId <= 0) {
+            return null;
+        }
+
+        $customer = Customer::query()->where('idClient', $customerId)->first();
+        $candidateUserId = $customer?->salesManagerId ? (int) $customer->salesManagerId : null;
+
+        if ($candidateUserId !== null && $this->isActiveUser($candidateUserId)) {
+            return $candidateUserId;
+        }
+
+        if (
+            Schema::hasTable('clientes_tme700618rc7_ext')
+            && Schema::hasColumn('clientes_tme700618rc7_ext', 'idCliente')
+            && Schema::hasColumn('clientes_tme700618rc7_ext', 'salesManagerId')
+        ) {
+            $candidateUserId = DB::table('clientes_tme700618rc7_ext')
+                ->where('idCliente', $customerId)
+                ->value('salesManagerId');
+
+            if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
+                return (int) $candidateUserId;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveCsLeaderAssignedUserId(RequestModel $requestModel): ?int
+    {
+        $creatorUserId = (int) ($requestModel->userId ?? 0);
+        if ($creatorUserId <= 0) {
+            return null;
+        }
+
+        $leaderUserId = UserAssignment::query()
+            ->where('assignedUserId', $creatorUserId)
+            ->where('isActive', true)
+            ->orderBy('id')
+            ->value('leaderUserId');
+
+        if ($leaderUserId === null) {
+            return null;
+        }
+
+        $leader = User::with('role')
+            ->where('id', (int) $leaderUserId)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->first();
+
+        if (!$leader) {
+            return null;
+        }
+
+        $leaderRoleName = mb_strtoupper((string) optional($leader->role)->roleName);
+        if (!str_contains($leaderRoleName, 'CS LEADER')) {
+            return null;
+        }
+
+        return (int) $leader->id;
+    }
+
+    private function resolveFirstUserByRoleId(int $roleId): ?int
+    {
+        if ($roleId <= 0) {
+            return null;
+        }
+
+        $user = User::query()
+            ->where('roleId', $roleId)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->orderBy('id')
+            ->first();
+
+        return $user ? (int) $user->id : null;
+    }
+
+    private function isActiveUser(int $userId): bool
+    {
+        return User::query()
+            ->where('id', $userId)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->exists();
     }
 
     public function saveDraft(Request $request)
@@ -776,4 +936,5 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Error al obtener borradores', ['error' => $e->getMessage()], 500), 500);
         }
     }
+
 }
