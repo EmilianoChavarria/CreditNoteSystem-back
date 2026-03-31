@@ -65,4 +65,28 @@ class User extends Authenticatable
     {
         return $this->hasOne(UserSecurity::class, 'userId');
     }
+
+    public function leaderAssignments()
+    {
+        return $this->hasMany(UserAssignment::class, 'leaderUserId');
+    }
+
+    public function assignedByLeaders()
+    {
+        return $this->hasMany(UserAssignment::class, 'assignedUserId');
+    }
+
+    public function assignedUsers()
+    {
+        return $this->belongsToMany(User::class, 'userAssignments', 'leaderUserId', 'assignedUserId')
+            ->withPivot(['id', 'isActive', 'createdAt', 'updatedAt'])
+            ->withTimestamps('createdAt', 'updatedAt');
+    }
+
+    public function leaders()
+    {
+        return $this->belongsToMany(User::class, 'userAssignments', 'assignedUserId', 'leaderUserId')
+            ->withPivot(['id', 'isActive', 'createdAt', 'updatedAt'])
+            ->withTimestamps('createdAt', 'updatedAt');
+    }
 }
