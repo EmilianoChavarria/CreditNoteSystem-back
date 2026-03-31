@@ -28,6 +28,7 @@ class RequestHistoryService
             'workflowStep:id,workflowId,stepName,stepOrder,roleId,isInitialStep,isFinalStep',
             'workflowStep.role:id,roleName',
             'assignedRole:id,roleName',
+            'assignedUser:id,fullName,email,roleId',
         ])->where('requestId', $requestId)->first();
 
         if (!$currentStep) {
@@ -54,6 +55,7 @@ class RequestHistoryService
         $requestSteps = WorkflowRequestStep::with([
             'workflowStep:id,workflowId,stepName,stepOrder,roleId,isInitialStep,isFinalStep',
             'assignedRole:id,roleName',
+            'assignedUser:id,fullName,email,roleId',
         ])
             ->where('requestId', $requestId)
             ->orderBy('startedAt')
@@ -63,7 +65,8 @@ class RequestHistoryService
         $history = WorkflowRequestHistory::with([
             'workflowStep:id,workflowId,stepName,stepOrder,roleId,isInitialStep,isFinalStep',
             'actionUser:id,fullName,email,roleId',
-            'requestStep:id,requestId,workflowStepId,assignedRoleId,status,startedAt,completedAt',
+            'requestStep:id,requestId,workflowStepId,assignedRoleId,assignedUserId,status,startedAt,completedAt',
+            'requestStep.assignedUser:id,fullName,email,roleId',
         ])
             ->where('requestId', $requestId)
             ->orderBy('createdAt')
