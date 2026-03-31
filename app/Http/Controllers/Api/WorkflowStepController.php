@@ -65,6 +65,7 @@ class WorkflowStepController extends Controller
                     ->orderBy('stepOrder');
             },
         ])
+            ->where('isActive', 1)
             ->orderBy('id')
             ->get();
 
