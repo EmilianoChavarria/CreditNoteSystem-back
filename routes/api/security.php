@@ -10,10 +10,10 @@ Route::middleware(['jwt'])->group(function () {
 });
 
 // Rutas de requisitos de contraseña
+Route::post('password-requirements/validate', [PasswordRequirementsController::class, 'validatePassword']);
 Route::middleware('jwt')->group(function () {
     Route::get('password-requirements', [PasswordRequirementsController::class, 'getRequirements']);
     Route::get('password-requirements/formatted', [PasswordRequirementsController::class, 'getRequirementsFormatted']);
-    Route::post('password-requirements/validate', [PasswordRequirementsController::class, 'validatePassword']);
 });
 
 Route::middleware(['jwt'])->group(function () {
