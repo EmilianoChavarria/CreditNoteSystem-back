@@ -31,6 +31,29 @@ class UserController extends Controller
 
         return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $users));
     }
+    
+    public function me(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $user = User::with([
+            'role',
+            'supervisor',
+            'subordinates',
+            'requests',
+            'security',
+        ])->find((int) $authUser->id);
+
+        if (!$user) {
+            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+        }
+
+        return response()->json(ApiResponse::success('Perfil del usuario autenticado', $user));
+    }
 
     public function getAll()
     {
