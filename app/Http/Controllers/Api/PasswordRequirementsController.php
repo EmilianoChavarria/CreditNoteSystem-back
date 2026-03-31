@@ -36,12 +36,12 @@ class PasswordRequirementsController extends Controller
      * Actualizar los requisitos de contraseña (solo admin)
      */
     public function updateRequirements(Request $request)
-    {   
+    {
 
         $existRequirements = $this->passwordService->getRequirements();
 
         $admin = $request->attributes->get('authUser');
-        
+
         if (!$admin || $admin->roleId != 1) { // Ajusta la validación de rol según tu implementación
             return response()->json(ApiResponse::error('No autorizado. Solo administradores pueden actualizar requisitos', null, 403), 403);
         }
@@ -114,13 +114,7 @@ class PasswordRequirementsController extends Controller
 
         return response()->json(ApiResponse::error(
             'La contraseña no cumple con los requisitos',
-            [
-                'isValid' => false,
-                'requirements' => $requirements,
-            ],
-            [
-                'errors' => $errors
-            ],
+            ['isValid' => false, 'requirements' => $requirements, 'errors' => $errors],
             422
         ), 422);
     }
