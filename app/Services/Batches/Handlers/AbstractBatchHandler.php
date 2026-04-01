@@ -65,6 +65,39 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
         return (float) $normalized;
     }
 
+    protected function dateFromMixed(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $stringValue = (string) $value;
+
+        // Intentar parsear como DD/MM/YYYY
+        if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $stringValue, $matches)) {
+            $day = (int) $matches[1];
+            $month = (int) $matches[2];
+            $year = (int) $matches[3];
+
+            if (checkdate($month, $day, $year)) {
+                return sprintf('%04d-%02d-%02d', $year, $month, $day);
+            }
+        }
+
+        // Si ya viene en YYYY-MM-DD, devolverlo
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $stringValue)) {
+            return $stringValue;
+        }
+
+        // Intentar otros formatos comunes
+        $timestamp = strtotime($stringValue);
+        if ($timestamp !== false) {
+            return date('Y-m-d', $timestamp);
+        }
+
+        return null;
+    }
+
     /**
      * @param array<string, mixed> $file
      */
