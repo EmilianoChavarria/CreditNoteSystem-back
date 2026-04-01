@@ -18,6 +18,7 @@ use App\Services\Batches\Handlers\UsersBatchHandler;
 use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -65,7 +66,7 @@ class BatchService
             throw new RuntimeException('No se pudo identificar el usuario autenticado.');
         }
 
-        $storedFiles = $this->storeFiles($request->normalizedFiles());
+        $storedFiles = $this->storeFiles($request->normalizedFiles(), $batchType);
 
         $context = new BatchInputContext(
             authUserId: (int) $authUser->id,
@@ -254,19 +255,28 @@ class BatchService
      * @param array<int, UploadedFile> $files
      * @return array<int, array<string, mixed>>
      */
-    private function storeFiles(array $files): array
+    private function storeFiles(array $files, string $batchType): array
     {
         $stored = [];
 
+        $targetDisk = 'local';
+        $targetBasePath = 'batches/' . now()->format('Y/m/d');
+
+        if ($batchType === 'uploadSupport') {
+            $targetDisk = (string) Config::get('bulk_upload.upload_support.disk', 'public');
+            $targetBasePath = trim((string) Config::get('bulk_upload.upload_support.path', 'request-support'), '/');
+        }
+
         foreach ($files as $file) {
             $extension = strtolower($file->getClientOriginalExtension());
-            $path = 'batches/' . now()->format('Y/m/d') . '/' . Str::uuid() . '.' . $extension;
+            $path = $targetBasePath . '/' . now()->format('Y/m/d') . '/' . Str::uuid() . '.' . $extension;
 
-            Storage::disk('local')->put($path, file_get_contents($file->getRealPath()));
+            Storage::disk($targetDisk)->put($path, file_get_contents($file->getRealPath()));
 
             $stored[] = [
                 'originalName' => $file->getClientOriginalName(),
                 'storedPath' => $path,
+                'disk' => $targetDisk,
                 'extension' => $extension,
                 'size' => $file->getSize(),
             ];
