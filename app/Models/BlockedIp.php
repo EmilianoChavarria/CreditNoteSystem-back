@@ -10,6 +10,9 @@ class BlockedIp extends Model
     use HasFactory;
 
     protected $table = 'blockedIps';
+    protected $primaryKey = 'ipAddress';
+    public $incrementing = false;
+    protected $keyType = 'string';
     public $timestamps = false;
 
     protected $fillable = [
