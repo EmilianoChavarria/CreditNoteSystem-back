@@ -10,6 +10,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/pending/me', [RequestController::class, 'getMyPending']);
     Route::get('requests/pending/{id}', [RequestController::class, 'getPendingByRole']);
     Route::get('requests/{requestId}/history', [RequestController::class, 'getRequestHistoryById']);
+    Route::get('requests/{requestId}/attachments', [RequestController::class, 'getAttachmentsByRequestId']);
     Route::get('requests/reasons', [RequestController::class, 'getAllReasons']);
     Route::get('requests/next-number/{requestTypeId}', [RequestController::class, 'getNextRequestNumber']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);

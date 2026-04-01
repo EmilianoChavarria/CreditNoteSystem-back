@@ -11,6 +11,8 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('users/assignment/assignable-users', [UserAssignmentController::class, 'assignableUsers']);
     Route::get('users/managers', [UserController::class, 'usersBySalesAndManagerRoles']);
     Route::get('users/me', [UserController::class, 'me']);
+    Route::patch('users/me/password', [UserController::class, 'changePassword']);
+    Route::patch('users/{id}/password', [UserController::class, 'changePasswordByUserId']);
     Route::get('users/{leaderUserId}/assignments', [UserAssignmentController::class, 'index']);
     Route::put('users/assignments', [UserAssignmentController::class, 'upsert']);
     Route::delete('users/{leaderUserId}/assignments/{assignedUserId}', [UserAssignmentController::class, 'destroy']);
