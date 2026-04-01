@@ -99,6 +99,14 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         $payload['hasReplenishmentIva'] = $this->boolFromMixed($payload['hasReplenishmentIva'] ?? null, false);
         $payload['hasWarehouseIva'] = $this->boolFromMixed($payload['hasWarehouseIva'] ?? null, false);
 
+        // Convertir fechas a formato YYYY-MM-DD
+        if (isset($payload['requestDate'])) {
+            $payload['requestDate'] = $this->dateFromMixed($payload['requestDate']);
+        }
+        if (isset($payload['invoiceDate'])) {
+            $payload['invoiceDate'] = $this->dateFromMixed($payload['invoiceDate']);
+        }
+
         foreach (['exchangeRate', 'amount', 'replenishmentAmount', 'warehouseAmount'] as $numericField) {
             if (array_key_exists($numericField, $payload)) {
                 $payload[$numericField] = $this->floatFromMixed($payload[$numericField], 0);
