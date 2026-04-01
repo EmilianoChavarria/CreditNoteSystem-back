@@ -48,13 +48,17 @@ class StoreBatchRequest extends FormRequest
                 return;
             }
 
+            if ($batchType === 'uploadSupport' && count($files) > 10) {
+                $validator->errors()->add('file', 'En uploadSupport solo se permiten hasta 10 archivos por carga.');
+            }
+
             if (!in_array($batchType, ['sapScreen', 'uploadSupport'], true) && count($files) !== 1) {
                 $validator->errors()->add('file', 'Este tipo de carga permite únicamente un archivo.');
             }
 
             $allowedExtensions = in_array($batchType, ['sapScreen', 'uploadSupport'], true)
-                ? ['pdf', 'png', 'jpg', 'jpeg', 'csv', 'xml', 'xls', 'xlsx', 'txt']
-                : ['csv', 'xml', 'xls', 'xlsx', 'txt'];
+                ? ['pdf', 'png', 'jpg', 'jpeg', 'csv', 'xml', 'xls', 'xlsx', 'txt', 'docx']
+                : ['csv', 'xml', 'xls', 'xlsx', 'txt', 'docx'];
 
             foreach ($files as $index => $file) {
                 $extension = strtolower($file->getClientOriginalExtension());
