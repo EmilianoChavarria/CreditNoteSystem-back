@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Events\SocketMessageSent;
 use App\Http\Requests\Batches\StoreBatchRequest;
 use App\Jobs\ProcessBatchJob;
 use App\Mail\BatchFinishedMail;
@@ -16,6 +15,7 @@ use App\Services\Batches\Handlers\OrderNumbersBatchHandler;
 use App\Services\Batches\Handlers\SapScreenBatchHandler;
 use App\Services\Batches\Handlers\UploadSupportBatchHandler;
 use App\Services\Batches\Handlers\UsersBatchHandler;
+use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -40,6 +40,7 @@ class BatchService
         UploadSupportBatchHandler $uploadSupportBatchHandler,
         NewRequestBatchHandler $newRequestBatchHandler,
         UsersBatchHandler $usersBatchHandler,
+        private readonly NotificationService $notificationService,
     ) {
         $allHandlers = [
             $sapScreenBatchHandler,
@@ -192,9 +193,12 @@ class BatchService
             ? $item->rawData
             : (json_decode((string) $item->rawData, true) ?: []);
 
+        $batchId = (int) $item->batchId;
+        $shouldNotifyBatchFinished = false;
+
         try {
-            DB::transaction(function () use ($item, $row) {
-                $batch = Batch::query()->lockForUpdate()->find($item->batchId);
+            DB::transaction(function () use ($item, $row, $batchId, &$shouldNotifyBatchFinished) {
+                $batch = Batch::query()->lockForUpdate()->find($batchId);
                 if (!$batch) {
                     throw new RuntimeException('Batch no encontrado.');
                 }
@@ -214,18 +218,26 @@ class BatchService
                     'processedAt' => now(),
                 ]);
 
-                $this->advanceBatchCounters((int) $batch->id, false);
+                $shouldNotifyBatchFinished = $this->advanceBatchCounters($batchId, false);
             });
         } catch (Throwable $e) {
-            DB::transaction(function () use ($item, $e) {
+            DB::transaction(function () use ($item, $e, $batchId, &$shouldNotifyBatchFinished) {
                 BatchItem::where('id', $item->id)->update([
                     'status' => 'error',
                     'errorLog' => $this->buildErrorLog($e),
                     'processedAt' => now(),
                 ]);
 
-                $this->advanceBatchCounters((int) $item->batchId, true);
+                $shouldNotifyBatchFinished = $this->advanceBatchCounters($batchId, true);
             });
+        }
+
+        if ($shouldNotifyBatchFinished) {
+            $finishedBatch = Batch::query()->find($batchId);
+
+            if ($finishedBatch) {
+                $this->notifyBatchFinished($finishedBatch);
+            }
         }
     }
 
@@ -263,11 +275,11 @@ class BatchService
         return $stored;
     }
 
-    private function advanceBatchCounters(int $batchId, bool $isError): void
+    private function advanceBatchCounters(int $batchId, bool $isError): bool
     {
         $batch = Batch::query()->lockForUpdate()->find($batchId);
         if (!$batch) {
-            return;
+            return false;
         }
 
         $previousStatus = (string) $batch->status;
@@ -291,36 +303,14 @@ class BatchService
             !in_array($previousStatus, ['completed', 'failed'], true)
             && in_array((string) $batch->status, ['completed', 'failed'], true);
 
-        if ($isFinalTransition) {
-            $this->notifyBatchFinished($batch);
-        }
+        return $isFinalTransition;
     }
 
     private function notifyBatchFinished(Batch $batch): void
     {
         $status = (string) $batch->status;
-        $isCompleted = $status === 'completed';
 
-        $payload = [
-            'title' => $isCompleted ? 'Batch procesado correctamente' : 'Batch procesado con errores',
-            'message' => $isCompleted
-                ? "El batch #{$batch->id} finalizo exitosamente."
-                : "El batch #{$batch->id} finalizo con errores.",
-            'type' => $isCompleted ? 'success' : 'error',
-            'event' => 'batch.finished',
-            'batch' => [
-                'id' => (int) $batch->id,
-                'batchType' => (string) $batch->batchType,
-                'status' => $status,
-                'totalRecords' => (int) $batch->totalRecords,
-                'processedRecords' => (int) $batch->processedRecords,
-                'errorRecords' => (int) $batch->errorRecords,
-                'processingRecords' => (int) $batch->processingRecords,
-            ],
-            'sentAt' => now()->toIso8601String(),
-        ];
-
-        broadcast(new SocketMessageSent($payload));
+        $this->notificationService->createBatchFinishedNotification($batch);
 
         $batchWithUser = Batch::query()
             ->with('user:id,fullName,email')
