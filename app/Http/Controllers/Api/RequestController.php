@@ -17,6 +17,7 @@ use App\Models\WorkflowStep;
 use App\Models\WorkflowStepTransition;
 use App\Services\RequestHistoryService;
 use App\Services\RequestNumberService;
+use App\Services\NotificationService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -29,7 +30,8 @@ class RequestController extends Controller
 {
     public function __construct(
         private readonly RequestNumberService $requestNumberService,
-        private readonly RequestHistoryService $requestHistoryService
+        private readonly RequestHistoryService $requestHistoryService,
+        private readonly NotificationService $notificationService
     )
     {
     }
@@ -211,6 +213,8 @@ class RequestController extends Controller
             return $createdRequest;
         });
 
+        $this->notifyAssignedUser($created->id);
+
 
         return response()->json(ApiResponse::success('Request creado', $created->refresh(), 201), 201);
     }
@@ -359,6 +363,10 @@ class RequestController extends Controller
                     'payload' => ApiResponse::success('Solicitud aprobada y enviada al siguiente paso', $requestModel->refresh()),
                 ];
             });
+
+            if ($result['ok']) {
+                $this->notifyAssignedUser($requestId);
+            }
 
             return response()->json($result['payload'], $result['status']);
         } catch (ValidationException $e) {
@@ -776,6 +784,28 @@ class RequestController extends Controller
             ->first();
 
         return $user ? (int) $user->id : null;
+    }
+
+    private function notifyAssignedUser(int $requestId): void
+    {
+        $currentStep = WorkflowRequestCurrentStep::query()
+            ->where('requestId', $requestId)
+            ->where('status', 'pending')
+            ->first();
+
+        if (!$currentStep || $currentStep->assignedUserId === null) {
+            return;
+        }
+
+        $requestModel = RequestModel::query()
+            ->with('requestType')
+            ->find($requestId);
+
+        if (!$requestModel) {
+            return;
+        }
+
+        $this->notificationService->createAssignedRequestNotification($requestModel, (int) $currentStep->assignedUserId);
     }
 
     private function isActiveUser(int $userId): bool
