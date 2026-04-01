@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'upload_support' => [
+        // Hoy usamos "public" para exponer archivos; en futuro puede cambiarse a "s3" por env.
+        'disk' => env('BULK_UPLOAD_SUPPORT_DISK', 'public'),
+        'path' => env('BULK_UPLOAD_SUPPORT_PATH', 'request-support'),
+    ],
+
     'new_request' => [
         'modules' => [
             1 => [
