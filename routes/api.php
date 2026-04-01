@@ -14,6 +14,7 @@ require __DIR__.'/api/requestTypePermissions.php';
 require __DIR__.'/api/actions.php';
 require __DIR__.'/api/modules.php';
 require __DIR__.'/api/users.php';
+require __DIR__.'/api/notifications.php';
 require __DIR__.'/api/security.php';
 require __DIR__.'/api/customers.php';
 require __DIR__.'/api/classifications.php';
