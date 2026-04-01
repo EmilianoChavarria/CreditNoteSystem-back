@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Request as RequestModel;
+use App\Models\RequestAttachment;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\User;
@@ -45,6 +46,26 @@ class RequestController extends Controller
         } catch (ModelNotFoundException $e) {
             return response()->json(ApiResponse::error('Request no encontrada', null, 404), 404);
         }
+    }
+
+    public function getAttachmentsByRequestId(int $requestId)
+    {
+        $requestModel = RequestModel::query()->find($requestId);
+
+        if (!$requestModel) {
+            return response()->json(ApiResponse::error('Request no encontrada', null, 404), 404);
+        }
+
+        $attachments = RequestAttachment::query()
+            ->where('requestId', $requestId)
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json(ApiResponse::success('Adjuntos de la solicitud', [
+            'requestId' => $requestId,
+            'total' => $attachments->count(),
+            'attachments' => $attachments,
+        ]));
     }
 
     public function getPendingByRole(Request $request, int $id)
