@@ -22,6 +22,7 @@ use App\Services\NotificationService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -58,6 +59,14 @@ class RequestController extends Controller
 
         $attachments = RequestAttachment::query()
             ->where('requestId', $requestId)
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'isActive'),
+                fn ($query) => $query->where('isActive', true)
+            )
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'deletedAt'),
+                fn ($query) => $query->whereNull('deletedAt')
+            )
             ->orderByDesc('id')
             ->get();
 
@@ -65,6 +74,123 @@ class RequestController extends Controller
             'requestId' => $requestId,
             'total' => $attachments->count(),
             'attachments' => $attachments,
+        ]));
+    }
+
+    public function getAttachmentById(int $attachmentId)
+    {
+        $attachment = RequestAttachment::query()
+            ->where('id', $attachmentId)
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'isActive'),
+                fn ($query) => $query->where('isActive', true)
+            )
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'deletedAt'),
+                fn ($query) => $query->whereNull('deletedAt')
+            )
+            ->first();
+
+        if (!$attachment) {
+            return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
+        }
+
+        $path = (string) ($attachment->filePath ?? '');
+        if ($path === '') {
+            return response()->json(ApiResponse::error('Adjunto sin ruta de archivo', null, 422), 422);
+        }
+
+        $diskFound = null;
+        $publicUrl = null;
+
+        foreach (['public', 'local'] as $disk) {
+            try {
+                if (Storage::disk($disk)->exists($path)) {
+                    $diskFound = $disk;
+                    $appUrl = rtrim((string) config('app.url', 'http://localhost'), '/');
+                    $publicUrl = $appUrl . '/storage/' . ltrim($path, '/');
+                    break;
+                }
+            } catch (\Throwable $e) {
+                // probar siguiente disco
+            }
+        }
+
+        if ($publicUrl === null) {
+            return response()->json(ApiResponse::error('No se pudo resolver la URL del adjunto', [
+                'attachmentId' => $attachmentId,
+                'filePath' => $path,
+            ], 500), 500);
+        }
+
+        return response()->json(ApiResponse::success('Adjunto', [
+            'attachment' => $attachment,
+            'fileUrl' => $publicUrl,
+            'disk' => $diskFound,
+        ]));
+    }
+
+    public function deleteAttachmentById(int $requestId, int $attachmentId)
+    {
+        $requestModel = RequestModel::query()->find($requestId);
+
+        if (!$requestModel) {
+            return response()->json(ApiResponse::error('Request no encontrada', null, 404), 404);
+        }
+
+        $attachmentQuery = RequestAttachment::query()
+            ->where('id', $attachmentId)
+            ->where('requestId', $requestId)
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'isActive'),
+                fn ($query) => $query->where('isActive', true)
+            )
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'deletedAt'),
+                fn ($query) => $query->whereNull('deletedAt')
+            );
+
+        $attachment = $attachmentQuery->first();
+
+        if (!$attachment) {
+            return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
+        }
+
+        $hasIsActive = Schema::hasColumn((new RequestAttachment())->getTable(), 'isActive');
+        $hasDeletedAt = Schema::hasColumn((new RequestAttachment())->getTable(), 'deletedAt');
+
+        if (!$hasIsActive && !$hasDeletedAt) {
+            RequestAttachment::query()
+                ->where('id', $attachmentId)
+                ->where('requestId', $requestId)
+                ->delete();
+
+            return response()->json(ApiResponse::success('Adjunto eliminado correctamente', [
+                'requestId' => $requestId,
+                'attachmentId' => $attachmentId,
+                'logicalDelete' => false,
+            ]));
+        }
+
+        $updateData = [];
+
+        if ($hasIsActive) {
+            $updateData['isActive'] = false;
+        }
+
+        if ($hasDeletedAt) {
+            $updateData['deletedAt'] = now();
+        }
+
+        RequestAttachment::query()
+            ->where('id', $attachmentId)
+            ->where('requestId', $requestId)
+            ->update($updateData);
+
+        return response()->json(ApiResponse::success('Adjunto eliminado correctamente', [
+            'requestId' => $requestId,
+            'attachmentId' => $attachmentId,
+            'logicalDelete' => true,
         ]));
     }
 
