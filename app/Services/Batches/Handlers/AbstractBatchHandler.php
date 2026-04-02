@@ -109,6 +109,8 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
             'fileSize' => (int) ($file['size'] ?? 0),
             'filePath' => (string) ($file['storedPath'] ?? ''),
             'fileExtension' => (string) ($file['extension'] ?? ''),
+            'isActive' => true,
+            'deletedAt' => null,
         ]);
     }
 
