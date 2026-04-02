@@ -23,6 +23,7 @@ use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -95,39 +96,89 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
         }
 
+        $publicUrl = URL::temporarySignedRoute(
+            'attachments.preview',
+            now()->addMinutes(15),
+            ['attachmentId' => (int) $attachment->id]
+        );
+
+        return response()->json(ApiResponse::success('Adjunto', [
+            'attachment' => $attachment,
+            'fileUrl' => $publicUrl,
+        ]));
+    }
+
+    public function getAttachmentPreviewLinkById(int $attachmentId)
+    {
+        $attachment = RequestAttachment::query()
+            ->where('id', $attachmentId)
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'isActive'),
+                fn ($query) => $query->where('isActive', true)
+            )
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'deletedAt'),
+                fn ($query) => $query->whereNull('deletedAt')
+            )
+            ->first();
+
+        if (!$attachment) {
+            return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
+        }
+
+        $previewUrl = URL::temporarySignedRoute(
+            'attachments.preview',
+            now()->addMinutes(15),
+            ['attachmentId' => (int) $attachment->id]
+        );
+
+        return response()->json(ApiResponse::success('Link de vista previa del adjunto', [
+            'attachmentId' => (int) $attachment->id,
+            'fileName' => (string) $attachment->fileName,
+            'previewUrl' => $previewUrl,
+        ]));
+    }
+
+    public function previewAttachment(int $attachmentId, Request $request)
+    {
+        $attachment = RequestAttachment::query()
+            ->where('id', $attachmentId)
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'isActive'),
+                fn ($query) => $query->where('isActive', true)
+            )
+            ->when(
+                Schema::hasColumn((new RequestAttachment())->getTable(), 'deletedAt'),
+                fn ($query) => $query->whereNull('deletedAt')
+            )
+            ->first();
+
+        if (!$attachment) {
+            return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
+        }
+
         $path = (string) ($attachment->filePath ?? '');
         if ($path === '') {
             return response()->json(ApiResponse::error('Adjunto sin ruta de archivo', null, 422), 422);
         }
 
-        $diskFound = null;
-        $publicUrl = null;
-
         foreach (['public', 'local'] as $disk) {
             try {
                 if (Storage::disk($disk)->exists($path)) {
-                    $diskFound = $disk;
-                    $appUrl = rtrim((string) config('app.url', 'http://localhost'), '/');
-                    $publicUrl = $appUrl . '/storage/' . ltrim($path, '/');
-                    break;
+                    $absolutePath = Storage::disk($disk)->path($path);
+
+                    return response()->file($absolutePath, [
+                        'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+                    ]);
                 }
             } catch (\Throwable $e) {
-                // probar siguiente disco
+                // intentar siguiente disco
             }
         }
 
-        if ($publicUrl === null) {
-            return response()->json(ApiResponse::error('No se pudo resolver la URL del adjunto', [
-                'attachmentId' => $attachmentId,
-                'filePath' => $path,
-            ], 500), 500);
-        }
-
-        return response()->json(ApiResponse::success('Adjunto', [
-            'attachment' => $attachment,
-            'fileUrl' => $publicUrl,
-            'disk' => $diskFound,
-        ]));
+        return response()->json(ApiResponse::error('No se encontró el archivo en almacenamiento', [
+            'attachmentId' => $attachmentId,
+        ], 404), 404);
     }
 
     public function deleteAttachmentById(int $requestId, int $attachmentId)
