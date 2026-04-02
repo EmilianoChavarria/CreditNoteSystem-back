@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'sap_screen' => [
+        // Hoy usamos "public" para exponer archivos; en futuro puede cambiarse a "s3" por env.
+        'disk' => env('BULK_SAP_SCREEN_DISK', 'public'),
+        'path' => env('BULK_SAP_SCREEN_PATH', 'sap-screen'),
+    ],
+
     'upload_support' => [
         // Hoy usamos "public" para exponer archivos; en futuro puede cambiarse a "s3" por env.
         'disk' => env('BULK_UPLOAD_SUPPORT_DISK', 'public'),
