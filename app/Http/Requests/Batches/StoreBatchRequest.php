@@ -56,9 +56,13 @@ class StoreBatchRequest extends FormRequest
                 $validator->errors()->add('file', 'Este tipo de carga permite únicamente un archivo.');
             }
 
-            $allowedExtensions = in_array($batchType, ['sapScreen', 'uploadSupport'], true)
-                ? ['pdf', 'png', 'jpg', 'jpeg', 'csv', 'xml', 'xls', 'xlsx', 'txt', 'docx']
-                : ['csv', 'xml', 'xls', 'xlsx', 'txt', 'docx'];
+            if ($batchType === 'sapScreen') {
+                    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'doc', 'docx', 'pdf'];
+            } elseif ($batchType === 'uploadSupport') {
+                $allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'csv', 'xml', 'xls', 'xlsx', 'txt', 'docx'];
+            } else {
+                $allowedExtensions = ['csv', 'xml', 'xls', 'xlsx', 'txt', 'docx'];
+            }
 
             foreach ($files as $index => $file) {
                 $extension = strtolower($file->getClientOriginalExtension());
