@@ -5,6 +5,7 @@ namespace App\Services\Batches\Handlers;
 use App\Models\Batch;
 use App\Models\Request as RequestModel;
 use App\Services\Batches\BatchInputContext;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 class SapScreenBatchHandler extends AbstractBatchHandler
@@ -20,13 +21,10 @@ class SapScreenBatchHandler extends AbstractBatchHandler
 
         foreach ($context->storedFiles as $file) {
             $nameWithoutExtension = pathinfo((string) $file['originalName'], PATHINFO_FILENAME);
-            preg_match('/^(\d+)_([A-Za-z0-9\-]+)$/', $nameWithoutExtension, $matches);
 
             $rows[] = [
-                'requestnumber' => $matches[1] ?? null,
-                'creditnumber' => $matches[2] ?? null,
+                'requestNumber' => $nameWithoutExtension,
                 'file' => $file,
-                'formatError' => count($matches) < 3,
             ];
         }
 
@@ -35,28 +33,35 @@ class SapScreenBatchHandler extends AbstractBatchHandler
 
     public function process(array $row, Batch $batch): ?int
     {
-        if (($row['formatError'] ?? false) === true) {
-            throw new RuntimeException('Nombre de archivo inválido. Formato esperado: {requestNumber}_{creditNumber}.pdf');
+        $requestNumber = trim((string) ($row['requestNumber'] ?? ''));
+        if (!$requestNumber) {
+            throw new RuntimeException('Nombre de archivo inválido: no se pudo extraer requestNumber.');
         }
 
-        $data = $this->validateRow([
-            'requestnumber' => $this->value($row, ['requestnumber', 'request_number']),
-        ], [
-            'requestnumber' => ['required', 'integer'],
-        ]);
+        $request = RequestModel::where('requestNumber', $requestNumber)->first();
 
-        $request = RequestModel::where('requestNumber', (int) $data['requestnumber'])->first();
+        if (!$request && is_numeric($requestNumber)) {
+            $request = RequestModel::where('requestNumber', (int) $requestNumber)->first();
+        }
 
         if (!$request) {
-            throw new RuntimeException('No existe request para requestNumber=' . $data['requestnumber']);
+            throw new RuntimeException('Request no encontrada para requestNumber=' . $requestNumber);
         }
 
-        $this->createAttachment($request, (array) ($row['file'] ?? []));
+        $file = (array) ($row['file'] ?? []);
+        $this->createAttachment($request, $file);
 
-        $creditNumber = $this->value($row, ['creditnumber', 'credit_number']);
-        if ($creditNumber !== null && $creditNumber !== '') {
-            $request->update(['creditNumber' => (string) $creditNumber]);
+        $storedPath = (string) ($file['storedPath'] ?? '');
+        $disk = (string) ($file['disk'] ?? 'local');
+
+        try {
+            $fileUrl = Storage::url($storedPath);
+        } catch (\Exception $e) {
+            $appUrl = rtrim((string) config('app.url', 'http://localhost'), '/');
+            $fileUrl = $appUrl . '/storage/' . ltrim($storedPath, '/');
         }
+
+        $request->update(['sapReturnOrder' => $fileUrl]);
 
         return (int) $request->id;
     }
