@@ -12,6 +12,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/{requestId}/history', [RequestController::class, 'getRequestHistoryById']);
     Route::get('requests/{requestId}/attachments', [RequestController::class, 'getAttachmentsByRequestId']);
     Route::get('requests/attachments/{attachmentId}', [RequestController::class, 'getAttachmentById']);
+    Route::get('requests/attachments/{attachmentId}/preview-link', [RequestController::class, 'getAttachmentPreviewLinkById']);
     Route::delete('requests/{requestId}/attachments/{attachmentId}', [RequestController::class, 'deleteAttachmentById']);
     Route::get('requests/reasons', [RequestController::class, 'getAllReasons']);
     Route::get('requests/next-number/{requestTypeId}', [RequestController::class, 'getNextRequestNumber']);
@@ -21,3 +22,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::post('requests/{requestId}/approve', [RequestController::class, 'approve']);
     Route::post('requests/{requestId}/reject', [RequestController::class, 'reject']);
 });
+
+Route::get('attachments/{attachmentId}/preview', [RequestController::class, 'previewAttachment'])
+    ->name('attachments.preview')
+    ->middleware('signed');
