@@ -262,7 +262,10 @@ class BatchService
         $targetDisk = 'local';
         $targetBasePath = 'batches/' . now()->format('Y/m/d');
 
-        if ($batchType === 'uploadSupport') {
+        if ($batchType === 'sapScreen') {
+            $targetDisk = (string) Config::get('bulk_upload.sap_screen.disk', 'public');
+            $targetBasePath = trim((string) Config::get('bulk_upload.sap_screen.path', 'sap-screen'), '/');
+        } elseif ($batchType === 'uploadSupport') {
             $targetDisk = (string) Config::get('bulk_upload.upload_support.disk', 'public');
             $targetBasePath = trim((string) Config::get('bulk_upload.upload_support.path', 'request-support'), '/');
         }
