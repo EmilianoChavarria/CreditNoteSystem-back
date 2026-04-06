@@ -211,17 +211,7 @@ class AuthController extends Controller
         $minutes = (int) config('security.jwt_ttl_minutes', 120);
 
         // IMPORTANTE: 'access_token' es el nombre que usará el navegador
-        $cookie = cookie(
-            'access_token',    // Nombre de la cookie
-            $token,            // Valor del JWT
-            $minutes,          // Tiempo de vida
-            '/',               // Path disponible en toda la app
-            null,              // Dominio (null para actual)
-            config('app.env') === 'production', // Secure: Solo true en producción (HTTPS)
-            true,              // HttpOnly: El cliente (JS) NO puede leerla
-            false,             // Raw
-            'Lax'              // SameSite: Previene ataques CSRF
-        );
+        $cookie = $this->makeAccessTokenCookie($token, $minutes);
 
         // 9. Respuesta final SIN el token en el JSON
         return response()->json(
@@ -268,25 +258,68 @@ class AuthController extends Controller
     public function verify(Request $request)
     {
         $user = $request->attributes->get('authUser');
+        $tokenValid = (bool) $request->attributes->get('authTokenValid', false);
 
-        if (!$user) {
-            return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
+        if ($user && $tokenValid) {
+            $minutes = (int) config('security.jwt_ttl_minutes', 120);
+            $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $user->roleName);
+
+            UserSecurity::where('userId', $user->id)->update([
+                'sessionToken' => $token,
+                'lastActivityAt' => Carbon::now(),
+                'lastKnownIp' => $request->ip(),
+            ]);
+
+            return response()->json(
+                ApiResponse::success('Token renovado', [
+                    'user' => [
+                        'id' => $user->id,
+                        'fullName' => $user->fullName,
+                        'email' => $user->email,
+                        'roleId' => $user->roleId,
+                        'roleName' => $user->roleName,
+                        'preferredLanguage' => $user->preferredLanguage,
+                    ],
+                    'isAuthenticated' => true,
+                    'expiresIn' => $minutes * 60,
+                ], 200),
+                200
+            )->withCookie($this->makeAccessTokenCookie($token, $minutes));
         }
 
+        $this->clearSessionFromToken($request->attributes->get('authToken'));
+
         return response()->json(
-            ApiResponse::success('Cookie válida', [
-                'user' => [
-                    'id' => $user->id,
-                    'fullName' => $user->fullName,
-                    'email' => $user->email,
-                    'roleId' => $user->roleId,
-                    'roleName' => $user->roleName,
-                    'preferredLanguage' => $user->preferredLanguage,
-                ],
-                'isAuthenticated' => true,
-            ], 200),
-            200
+            ApiResponse::error('Sesión no válida', null, 401),
+            401
+        )->withoutCookie('access_token');
+    }
+
+    private function makeAccessTokenCookie(string $token, int $minutes)
+    {
+        return cookie(
+            'access_token',
+            $token,
+            $minutes,
+            '/',
+            null,
+            config('app.env') === 'production',
+            true,
+            false,
+            'Lax'
         );
+    }
+
+    private function clearSessionFromToken(?string $token): void
+    {
+        if (!$token) {
+            return;
+        }
+
+        UserSecurity::where('sessionToken', $token)->update([
+            'sessionToken' => null,
+            'lastActivityAt' => Carbon::now(),
+        ]);
     }
 
     private function getOrCreateUserSecurity(int $userId): object
