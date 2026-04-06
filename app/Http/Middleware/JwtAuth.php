@@ -15,14 +15,29 @@ class JwtAuth
     public function handle(Request $request, Closure $next)
     {
         $token = $this->extractToken($request);
+        $isVerifyRoute = $this->isVerifyRoute($request);
 
         if (!$token) {
+            if ($isVerifyRoute) {
+                $request->attributes->set('authTokenValid', false);
+                $request->attributes->set('authToken', null);
+
+                return $next($request);
+            }
+
             return response()->json(ApiResponse::error('Token no proporcionado', null, 401), 401);
         }
 
         try {
             $jwt = app(JwtService::class)->decodeToken($token);
         } catch (Throwable) {
+            if ($isVerifyRoute) {
+                $request->attributes->set('authTokenValid', false);
+                $request->attributes->set('authToken', $token);
+
+                return $next($request);
+            }
+
             return response()->json(ApiResponse::error('Token inválido o expirado', null, 401), 401);
         }
 
@@ -33,16 +48,37 @@ class JwtAuth
             ->first();
 
         if (!$user || !$user->isActive || $user->deletedAt) {
+            if ($isVerifyRoute) {
+                $request->attributes->set('authTokenValid', false);
+                $request->attributes->set('authToken', $token);
+
+                return $next($request);
+            }
+
             return response()->json(ApiResponse::error('Usuario no autorizado', null, 403), 403);
         }
 
         $security = DB::table('userSecurity')->where('userId', $user->id)->first();
 
         if ($security && $security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
+            if ($isVerifyRoute) {
+                $request->attributes->set('authTokenValid', false);
+                $request->attributes->set('authToken', $token);
+
+                return $next($request);
+            }
+
             return response()->json(ApiResponse::error('Usuario bloqueado temporalmente', null, 423), 423);
         }
 
         if (!$security || $security->sessionToken !== $token) {
+            if ($isVerifyRoute) {
+                $request->attributes->set('authTokenValid', false);
+                $request->attributes->set('authToken', $token);
+
+                return $next($request);
+            }
+
             return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
         }
 
@@ -55,6 +91,8 @@ class JwtAuth
 
         $request->attributes->set('authUser', $user);
         $request->attributes->set('authRole', $user->roleName);
+        $request->attributes->set('authTokenValid', true);
+        $request->attributes->set('authToken', $token);
         $request->setUserResolver(fn() => $user);
 
         return $next($request);
@@ -69,5 +107,10 @@ class JwtAuth
         }
 
         return $request->cookie('access_token');
+    }
+
+    private function isVerifyRoute(Request $request): bool
+    {
+        return str_ends_with($request->path(), 'auth/verify');
     }
 }
