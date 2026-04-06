@@ -4,25 +4,240 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Request as RequestModel;
+use App\Models\RequestTypePermission;
+use App\Models\WorkflowRequestHistory;
 use App\Support\ApiResponse;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
+
 class DashboardController extends Controller
 {
     public function getDays(Request $request)
     {
-        $inicio = Carbon::now()->subDays(30)->startOfDay();
-        $fin = Carbon::now()->endOfDay();
+        [$inicio, $fin, $granularity] = $this->resolveDateRange($request);
+        $requestTypeId = $this->resolveRequestTypeId($request->input('request_type_id'));
         $user = $request->attributes->get('authUser');
-        // var_dump($request);
 
-        $conteos = RequestModel::whereBetween('createdAt', [$inicio, $fin])
-            ->selectRaw('DATE(createdAt) as fecha, count(*) as total')
-            ->where('userId', $user->id)
-            ->groupBy('fecha')
-            ->pluck('total', 'fecha');
+        if (!$user) {
+            return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
+        }
 
-        $periodo = \Carbon\CarbonPeriod::create($inicio, $fin);
+        $series = $this->buildSeriesByRole($user, $inicio, $fin, $granularity, $requestTypeId);
+
+        return response()->json(ApiResponse::success('Conteo de Requests por periodo', [
+            'from' => $inicio->toDateString(),
+            'to' => $fin->toDateString(),
+            'granularity' => $granularity,
+            'requestTypeId' => $requestTypeId,
+            'series' => $series,
+        ]));
+    }
+
+    private function buildSeriesByRole(object $user, Carbon $inicio, Carbon $fin, string $granularity, ?int $requestTypeId): array
+    {
+        $isAdmin = strtoupper((string) ($user->roleName ?? '')) === 'ADMIN';
+        $roleId = (int) ($user->roleId ?? 0);
+        $userId = (int) ($user->id ?? 0);
+
+        if ($isAdmin) {
+            return [
+                [
+                    'key' => 'created',
+                    'label' => 'Solicitudes creadas',
+                    'data' => $this->buildSeriesData(
+                        RequestModel::query()
+                            ->when($requestTypeId, fn ($query) => $query->where('requestTypeId', $requestTypeId))
+                            ->whereBetween('createdAt', [$inicio, $fin]),
+                        'createdAt',
+                        $inicio,
+                        $fin,
+                        $granularity
+                    ),
+                ],
+                [
+                    'key' => 'approved',
+                    'label' => 'Aprobaciones',
+                    'data' => $this->buildSeriesData(
+                        WorkflowRequestHistory::query()
+                            ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                            ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                            ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                            ->where('workflowRequestHistory.actionType', 'approved'),
+                        'workflowRequestHistory.createdAt',
+                        $inicio,
+                        $fin,
+                        $granularity
+                    ),
+                ],
+                [
+                    'key' => 'rejected',
+                    'label' => 'Rechazos',
+                    'data' => $this->buildSeriesData(
+                        WorkflowRequestHistory::query()
+                            ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                            ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                            ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                            ->where('workflowRequestHistory.actionType', 'rejected'),
+                        'workflowRequestHistory.createdAt',
+                        $inicio,
+                        $fin,
+                        $granularity
+                    ),
+                ],
+            ];
+        }
+
+        $series = [];
+        $canCreate = $this->roleCanCreate($roleId);
+        $canApprove = $this->roleCanApprove($roleId);
+        $canReject = $this->roleCanReject($roleId);
+
+        if ($canCreate) {
+            $series[] = [
+                'key' => 'created',
+                'label' => 'Solicitudes creadas',
+                'data' => $this->buildSeriesData(
+                    RequestModel::query()
+                        ->when($requestTypeId, fn ($query) => $query->where('requestTypeId', $requestTypeId))
+                        ->whereBetween('createdAt', [$inicio, $fin])
+                        ->where('userId', $userId),
+                    'createdAt',
+                    $inicio,
+                    $fin,
+                    $granularity
+                ),
+            ];
+        }
+
+        if ($canApprove) {
+            $series[] = [
+                'key' => 'approved',
+                'label' => 'Aprobaciones',
+                'data' => $this->buildSeriesData(
+                    WorkflowRequestHistory::query()
+                        ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                        ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                        ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                        ->where('workflowRequestHistory.actionUserId', $userId)
+                        ->where('workflowRequestHistory.actionType', 'approved'),
+                    'workflowRequestHistory.createdAt',
+                    $inicio,
+                    $fin,
+                    $granularity
+                ),
+            ];
+        }
+
+        if ($canReject) {
+            $series[] = [
+                'key' => 'rejected',
+                'label' => 'Rechazos',
+                'data' => $this->buildSeriesData(
+                    WorkflowRequestHistory::query()
+                        ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                        ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                        ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                        ->where('workflowRequestHistory.actionUserId', $userId)
+                        ->where('workflowRequestHistory.actionType', 'rejected'),
+                    'workflowRequestHistory.createdAt',
+                    $inicio,
+                    $fin,
+                    $granularity
+                ),
+            ];
+        }
+
+        if (!empty($series)) {
+            return $series;
+        }
+
+        return [
+            [
+                'key' => 'created',
+                'label' => 'Solicitudes creadas',
+                'data' => $this->buildSeriesData(
+                    RequestModel::query()->whereRaw('1 = 0'),
+                    'createdAt',
+                    $inicio,
+                    $fin,
+                    $granularity
+                ),
+            ],
+        ];
+    }
+
+    private function resolveDateRange(Request $request): array
+    {
+        $fromInput = $request->input('from') ?? $request->input('startDate');
+        $toInput = $request->input('to') ?? $request->input('endDate');
+
+        if ($fromInput && $toInput) {
+            $inicio = Carbon::parse($fromInput)->startOfDay();
+            $fin = Carbon::parse($toInput)->endOfDay();
+        } else {
+            $days = (int) $request->input('days', 30);
+
+            if ($days <= 0) {
+                $days = 30;
+            }
+
+            $inicio = Carbon::now()->subDays($days)->startOfDay();
+            $fin = Carbon::now()->endOfDay();
+        }
+
+        $granularity = $inicio->diffInDays($fin) > 30 ? 'month' : 'day';
+
+        return [$inicio, $fin, $granularity];
+    }
+
+    private function resolveRequestTypeId(mixed $requestTypeId): ?int
+    {
+        if (is_numeric($requestTypeId) && (int) $requestTypeId > 0) {
+            return (int) $requestTypeId;
+        }
+
+        return null;
+    }
+
+    private function buildSeriesData($query, string $dateColumn, Carbon $inicio, Carbon $fin, string $granularity): array
+    {
+        if ($granularity === 'month') {
+            $conteos = $query
+                ->selectRaw("DATE_FORMAT({$dateColumn}, '%Y-%m') as periodo, count(*) as total")
+                ->groupBy('periodo')
+                ->pluck('total', 'periodo');
+
+            $periodo = CarbonPeriod::create($inicio->copy()->startOfMonth(), '1 month', $fin->copy()->startOfMonth());
+        } else {
+            $conteos = $query
+                ->selectRaw("DATE({$dateColumn}) as periodo, count(*) as total")
+                ->groupBy('periodo')
+                ->pluck('total', 'periodo');
+
+            $periodo = CarbonPeriod::create($inicio, $fin);
+        }
+
+        $resultado = [];
+
+        foreach ($periodo as $fecha) {
+            $periodoClave = $granularity === 'month'
+                ? $fecha->format('Y-m')
+                : $fecha->format('Y-m-d');
+
+            $resultado[] = [
+                'dia' => $periodoClave,
+                'periodo' => $periodoClave,
+                'cantidad' => (int) $conteos->get($periodoClave, 0),
+            ];
+        }
+
+        return $resultado;
+    }
+
+    private function buildDailySeries($conteos, Carbon $inicio, Carbon $fin): array
+    {
+        $periodo = CarbonPeriod::create($inicio, $fin);
 
         $resultado = [];
         foreach ($periodo as $fecha) {
@@ -30,11 +245,45 @@ class DashboardController extends Controller
 
             $resultado[] = [
                 'dia' => $fechaString,
-                'cantidad' => $conteos->get($fechaString, 0)
+                'cantidad' => (int) $conteos->get($fechaString, 0),
             ];
         }
 
-        return response()->json(ApiResponse::success('Conteo de Requests por día', $resultado));
+        return $resultado;
     }
 
+    private function roleCanCreate(int $roleId): bool
+    {
+        return $this->roleHasRequestAction($roleId, ['create', 'crear']);
+    }
+
+    private function roleCanApprove(int $roleId): bool
+    {
+        return $this->roleHasRequestAction($roleId, ['approve', 'aprobar']);
+    }
+
+    private function roleCanReject(int $roleId): bool
+    {
+        return $this->roleHasRequestAction($roleId, ['reject', 'decline', 'rechazar']);
+    }
+
+    private function roleHasRequestAction(int $roleId, array $keywords): bool
+    {
+        if ($roleId <= 0) {
+            return false;
+        }
+
+        return RequestTypePermission::query()
+            ->join('actions', 'requesttypepermissions.action_id', '=', 'actions.id')
+            ->where('requesttypepermissions.role_id', $roleId)
+            ->where('requesttypepermissions.is_allowed', true)
+            ->where(function ($query) use ($keywords) {
+                foreach ($keywords as $keyword) {
+                    $needle = '%' . strtolower($keyword) . '%';
+                    $query->orWhereRaw('LOWER(actions.slug) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(actions.name) LIKE ?', [$needle]);
+                }
+            })
+            ->exists();
+    }
 }
