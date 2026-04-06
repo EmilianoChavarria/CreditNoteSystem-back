@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Batches\StoreBatchRequest;
+use App\Http\Resources\BatchResource;
 use App\Models\Batch;
 use App\Models\BatchItem;
 use App\Services\BatchService;
@@ -27,26 +28,14 @@ class BatchController extends Controller
         $batches = Batch::query()
             ->where('userId', (int) $authUser->id)
             ->orderByDesc('id')
-            ->paginate($perPage)
-            ->through(function (Batch $batch) {
-                $total = max(1, (int) $batch->totalRecords);
+            ->paginate($perPage);
 
-                return [
-                    'id' => $batch->id,
-                    'userId' => $batch->userId,
-                    'fileName' => $batch->fileName,
-                    'batchType' => $batch->batchType,
-                    'status' => $batch->status,
-                    'totalRecords' => (int) $batch->totalRecords,
-                    'processedRecords' => (int) $batch->processedRecords,
-                    'processingRecords' => (int) $batch->processingRecords,
-                    'errorRecords' => (int) $batch->errorRecords,
-                    'progressPercent' => round(((int) $batch->processedRecords / $total) * 100, 2),
-                    'createdAt' => $batch->createdAt,
-                ];
-            });
+        // Transformamos la colección paginada usando el Resource
+        $resourceCollection = BatchResource::collection($batches);
 
-        return response()->json(ApiResponse::success('Batches', $batches));
+        // Enviamos la respuesta. Laravel detectará que es una colección paginada
+        // y mantendrá la meta-información (total, links) pero con tus datos limpios.
+        return response()->json(ApiResponse::success('Batches', $resourceCollection->response()->getData(true)));
     }
 
     public function store(StoreBatchRequest $request, BatchService $batchService)
