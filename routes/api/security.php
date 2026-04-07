@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\Api\AdminSecurityController;
 use App\Http\Controllers\Api\PasswordRequirementsController;
+use App\Http\Controllers\Api\LoginAttemptSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['jwt'])->group(function () {
     Route::post('security/users/{id}/unlock', [AdminSecurityController::class, 'unlockUser']);
     Route::post('security/ips/unlock', [AdminSecurityController::class, 'unlockIp']);
+    Route::get('security/login-attempt-settings', [LoginAttemptSettingsController::class, 'getSettings']);
+    Route::put('security/login-attempt-settings', [LoginAttemptSettingsController::class, 'updateSettings']);
 });
 
 // Rutas de requisitos de contraseña
