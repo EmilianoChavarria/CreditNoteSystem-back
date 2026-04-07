@@ -179,7 +179,19 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->query('perPage');
-        $users = User::with('role')->where('isActive', '1')
+        $search = trim((string) $request->query('search', ''));
+
+        $users = User::with('role')
+            ->where('isActive', '1')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('fullName', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhereHas('role', function ($roleQuery) use ($search) {
+                            $roleQuery->where('roleName', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->cursorPaginate($perPage);
 
         return response()->json(ApiResponse::success('Usuarios', $users));
