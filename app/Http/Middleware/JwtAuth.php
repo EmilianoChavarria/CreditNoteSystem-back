@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\JwtService;
+use App\Services\LoginAttemptSettingsService;
 use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,10 +13,16 @@ use Throwable;
 
 class JwtAuth
 {
+    public function __construct(
+        private readonly LoginAttemptSettingsService $loginAttemptSettingsService
+    ) {
+    }
+
     public function handle(Request $request, Closure $next)
     {
         $token = $this->extractToken($request);
         $isVerifyRoute = $this->isVerifyRoute($request);
+        $sessionTimeoutMinutes = (int) $this->loginAttemptSettingsService->getSettings()->sessionTimeoutMinutes;
 
         if (!$token) {
             if ($isVerifyRoute) {
@@ -71,6 +78,28 @@ class JwtAuth
             return response()->json(ApiResponse::error('Usuario bloqueado temporalmente', null, 423), 423);
         }
 
+        if ($security && $security->lastActivityAt) {
+            $lastActivityAt = Carbon::parse($security->lastActivityAt);
+
+            if ($lastActivityAt->addMinutes($sessionTimeoutMinutes)->isPast()) {
+                DB::table('userSecurity')
+                    ->where('userId', $user->id)
+                    ->update([
+                        'sessionToken' => null,
+                        'lastActivityAt' => Carbon::now(),
+                    ]);
+
+                if ($isVerifyRoute) {
+                    $request->attributes->set('authTokenValid', false);
+                    $request->attributes->set('authToken', $token);
+
+                    return $next($request);
+                }
+
+                return response()->json(ApiResponse::error('Sesión expirada', null, 401), 401);
+            }
+        }
+
         if (!$security || $security->sessionToken !== $token) {
             if ($isVerifyRoute) {
                 $request->attributes->set('authTokenValid', false);
@@ -93,6 +122,8 @@ class JwtAuth
         $request->attributes->set('authRole', $user->roleName);
         $request->attributes->set('authTokenValid', true);
         $request->attributes->set('authToken', $token);
+        $request->attributes->set('sessionTimeoutMinutes', $sessionTimeoutMinutes);
+        $request->attributes->set('sessionLastActivityAt', Carbon::now());
         $request->setUserResolver(fn() => $user);
 
         return $next($request);
