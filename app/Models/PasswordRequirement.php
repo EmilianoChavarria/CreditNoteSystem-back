@@ -17,7 +17,8 @@ class PasswordRequirement extends Model
         'requireUppercase',
         'requireLowercase',
         'requireNumbers',
-        'requireSpecialCharacters',
+        'requireSpecialChars',
+        'allowedSpecialChars',
         'expirationDays',
         'createdAt',
         'updatedAt',
@@ -27,7 +28,7 @@ class PasswordRequirement extends Model
         'requireUppercase' => 'boolean',
         'requireLowercase' => 'boolean',
         'requireNumbers' => 'boolean',
-        'requireSpecialCharacters' => 'boolean',
+        'requireSpecialChars' => 'boolean',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
     ];
