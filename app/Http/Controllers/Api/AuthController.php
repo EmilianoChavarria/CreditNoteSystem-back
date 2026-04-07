@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\UserBlockedHistory;
 use App\Models\UserSecurity;
 use App\Services\JwtService;
+use App\Services\LoginAttemptSettingsService;
 use App\Services\PasswordValidationService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -24,7 +25,10 @@ class AuthController extends Controller
 {
     protected PasswordValidationService $passwordService;
 
-    public function __construct(PasswordValidationService $passwordService)
+    public function __construct(
+        PasswordValidationService $passwordService,
+        private readonly LoginAttemptSettingsService $loginAttemptSettingsService
+    )
     {
         $this->passwordService = $passwordService;
     }
@@ -159,8 +163,10 @@ class AuthController extends Controller
 
         $ip = $request->ip();
         $now = Carbon::now();
-        $maxUserAttempts = (int) config('security.max_user_attempts');
-        $maxIpAttempts = (int) config('security.max_ip_attempts');
+        $attemptSettings = $this->loginAttemptSettingsService->getSettings();
+        $maxUserAttempts = (int) $attemptSettings->maxUserAttempts;
+        $maxIpAttempts = (int) $attemptSettings->maxIpAttempts;
+        $sessionTimeoutMinutes = (int) $attemptSettings->sessionTimeoutMinutes;
         $lockMinutes = (int) config('security.user_lock_minutes');
 
         // 2. Seguridad de IP
@@ -194,7 +200,7 @@ class AuthController extends Controller
 
         // 6. Generación de Token JWT
         $roleName = $user->role?->roleName;
-        $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $roleName);
+        $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $roleName, $sessionTimeoutMinutes);
 
         // 7. Actualización de auditoría y sesión
         $security->update([
@@ -208,7 +214,7 @@ class AuthController extends Controller
         ]);
 
         // 8. Configuración de la Cookie Segura (HttpOnly)
-        $minutes = (int) config('security.jwt_ttl_minutes', 120);
+        $minutes = $sessionTimeoutMinutes;
 
         // IMPORTANTE: 'access_token' es el nombre que usará el navegador
         $cookie = $this->makeAccessTokenCookie($token, $minutes);
@@ -225,8 +231,7 @@ class AuthController extends Controller
                     'preferredLanguage' => $user->preferredLanguage,
                     'clientId' => $user->clientId
                 ],
-                // Opcional: mandamos la expiración para que Angular sepa cuándo avisar al usuario
-                'expiresIn' => $minutes * 60
+                'sessionTimeoutMinutes' => $sessionTimeoutMinutes,
             ]),
             200
         )->withCookie($cookie);
@@ -261,8 +266,10 @@ class AuthController extends Controller
         $tokenValid = (bool) $request->attributes->get('authTokenValid', false);
 
         if ($user && $tokenValid) {
-            $minutes = (int) config('security.jwt_ttl_minutes', 120);
-            $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $user->roleName);
+            $attemptSettings = $this->loginAttemptSettingsService->getSettings();
+            $sessionTimeoutMinutes = (int) $attemptSettings->sessionTimeoutMinutes;
+            $minutes = $sessionTimeoutMinutes;
+            $token = app(JwtService::class)->issueToken((int) $user->id, (int) $user->roleId, $user->roleName, $sessionTimeoutMinutes);
 
             UserSecurity::where('userId', $user->id)->update([
                 'sessionToken' => $token,
@@ -281,7 +288,7 @@ class AuthController extends Controller
                         'preferredLanguage' => $user->preferredLanguage,
                     ],
                     'isAuthenticated' => true,
-                    'expiresIn' => $minutes * 60,
+                    'sessionTimeoutMinutes' => $sessionTimeoutMinutes,
                 ], 200),
                 200
             )->withCookie($this->makeAccessTokenCookie($token, $minutes));
