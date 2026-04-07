@@ -169,24 +169,38 @@ class DashboardController extends Controller
 
     private function resolveDateRange(Request $request): array
     {
+        $daysInput = $request->input('days');
+        $hasPresetDays = is_numeric($daysInput) && (int) $daysInput > 0;
+        $granularity = 'day';
         $fromInput = $request->input('from') ?? $request->input('startDate');
         $toInput = $request->input('to') ?? $request->input('endDate');
 
-        if ($fromInput && $toInput) {
+        if ($hasPresetDays) {
+            $days = (int) $daysInput;
+
+            // Rango inclusivo: days=30 debe devolver exactamente 30 periodos diarios.
+            $inicio = Carbon::now()->subDays($days - 1)->startOfDay();
+            $fin = Carbon::now()->endOfDay();
+            $granularity = $days > 30 ? 'month' : 'day';
+        } elseif ($fromInput && $toInput) {
             $inicio = Carbon::parse($fromInput)->startOfDay();
             $fin = Carbon::parse($toInput)->endOfDay();
         } else {
-            $days = (int) $request->input('days', 30);
+            $days = 30;
 
-            if ($days <= 0) {
-                $days = 30;
-            }
-
-            $inicio = Carbon::now()->subDays($days)->startOfDay();
+            // Valor por defecto: ultimos 30 dias (incluyendo hoy).
+            $inicio = Carbon::now()->subDays($days - 1)->startOfDay();
             $fin = Carbon::now()->endOfDay();
         }
 
-        $granularity = $inicio->diffInDays($fin) > 30 ? 'month' : 'day';
+        if ($inicio->gt($fin)) {
+            [$inicio, $fin] = [$fin->copy()->startOfDay(), $inicio->copy()->endOfDay()];
+        }
+
+        if (!$hasPresetDays) {
+            $totalDays = $inicio->diffInDays($fin) + 1;
+            $granularity = $totalDays > 30 ? 'month' : 'day';
+        }
 
         return [$inicio, $fin, $granularity];
     }
