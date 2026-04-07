@@ -9,10 +9,10 @@ use Illuminate\Support\Str;
 
 class JwtService
 {
-    public function issueToken(int $userId, int $roleId, ?string $roleName = null): string
+    public function issueToken(int $userId, int $roleId, ?string $roleName = null, ?int $ttlMinutes = null): string
     {
         $now = Carbon::now()->timestamp;
-        $ttlMinutes = (int) config('security.jwt_ttl_minutes');
+        $ttlMinutes = (int) ($ttlMinutes ?? config('security.jwt_ttl_minutes'));
 
         $payload = [
             'iss' => config('security.jwt_issuer'),
