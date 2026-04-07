@@ -316,16 +316,38 @@ class RequestController extends Controller
     public function getAllByRequestType(Request $request, int $id)
     {
         $perPage = $request->query('per_page', 15);
-        $requests = RequestModel::with([
+        $search = trim((string) $request->query('search', ''));
+
+        $query = RequestModel::with([
             'requestType',
             'user',
             'reason',
             'classification',
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
-        ])->orderBy('id')
-            ->where('requestTypeId', $id)
-            ->paginate($perPage);
+        ])->where('requestTypeId', $id)
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('requestNumber', 'like', "%{$search}%")
+                        ->orWhere('status', 'like', "%{$search}%")
+                        ->orWhere('customerId', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($userQuery) use ($search) {
+                            $userQuery->where('fullName', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('reason', function ($reasonQuery) use ($search) {
+                            $reasonQuery->where('name', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('classification', function ($classificationQuery) use ($search) {
+                            $classificationQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('code', 'like', "%{$search}%")
+                                ->orWhere('type', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->orderBy('id');
+
+        $requests = $query->paginate($perPage);
 
         return response()->json(ApiResponse::success('Requests', $requests));
     }
