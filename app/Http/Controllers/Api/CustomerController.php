@@ -19,6 +19,7 @@ class CustomerController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->query('perPage');
+        $search = trim((string) $request->query('search', ''));
 
         $customerTable = (new Customer())->getTable();
         $clientTable = 'clientes_tme700618rc7';
@@ -65,6 +66,27 @@ class CustomerController extends Controller
             ->leftJoin('users as fm', 'c.financeManagerId', '=', 'fm.id')
             ->leftJoin('users as mm', 'c.marketingManagerId', '=', 'mm.id')
             ->leftJoin('users as csm', 'c.customerServiceManagerId', '=', 'csm.id')
+            ->when($search !== '', function ($query) use ($search, $clientColumns) {
+                $query->where(function ($subQuery) use ($search, $clientColumns) {
+                    if (in_array('razonSocial', $clientColumns, true)) {
+                        $subQuery->orWhere('cl.razonSocial', 'like', "%{$search}%");
+                    }
+
+                    if (in_array('email', $clientColumns, true)) {
+                        $subQuery->orWhere('cl.email', 'like', "%{$search}%");
+                    }
+
+                    if (in_array('idCliente', $clientColumns, true)) {
+                        $subQuery->orWhere('cl.idCliente', 'like', "%{$search}%");
+                    }
+
+                    $subQuery->orWhere('se.fullName', 'like', "%{$search}%")
+                        ->orWhere('sm.fullName', 'like', "%{$search}%")
+                        ->orWhere('fm.fullName', 'like', "%{$search}%")
+                        ->orWhere('mm.fullName', 'like', "%{$search}%")
+                        ->orWhere('csm.fullName', 'like', "%{$search}%");
+                });
+            })
             ->orderBy('cl.idCliente')
             ->select($selectColumns);
 
