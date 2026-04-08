@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\BlockedIp;
 use App\Models\IpBlockedHistory;
+use App\Models\User;
 use App\Models\UserBlockedHistory;
 use App\Models\UserSecurity;
 use App\Support\ApiResponse;
@@ -14,6 +15,69 @@ use Illuminate\Support\Facades\Validator;
 
 class AdminSecurityController extends Controller
 {
+    public function blockedUsers(Request $request)
+    {
+        $admin = $request->attributes->get('authUser');
+
+        if (!$admin || (string) $admin->roleName !== 'ADMIN') {
+            return response()->json(ApiResponse::error('No autorizado. Solo administradores pueden ver esta información', null, 403), 403);
+        }
+
+        $perPage = max(1, (int) $request->query('perPage', 15));
+
+        $users = User::with(['role', 'security'])
+            ->whereHas('security', function ($query) {
+                $query->whereNotNull('lockedUntil')
+                    ->where('lockedUntil', '>', Carbon::now());
+            })
+            ->leftJoinSub(
+                UserBlockedHistory::query()
+                    ->selectRaw('userId, reason, action, createdAt, ROW_NUMBER() OVER (PARTITION BY userId ORDER BY createdAt DESC) as rn')
+                    ->where('action', 'blocked'),
+                'block_history',
+                function ($join) {
+                    $join->on('users.id', '=', 'block_history.userId')
+                        ->where('block_history.rn', '=', 1);
+                }
+            )
+            ->select('users.*')
+            ->addSelect('block_history.reason', 'block_history.createdAt as blockedAt')
+            ->orderBy('fullName')
+            ->paginate($perPage);
+
+        return response()->json(ApiResponse::success('Usuarios bloqueados obtenidos correctamente', $users));
+    }
+
+    public function blockedIps(Request $request)
+    {
+        $admin = $request->attributes->get('authUser');
+
+        if (!$admin || (string) $admin->roleName !== 'ADMIN') {
+            return response()->json(ApiResponse::error('No autorizado. Solo administradores pueden ver esta información', null, 403), 403);
+        }
+
+        $perPage = max(1, (int) $request->query('perPage', 15));
+
+        $ips = BlockedIp::query()
+            ->where('isBlockedPermanently', true)
+            ->leftJoinSub(
+                IpBlockedHistory::query()
+                    ->selectRaw('ipAddress, reason, action, createdAt, ROW_NUMBER() OVER (PARTITION BY ipAddress ORDER BY createdAt DESC) as rn')
+                    ->where('action', 'blocked'),
+                'ip_history',
+                function ($join) {
+                    $join->on('blockedIps.ipAddress', '=', 'ip_history.ipAddress')
+                        ->where('ip_history.rn', '=', 1);
+                }
+            )
+            ->select('blockedIps.*')
+            ->addSelect('ip_history.reason', 'ip_history.createdAt as blockedHistoryAt')
+            ->orderByDesc('blockedAt')
+            ->paginate($perPage);
+
+        return response()->json(ApiResponse::success('IPs bloqueadas obtenidas correctamente', $ips));
+    }
+
     public function unlockUser(Request $request, int $id)
     {
         $admin = $request->attributes->get('authUser');
@@ -33,7 +97,6 @@ class AdminSecurityController extends Controller
             'userId' => $id,
             'action' => 'unblocked',
             'reason' => 'Desbloqueo manual por administrador',
-            'ipAddress' => null,
             'adminUserId' => $admin?->id,
             'createdAt' => Carbon::now(),
         ]);
