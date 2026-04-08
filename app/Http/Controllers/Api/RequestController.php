@@ -248,6 +248,7 @@ class RequestController extends Controller
     public function getPendingByRole(Request $request, int $id)
     {
         $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
 
         $requests = RequestModel::with([
             'requestType',
@@ -257,9 +258,12 @@ class RequestController extends Controller
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
         ])
-            ->whereHas('workflowCurrentStep', function ($query) use ($authUser) {
-                $query->where('assignedUserId', (int) $authUser->id)
-                    ->where('status', 'pending');
+            ->whereHas('workflowCurrentStep', function ($query) use ($authUser, $isAdmin) {
+                $query->where('status', 'pending');
+
+                if (!$isAdmin) {
+                    $query->where('assignedUserId', (int) $authUser->id);
+                }
             })
             // ->where('status', 'created')
             ->where('requestTypeId', $id)
@@ -277,6 +281,8 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
         }
 
+        $isAdmin = $this->isAdminUser($authUser);
+
         $query = RequestModel::with([
             'requestType',
             'user',
@@ -285,9 +291,12 @@ class RequestController extends Controller
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
         ])
-            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser) {
-                $workflowQuery->where('assignedUserId', (int) $authUser->id)
-                    ->where('status', 'pending');
+            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin) {
+                $workflowQuery->where('status', 'pending');
+
+                if (!$isAdmin) {
+                    $workflowQuery->where('assignedUserId', (int) $authUser->id);
+                }
             })
             ->orderBy('id');
 
@@ -295,8 +304,9 @@ class RequestController extends Controller
             $query->where('requestTypeId', (int) $request->input('requestTypeId'));
         }
 
-        $perPage = $request->query('perPage');
-        $requests = $perPage ? $query->paginate((int) $perPage) : $query->get();
+        $perPage = max(1, (int) $request->query('perPage', 15));
+        $page = max(1, (int) $request->query('page', 1));
+        $requests = $query->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
     }
@@ -450,9 +460,10 @@ class RequestController extends Controller
         }
 
         $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
 
         try {
-            $result = DB::transaction(function () use ($requestId, $authUser, $request) {
+            $result = DB::transaction(function () use ($requestId, $authUser, $request, $isAdmin) {
                 $requestModel = RequestModel::query()->lockForUpdate()->find($requestId);
 
                 if (!$requestModel) {
@@ -476,7 +487,7 @@ class RequestController extends Controller
                     ];
                 }
 
-                if ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id) {
+                if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
                     return [
                         'ok' => false,
                         'status' => 403,
@@ -605,8 +616,9 @@ class RequestController extends Controller
         }
 
         $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
 
-        $result = DB::transaction(function () use ($requestId, $authUser, $request) {
+        $result = DB::transaction(function () use ($requestId, $authUser, $request, $isAdmin) {
             $requestModel = RequestModel::query()->lockForUpdate()->find($requestId);
 
             if (!$requestModel) {
@@ -630,7 +642,7 @@ class RequestController extends Controller
                 ];
             }
 
-            if ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id) {
+            if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
                 return [
                     'ok' => false,
                     'status' => 403,
@@ -1035,6 +1047,13 @@ class RequestController extends Controller
             ->where('isActive', true)
             ->whereNull('deletedAt')
             ->exists();
+    }
+
+    private function isAdminUser(mixed $authUser): bool
+    {
+        $roleName = mb_strtoupper(trim((string) ($authUser->roleName ?? '')));
+
+        return str_contains($roleName, 'ADMIN');
     }
 
     public function saveDraft(Request $request)
