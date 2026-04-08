@@ -188,6 +188,7 @@ class AuthController extends Controller
         // 4. Verificación de Bloqueo de Usuario
         $security = $this->getOrCreateUserSecurity($user->id);
         if ($security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
+            $this->registerIpFailure($ip, $maxIpAttempts, $now);
             return response()->json(ApiResponse::error('Usuario bloqueado temporalmente', null, 423), 423);
         }
 
