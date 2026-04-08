@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\LoginAttemptSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['jwt'])->group(function () {
+    Route::get('security/users/blocked', [AdminSecurityController::class, 'blockedUsers']);
+    Route::get('security/ips/blocked', [AdminSecurityController::class, 'blockedIps']);
     Route::post('security/users/{id}/unlock', [AdminSecurityController::class, 'unlockUser']);
     Route::post('security/ips/unlock', [AdminSecurityController::class, 'unlockIp']);
     Route::get('security/login-attempt-settings', [LoginAttemptSettingsController::class, 'getSettings']);
