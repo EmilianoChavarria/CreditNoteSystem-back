@@ -23,6 +23,21 @@ class JwtAuth
         $token = $this->extractToken($request);
         $isVerifyRoute = $this->isVerifyRoute($request);
         $sessionTimeoutMinutes = (int) $this->loginAttemptSettingsService->getSettings()->sessionTimeoutMinutes;
+        $isIpBlocked = DB::table('blockedIps')
+            ->where('ipAddress', $request->ip())
+            ->where('isBlockedPermanently', true)
+            ->exists();
+
+        if ($isIpBlocked) {
+            if ($isVerifyRoute) {
+                $request->attributes->set('authTokenValid', false);
+                $request->attributes->set('authToken', $this->extractToken($request));
+
+                return $next($request);
+            }
+
+            return response()->json(ApiResponse::error('Dirección IP bloqueada permanentemente', null, 423), 423);
+        }
 
         if (!$token) {
             if ($isVerifyRoute) {
