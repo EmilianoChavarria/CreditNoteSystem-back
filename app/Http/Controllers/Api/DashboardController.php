@@ -24,12 +24,14 @@ class DashboardController extends Controller
         }
 
         $series = $this->buildSeriesByRole($user, $inicio, $fin, $granularity, $requestTypeId);
+        $totals = $this->calculateTotals($user, $inicio, $fin, $requestTypeId);
 
         return response()->json(ApiResponse::success('Conteo de Requests por periodo', [
             'from' => $inicio->toDateString(),
             'to' => $fin->toDateString(),
             'granularity' => $granularity,
             'requestTypeId' => $requestTypeId,
+            'totals' => $totals,
             'series' => $series,
         ]));
     }
@@ -264,6 +266,74 @@ class DashboardController extends Controller
         }
 
         return $resultado;
+    }
+
+    private function calculateTotals(object $user, Carbon $inicio, Carbon $fin, ?int $requestTypeId): array
+    {
+        $isAdmin = strtoupper((string) ($user->roleName ?? '')) === 'ADMIN';
+        $roleId = (int) ($user->roleId ?? 0);
+        $userId = (int) ($user->id ?? 0);
+
+        $totals = [];
+
+        if ($isAdmin) {
+            $totals['created'] = RequestModel::query()
+                ->when($requestTypeId, fn ($query) => $query->where('requestTypeId', $requestTypeId))
+                ->whereBetween('createdAt', [$inicio, $fin])
+                ->count();
+
+            $totals['approved'] = WorkflowRequestHistory::query()
+                ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                ->where('workflowRequestHistory.actionType', 'approved')
+                ->count();
+
+            $totals['declined'] = WorkflowRequestHistory::query()
+                ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                ->where('workflowRequestHistory.actionType', 'rejected')
+                ->count();
+        } else {
+            $canCreate = $this->roleCanCreate($roleId);
+            $canApprove = $this->roleCanApprove($roleId);
+            $canReject = $this->roleCanReject($roleId);
+
+            if ($canCreate) {
+                $totals['created'] = RequestModel::query()
+                    ->when($requestTypeId, fn ($query) => $query->where('requestTypeId', $requestTypeId))
+                    ->whereBetween('createdAt', [$inicio, $fin])
+                    ->where('userId', $userId)
+                    ->count();
+            }
+
+            if ($canApprove) {
+                $totals['approved'] = WorkflowRequestHistory::query()
+                    ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                    ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                    ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                    ->where('workflowRequestHistory.actionUserId', $userId)
+                    ->where('workflowRequestHistory.actionType', 'approved')
+                    ->count();
+            }
+
+            if ($canReject) {
+                $totals['declined'] = WorkflowRequestHistory::query()
+                    ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                    ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
+                    ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
+                    ->where('workflowRequestHistory.actionUserId', $userId)
+                    ->where('workflowRequestHistory.actionType', 'rejected')
+                    ->count();
+            }
+
+            if (empty($totals)) {
+                return ['created' => 0];
+            }
+        }
+
+        return $totals;
     }
 
     private function roleCanCreate(int $roleId): bool
