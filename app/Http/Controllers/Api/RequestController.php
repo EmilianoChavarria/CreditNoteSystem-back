@@ -255,6 +255,7 @@ class RequestController extends Controller
             'user',
             'reason',
             'classification',
+            'workflowCurrentStep.workflowStep',
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
         ])
@@ -288,6 +289,7 @@ class RequestController extends Controller
             'user',
             'reason',
             'classification',
+            'workflowCurrentStep.workflowStep',
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
         ])
@@ -333,6 +335,7 @@ class RequestController extends Controller
             'user',
             'reason',
             'classification',
+            'workflowCurrentStep.workflowStep',
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
         ])->where('requestTypeId', $id)
