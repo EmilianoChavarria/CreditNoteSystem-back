@@ -116,7 +116,11 @@ class WorkflowStepController extends Controller
             return response()->json(ApiResponse::error('Workflow step not found', null, 404), 404);
         }
 
-        $step->delete();
+        try {
+            $this->workflowStepService->delete($step);
+        } catch (ValidationException $e) {
+            return response()->json(ApiResponse::error('Cannot delete workflow step', $e->errors(), 422), 422);
+        }
 
         return response()->json(ApiResponse::success('Workflow step deleted successfully'));
     }
