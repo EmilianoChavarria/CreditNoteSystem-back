@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\WorkflowSteps\StoreWorkflowStepRequest;
 use App\Http\Requests\WorkflowSteps\UpdateWorkflowStepRequest;
+use App\Http\Resources\WorkflowResource;
+use App\Http\Resources\WorkflowStepResource;
 use App\Models\Workflow;
 use App\Models\WorkflowStep;
 use App\Services\WorkflowStepService;
@@ -25,7 +27,7 @@ class WorkflowStepController extends Controller
             ->orderBy('stepOrder')
             ->get();
 
-        return response()->json(ApiResponse::success('Workflow steps', $steps));
+        return response()->json(ApiResponse::success('Workflow steps', WorkflowStepResource::collection($steps)));
     }
 
     public function getById(int $id)
@@ -36,7 +38,7 @@ class WorkflowStepController extends Controller
             return response()->json(ApiResponse::error('Workflow step not found', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Workflow step', $step));
+        return response()->json(ApiResponse::success('Workflow step', WorkflowStepResource::make($step)));
     }
 
     public function getByWorkflowId(int $workflowId)
@@ -53,8 +55,8 @@ class WorkflowStepController extends Controller
             ->get();
 
         return response()->json(ApiResponse::success('Workflow with steps', [
-            'workflow' => $workflow,
-            'steps' => $steps,
+            'workflow' => WorkflowResource::make($workflow),
+            'steps' => WorkflowStepResource::collection($steps),
         ]));
     }
 
@@ -72,7 +74,7 @@ class WorkflowStepController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Workflows with steps', $workflows));
+        return response()->json(ApiResponse::success('Workflows with steps', WorkflowResource::collection($workflows)));
     }
 
     public function store(StoreWorkflowStepRequest $request)
@@ -84,7 +86,7 @@ class WorkflowStepController extends Controller
         }
 
         return response()->json(
-            ApiResponse::success('Workflow step created successfully', $step, 201),
+            ApiResponse::success('Workflow step created successfully', WorkflowStepResource::make($step), 201),
             201
         );
     }
@@ -103,7 +105,7 @@ class WorkflowStepController extends Controller
             return response()->json(ApiResponse::error('Invalid data', $e->errors(), 422), 422);
         }
 
-        return response()->json(ApiResponse::success('Workflow step updated successfully', $step));
+        return response()->json(ApiResponse::success('Workflow step updated successfully', WorkflowStepResource::make($step)));
     }
 
     public function delete(int $id)
