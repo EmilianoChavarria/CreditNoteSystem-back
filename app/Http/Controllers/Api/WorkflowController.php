@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Workflows\StoreWorkflowRequest;
 use App\Http\Requests\Workflows\UpdateWorkflowRequest;
+use App\Http\Resources\WorkflowResource;
 use App\Models\Workflow;
 use App\Services\WorkflowService;
 use App\Support\ApiResponse;
@@ -20,7 +21,7 @@ class WorkflowController extends Controller
     {
         $workflows = Workflow::with(['requestType', 'classification'])->get();
 
-        return response()->json(ApiResponse::success('Workflows', $workflows));
+        return response()->json(ApiResponse::success('Workflows', WorkflowResource::collection($workflows)));
     }
 
     public function getById($id)
@@ -31,7 +32,7 @@ class WorkflowController extends Controller
             return response()->json(ApiResponse::error('Workflow not found', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Workflow', $workflow));
+        return response()->json(ApiResponse::success('Workflow', WorkflowResource::make($workflow)));
     }
 
     public function store(StoreWorkflowRequest $request)
@@ -39,7 +40,7 @@ class WorkflowController extends Controller
         $workflow = $this->workflowService->create($request->validated());
 
         return response()->json(
-            ApiResponse::success('Workflow created successfully', $workflow, 201),
+            ApiResponse::success('Workflow created successfully', WorkflowResource::make($workflow), 201),
             201
         );
     }
@@ -54,7 +55,7 @@ class WorkflowController extends Controller
 
         $workflow = $this->workflowService->update($workflow, $request->validated());
 
-        return response()->json(ApiResponse::success('Workflow updated successfully', $workflow));
+        return response()->json(ApiResponse::success('Workflow updated successfully', WorkflowResource::make($workflow)));
     }
 
     public function delete($id)
