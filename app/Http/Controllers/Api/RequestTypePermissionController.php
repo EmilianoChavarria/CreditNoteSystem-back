@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\RequestTypePermissionResource;
 use App\Models\RequestTypePermission;
 use App\Services\RequestTypePermissionService;
 use App\Support\ApiResponse;
@@ -43,7 +44,7 @@ class RequestTypePermissionController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Permisos por tipo de solicitud', $permissions));
+        return response()->json(ApiResponse::success('Permisos por tipo de solicitud', RequestTypePermissionResource::collection($permissions)));
     }
 
     public function getByRole(int $roleId)
@@ -54,7 +55,7 @@ class RequestTypePermissionController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Permisos por tipo de solicitud del rol', $permissions));
+        return response()->json(ApiResponse::success('Permisos por tipo de solicitud del rol', RequestTypePermissionResource::collection($permissions)));
     }
 
     public function getByRequestType(int $requestTypeId)
@@ -65,7 +66,7 @@ class RequestTypePermissionController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Permisos por tipo de solicitud', $permissions));
+        return response()->json(ApiResponse::success('Permisos por tipo de solicitud', RequestTypePermissionResource::collection($permissions)));
     }
 
     public function check(Request $request)
