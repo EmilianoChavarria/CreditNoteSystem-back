@@ -7,6 +7,7 @@ use App\Http\Requests\Customers\SearchCustomerRequest;
 use App\Http\Requests\Customers\StoreCustomerLocalRequest;
 use App\Http\Requests\Customers\StoreCustomerRequest;
 use App\Http\Requests\Customers\UpdateCustomerRequest;
+use App\Http\Resources\CustomerResource;
 use App\Models\Customer;
 use App\Services\CustomerQueryService;
 use App\Support\ApiResponse;
@@ -24,7 +25,7 @@ class CustomerController extends Controller
      */
     public function index(Request $request)
     {
-        $perPage = $request->query('perPage');
+        $perPage = $request->query('per_page');
         $search = trim((string) $request->query('search', ''));
 
         $customers = $this->customerQueryService->paginated(
@@ -47,7 +48,7 @@ class CustomerController extends Controller
         $customer = Customer::create($request->validated());
 
         return response()->json(
-            ApiResponse::success('Customer creado exitosamente', $customer),
+            ApiResponse::success('Customer creado exitosamente', CustomerResource::make($customer)),
             201
         );
     }
@@ -57,7 +58,7 @@ class CustomerController extends Controller
         $customer = Customer::create($request->validated());
 
 
-        return response()->json(ApiResponse::success('Usuario creado correctamente', $customer, 201), 201);
+        return response()->json(ApiResponse::success('Usuario creado correctamente', CustomerResource::make($customer), 201), 201);
     }
 
     /**
@@ -74,7 +75,7 @@ class CustomerController extends Controller
             );
         }
 
-        return response()->json(ApiResponse::success('Customer obtenido exitosamente', $customer));
+        return response()->json(ApiResponse::success('Customer obtenido exitosamente', CustomerResource::make($customer)));
     }
 
     /**
@@ -109,7 +110,7 @@ class CustomerController extends Controller
         $customer->update($request->validated());
 
         return response()->json(
-            ApiResponse::success('Customer actualizado exitosamente', $customer)
+            ApiResponse::success('Customer actualizado exitosamente', CustomerResource::make($customer))
         );
     }
 
