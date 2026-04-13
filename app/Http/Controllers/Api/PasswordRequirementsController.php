@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\PasswordRequirementResource;
 use App\Models\PasswordRequirement;
 use App\Support\ApiResponse;
 use App\Services\PasswordValidationService;
@@ -29,7 +30,7 @@ class PasswordRequirementsController extends Controller
             return response()->json(ApiResponse::error('Configuración de requisitos no encontrada', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Requisitos de contraseña obtenidos', $requirements));
+        return response()->json(ApiResponse::success('Requisitos de contraseña obtenidos', PasswordRequirementResource::make($requirements)));
     }
 
     /**
@@ -79,7 +80,7 @@ class PasswordRequirementsController extends Controller
 
             return response()->json(ApiResponse::success(
                 'Requisitos de contraseña actualizados correctamente',
-                $this->passwordService->getRequirements()
+                PasswordRequirementResource::make($this->passwordService->getRequirements())
             ));
         } catch (\Exception $e) {
             return response()->json(ApiResponse::error('Error al actualizar requisitos', $e->getMessage(), 500), 500);
