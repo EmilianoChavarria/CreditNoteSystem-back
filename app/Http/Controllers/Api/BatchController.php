@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Batches\StoreBatchRequest;
+use App\Http\Resources\BatchDetailResource;
+use App\Http\Resources\BatchItemResource;
+use App\Http\Resources\BatchResource;
 use App\Models\Batch;
 use App\Models\BatchItem;
 use App\Services\BatchService;
@@ -27,24 +30,9 @@ class BatchController extends Controller
         $batches = Batch::query()
             ->where('userId', (int) $authUser->id)
             ->orderByDesc('id')
-            ->paginate($perPage)
-            ->through(function (Batch $batch) {
-                $total = max(1, (int) $batch->totalRecords);
+            ->paginate($perPage);
 
-                return [
-                    'id' => $batch->id,
-                    // 'userId' => $batch->userId,
-                    'fileName' => $batch->fileName,
-                    'batchType' => $batch->batchType,
-                    'status' => $batch->status,
-                    'totalRecords' => (int) $batch->totalRecords,
-                    'processedRecords' => (int) $batch->processedRecords,
-                    'processingRecords' => (int) $batch->processingRecords,
-                    'errorRecords' => (int) $batch->errorRecords,
-                    'progressPercent' => round(((int) $batch->processedRecords / $total) * 100, 2),
-                    'createdAt' => $batch->createdAt,
-                ];
-            });
+        $batches->setCollection(BatchResource::collection($batches->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Batches', $batches));
     }
@@ -54,16 +42,7 @@ class BatchController extends Controller
         try {
             $batch = $batchService->createBatch($request);
 
-            return response()->json(ApiResponse::success('Batch creado y encolado', [
-                'id' => $batch->id,
-                'batchType' => $batch->batchType,
-                'status' => $batch->status,
-                'totalRecords' => $batch->totalRecords,
-                'processedRecords' => $batch->processedRecords,
-                'processingRecords' => $batch->processingRecords,
-                'errorRecords' => $batch->errorRecords,
-                'createdAt' => $batch->createdAt,
-            ], 201), 201);
+            return response()->json(ApiResponse::success('Batch creado y encolado', BatchResource::make($batch), 201), 201);
         } catch (Throwable $e) {
             return response()->json(ApiResponse::error('No se pudo crear el batch', [
                 'message' => $e->getMessage(),
@@ -91,46 +70,12 @@ class BatchController extends Controller
             ->where('batchId', $batch->id)
             ->where('status', 'error')
             ->orderByDesc('id')
-            ->paginate($perPage)
-            ->through(function (BatchItem $item) {
-                $rawData = is_array($item->rawData)
-                    ? $item->rawData
-                    : (json_decode((string) $item->rawData, true) ?: []);
+            ->paginate($perPage);
 
-                // errorLog ya es array debido al cast en el modelo
-                $errorLog = is_array($item->errorLog) ? $item->errorLog : null;
-
-                return [
-                    'id' => $item->id,
-                    'rowHash' => $item->rowHash,
-                    'requestId' => $item->requestId,
-                    'userId' => $item->userId,
-                    'status' => $item->status,
-                    'processedAt' => $item->processedAt,
-                    'errorLog' => $errorLog ?: ['message' => 'Sin detalles de error'],
-                    'rawData' => $rawData,
-                ];
-            });
-
-        $total = max(1, (int) $batch->totalRecords);
-        $progressPercent = round(((int) $batch->processedRecords / $total) * 100, 2);
+        $errorItems->setCollection(BatchItemResource::collection($errorItems->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Estado del batch', [
-            'batch' => [
-                'id' => $batch->id,
-                'userId' => $batch->userId,
-                'fileName' => $batch->fileName,
-                'batchType' => $batch->batchType,
-                'minRange' => $batch->minRange,
-                'maxRange' => $batch->maxRange,
-                'status' => $batch->status,
-                'totalRecords' => $batch->totalRecords,
-                'processedRecords' => $batch->processedRecords,
-                'processingRecords' => $batch->processingRecords,
-                'errorRecords' => $batch->errorRecords,
-                'createdAt' => $batch->createdAt,
-                'progressPercent' => $progressPercent,
-            ],
+            'batch' => BatchDetailResource::make($batch),
             'itemsSummary' => [
                 'pending' => (int) ($statusCounters['pending'] ?? 0),
                 'processing' => (int) ($statusCounters['processing'] ?? 0),
@@ -172,34 +117,12 @@ class BatchController extends Controller
             ->with(['request.requestType', 'request.reason', 'request.classification'])
             ->where('batchId', $batch->id)
             ->orderByDesc('id')
-            ->paginate($perPage)
-            ->through(function (BatchItem $item) {
-                $rawData = is_array($item->rawData)
-                    ? $item->rawData
-                    : (json_decode((string) $item->rawData, true) ?: []);
+            ->paginate($perPage);
 
-                $errorLog = is_array($item->errorLog) ? $item->errorLog : null;
-
-                return [
-                    'id' => $item->id,
-                    'status' => $item->status,
-                    'processedAt' => $item->processedAt,
-                    'requestId' => $item->requestId,
-                    'request' => $item->request,
-                    'errorLog' => $errorLog,
-                    'rawData' => $rawData,
-                ];
-            });
+        $items->setCollection(BatchItemResource::collection($items->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Solicitudes del batch', [
-            'batch' => [
-                'id' => $batch->id,
-                'batchType' => $batch->batchType,
-                'status' => $batch->status,
-                'totalRecords' => (int) $batch->totalRecords,
-                'processedRecords' => (int) $batch->processedRecords,
-                'errorRecords' => (int) $batch->errorRecords,
-            ],
+            'batch' => BatchResource::make($batch),
             'items' => $items,
         ]));
     }
