@@ -306,7 +306,29 @@ class RequestController extends Controller
             $query->where('requestTypeId', (int) $request->input('requestTypeId'));
         }
 
-        $perPage = max(1, (int) $request->query('perPage', 15));
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            $query->where(function ($subQuery) use ($search) {
+                $subQuery->where('requestNumber', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhere('customerId', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('fullName', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('reason', function ($reasonQuery) use ($search) {
+                        $reasonQuery->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('classification', function ($classificationQuery) use ($search) {
+                        $classificationQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%")
+                            ->orWhere('type', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $perPageInput = $request->query('per_page', $request->query('perPage', 15));
+        $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) $request->query('page', 1));
         $requests = $query->paginate($perPage, ['*'], 'page', $page);
 
@@ -679,6 +701,14 @@ class RequestController extends Controller
                 ];
             }
 
+                if ((bool) $currentWorkflowStep->isInitialStep) {
+                    return [
+                        'ok' => false,
+                        'status' => 422,
+                        'payload' => ApiResponse::error('No se puede rechazar una solicitud que se encuentra en el paso inicial del flujo', null, 422),
+                    ];
+                }
+
             $activeRequestStep->update([
                 'status' => 'rejected',
                 'completedAt' => now(),
@@ -754,6 +784,384 @@ class RequestController extends Controller
         });
 
         return response()->json($result['payload'], $result['status']);
+    }
+
+    public function approveMass(Request $request)
+    {
+        $validation = Validator::make($request->all(), [
+            'requestIds' => ['required', 'array', 'min:1'],
+            'requestIds.*' => ['integer', 'distinct'],
+            'comments' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if ($validation->fails()) {
+            return response()->json(ApiResponse::error('Invalid data', $validation->errors(), 422), 422);
+        }
+
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+
+        $approvedIds = [];
+        $failed = [];
+        $notificationsByUser = [];
+
+        foreach ($requestIds as $requestId) {
+            $result = DB::transaction(function () use ($requestId, $authUser, $request, $isAdmin) {
+                $requestModel = RequestModel::query()->lockForUpdate()->find($requestId);
+
+                if (!$requestModel) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'Request no encontrada',
+                    ];
+                }
+
+                $currentStep = WorkflowRequestCurrentStep::query()
+                    ->where('requestId', $requestId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$currentStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'La solicitud no tiene un paso actual asignado',
+                    ];
+                }
+
+                if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'No tienes permisos para aprobar esta solicitud en el paso actual (asignacion por usuario)',
+                    ];
+                }
+
+                $activeRequestStep = WorkflowRequestStep::query()
+                    ->where('requestId', $requestId)
+                    ->where('workflowStepId', $currentStep->workflowStepId)
+                    ->where('status', 'pending')
+                    ->orderByDesc('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$activeRequestStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'No existe un paso pendiente para aprobar',
+                    ];
+                }
+
+                $currentWorkflowStep = WorkflowStep::query()->find($currentStep->workflowStepId);
+
+                if (!$currentWorkflowStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'El paso actual del workflow no existe',
+                    ];
+                }
+
+                $activeRequestStep->update([
+                    'status' => 'approved',
+                    'completedAt' => now(),
+                ]);
+
+                WorkflowRequestHistory::create([
+                    'requestWorkflowStepId' => $activeRequestStep->id,
+                    'requestId' => $requestId,
+                    'workflowStepId' => $currentWorkflowStep->id,
+                    'actionUserId' => (int) $authUser->id,
+                    'actionType' => 'approved',
+                    'comments' => $request->input('comments'),
+                ]);
+
+                $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+
+                if (!$nextStep || (bool) $currentWorkflowStep->isFinalStep) {
+                    $currentStep->update([
+                        'status' => 'approved',
+                    ]);
+
+                    $requestModel->update([
+                        'status' => 'approved',
+                    ]);
+
+                    return [
+                        'ok' => true,
+                        'requestId' => $requestId,
+                        'notifyUserId' => null,
+                        'requestNumber' => (string) ($requestModel->requestNumber ?? $requestModel->id),
+                    ];
+                }
+
+                $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
+
+                $nextRequestStep = WorkflowRequestStep::create([
+                    'requestId' => $requestId,
+                    'workflowStepId' => $nextStep->id,
+                    'assignedRoleId' => $nextStep->roleId,
+                    'assignedUserId' => $nextAssignedUserId,
+                    'status' => 'pending',
+                    'startedAt' => now(),
+                ]);
+
+                WorkflowRequestCurrentStep::updateOrCreate(
+                    ['requestId' => $requestId],
+                    [
+                        'workflowId' => $currentStep->workflowId,
+                        'workflowStepId' => $nextStep->id,
+                        'assignedRoleId' => $nextStep->roleId,
+                        'assignedUserId' => $nextAssignedUserId,
+                        'status' => 'pending',
+                    ]
+                );
+
+                WorkflowRequestHistory::create([
+                    'requestWorkflowStepId' => $nextRequestStep->id,
+                    'requestId' => $requestId,
+                    'workflowStepId' => $nextStep->id,
+                    'actionUserId' => (int) $authUser->id,
+                    'actionType' => 'routed',
+                    'comments' => 'Solicitud enviada al siguiente paso del flujo.',
+                ]);
+
+                $requestModel->update([
+                    'status' => 'pending',
+                ]);
+
+                return [
+                    'ok' => true,
+                    'requestId' => $requestId,
+                    'notifyUserId' => $nextAssignedUserId,
+                    'requestNumber' => (string) ($requestModel->requestNumber ?? $requestModel->id),
+                ];
+            });
+
+            if ($result['ok']) {
+                $approvedIds[] = (int) $result['requestId'];
+
+                if (!empty($result['notifyUserId'])) {
+                    $notificationsByUser[(int) $result['notifyUserId']][] = (string) $result['requestNumber'];
+                }
+
+                continue;
+            }
+
+            $failed[] = [
+                'requestId' => (int) $result['requestId'],
+                'reason' => (string) $result['error'],
+            ];
+        }
+
+        foreach ($notificationsByUser as $userId => $requestNumbers) {
+            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
+        }
+
+        return response()->json(ApiResponse::success('Aprobacion masiva procesada', [
+            'totalReceived' => count($requestIds),
+            'totalApproved' => count($approvedIds),
+            'totalFailed' => count($failed),
+            'approvedRequestIds' => $approvedIds,
+            'failedRequests' => $failed,
+        ]));
+    }
+
+    public function rejectMass(Request $request)
+    {
+        $validation = Validator::make($request->all(), [
+            'requestIds' => ['required', 'array', 'min:1'],
+            'requestIds.*' => ['integer', 'distinct'],
+            'comments' => ['required', 'string', 'max:1000'],
+        ]);
+
+        if ($validation->fails()) {
+            return response()->json(ApiResponse::error('Invalid data', $validation->errors(), 422), 422);
+        }
+
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $globalComment = (string) $request->input('comments');
+
+        $rejectedIds = [];
+        $failed = [];
+        $notificationsByUser = [];
+
+        foreach ($requestIds as $requestId) {
+            $result = DB::transaction(function () use ($requestId, $authUser, $isAdmin, $globalComment) {
+                $requestModel = RequestModel::query()->lockForUpdate()->find($requestId);
+
+                if (!$requestModel) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'Request no encontrada',
+                    ];
+                }
+
+                $currentStep = WorkflowRequestCurrentStep::query()
+                    ->where('requestId', $requestId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$currentStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'La solicitud no tiene un paso actual asignado',
+                    ];
+                }
+
+                if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'No tienes permisos para rechazar esta solicitud en el paso actual (asignacion por usuario)',
+                    ];
+                }
+
+                $activeRequestStep = WorkflowRequestStep::query()
+                    ->where('requestId', $requestId)
+                    ->where('workflowStepId', $currentStep->workflowStepId)
+                    ->where('status', 'pending')
+                    ->orderByDesc('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$activeRequestStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'No existe un paso pendiente para rechazar',
+                    ];
+                }
+
+                $currentWorkflowStep = WorkflowStep::query()->find($currentStep->workflowStepId);
+
+                if (!$currentWorkflowStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'El paso actual del workflow no existe',
+                    ];
+                }
+
+                if ((bool) $currentWorkflowStep->isInitialStep) {
+                    return [
+                        'ok' => false,
+                        'requestId' => $requestId,
+                        'error' => 'No se puede rechazar una solicitud que se encuentra en el paso inicial del flujo',
+                    ];
+                }
+
+                $activeRequestStep->update([
+                    'status' => 'rejected',
+                    'completedAt' => now(),
+                ]);
+
+                WorkflowRequestHistory::create([
+                    'requestWorkflowStepId' => $activeRequestStep->id,
+                    'requestId' => $requestId,
+                    'workflowStepId' => $currentStep->workflowStepId,
+                    'actionUserId' => (int) $authUser->id,
+                    'actionType' => 'rejected',
+                    'comments' => $globalComment,
+                ]);
+
+                $previousStep = $this->resolvePreviousStepByOrder($currentWorkflowStep);
+
+                if (!$previousStep) {
+                    $currentStep->update([
+                        'status' => 'rejected',
+                    ]);
+
+                    $requestModel->update([
+                        'status' => 'rejected',
+                    ]);
+
+                    return [
+                        'ok' => true,
+                        'requestId' => $requestId,
+                        'notifyUserId' => null,
+                        'requestNumber' => (string) ($requestModel->requestNumber ?? $requestModel->id),
+                    ];
+                }
+
+                $previousAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $previousStep);
+
+                $previousRequestStep = WorkflowRequestStep::create([
+                    'requestId' => $requestId,
+                    'workflowStepId' => $previousStep->id,
+                    'assignedRoleId' => $previousStep->roleId,
+                    'assignedUserId' => $previousAssignedUserId,
+                    'status' => 'pending',
+                    'startedAt' => now(),
+                ]);
+
+                WorkflowRequestCurrentStep::updateOrCreate(
+                    ['requestId' => $requestId],
+                    [
+                        'workflowId' => $currentStep->workflowId,
+                        'workflowStepId' => $previousStep->id,
+                        'assignedRoleId' => $previousStep->roleId,
+                        'assignedUserId' => $previousAssignedUserId,
+                        'status' => 'pending',
+                    ]
+                );
+
+                WorkflowRequestHistory::create([
+                    'requestWorkflowStepId' => $previousRequestStep->id,
+                    'requestId' => $requestId,
+                    'workflowStepId' => $previousStep->id,
+                    'actionUserId' => (int) $authUser->id,
+                    'actionType' => 'routed_back',
+                    'comments' => 'Solicitud regresada al paso anterior del flujo.',
+                ]);
+
+                $requestModel->update([
+                    'status' => 'pending',
+                ]);
+
+                return [
+                    'ok' => true,
+                    'requestId' => $requestId,
+                    'notifyUserId' => $previousAssignedUserId,
+                    'requestNumber' => (string) ($requestModel->requestNumber ?? $requestModel->id),
+                ];
+            });
+
+            if ($result['ok']) {
+                $rejectedIds[] = (int) $result['requestId'];
+
+                if (!empty($result['notifyUserId'])) {
+                    $notificationsByUser[(int) $result['notifyUserId']][] = (string) $result['requestNumber'];
+                }
+
+                continue;
+            }
+
+            $failed[] = [
+                'requestId' => (int) $result['requestId'],
+                'reason' => (string) $result['error'],
+            ];
+        }
+
+        foreach ($notificationsByUser as $userId => $requestNumbers) {
+            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
+        }
+
+        return response()->json(ApiResponse::success('Rechazo masivo procesado', [
+            'totalReceived' => count($requestIds),
+            'totalRejected' => count($rejectedIds),
+            'totalFailed' => count($failed),
+            'rejectedRequestIds' => $rejectedIds,
+            'failedRequests' => $failed,
+            'commentApplied' => $globalComment,
+        ]));
     }
 
     private function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId): void
