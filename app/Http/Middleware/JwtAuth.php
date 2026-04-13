@@ -135,11 +135,50 @@ class JwtAuth
 
         $request->attributes->set('authUser', $user);
         $request->attributes->set('authRole', $user->roleName);
+        $request->attributes->set('authActor', $user);
+        $request->attributes->set('authImpersonating', false);
         $request->attributes->set('authTokenValid', true);
         $request->attributes->set('authToken', $token);
         $request->attributes->set('sessionTimeoutMinutes', $sessionTimeoutMinutes);
         $request->attributes->set('sessionLastActivityAt', Carbon::now());
         $request->setUserResolver(fn() => $user);
+
+        $impersonatedUserHeader = $request->header('X-Impersonate-User-Id');
+
+        if ($impersonatedUserHeader !== null && $impersonatedUserHeader !== '') {
+            if (!is_numeric($impersonatedUserHeader) || (int) $impersonatedUserHeader <= 0) {
+                return response()->json(ApiResponse::error('X-Impersonate-User-Id debe ser un entero positivo', null, 422), 422);
+            }
+
+            $impersonatedUserId = (int) $impersonatedUserHeader;
+
+            if (!$this->isSuperAdmin($user)) {
+                return response()->json(ApiResponse::error('Solo SUPERADMIN puede usar impersonación', null, 403), 403);
+            }
+
+            if (!$request->isMethodSafe()) {
+                return response()->json(ApiResponse::error('La impersonación solo permite operaciones de lectura', null, 403), 403);
+            }
+
+            if ($impersonatedUserId !== (int) $user->id) {
+                $impersonatedUser = DB::table('users')
+                    ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
+                    ->select('users.*', 'roles.roleName')
+                    ->where('users.id', $impersonatedUserId)
+                    ->first();
+
+                if (!$impersonatedUser || !$impersonatedUser->isActive || $impersonatedUser->deletedAt) {
+                    return response()->json(ApiResponse::error('Usuario a impersonar no válido', null, 404), 404);
+                }
+
+                $request->attributes->set('authUser', $impersonatedUser);
+                $request->attributes->set('authRole', $impersonatedUser->roleName);
+                $request->attributes->set('authActor', $user);
+                $request->attributes->set('authImpersonating', true);
+                $request->attributes->set('authImpersonatedUserId', $impersonatedUserId);
+                $request->setUserResolver(fn() => $impersonatedUser);
+            }
+        }
 
         return $next($request);
     }
@@ -158,5 +197,12 @@ class JwtAuth
     private function isVerifyRoute(Request $request): bool
     {
         return str_ends_with($request->path(), 'auth/verify');
+    }
+
+    private function isSuperAdmin(object $user): bool
+    {
+        $roleName = mb_strtoupper(trim((string) ($user->roleName ?? '')));
+
+        return str_contains($roleName, 'SUPERADMIN');
     }
 }
