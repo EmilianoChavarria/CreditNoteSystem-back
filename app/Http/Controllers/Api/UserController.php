@@ -2,18 +2,30 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Users\ChangePasswordAction;
+use App\Actions\Users\ChangeUserPasswordAction;
+use App\Actions\Users\CreateUserAction;
+use App\Actions\Users\UpdateUserAction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Users\ChangePasswordRequest;
+use App\Http\Requests\Users\ChangeUserPasswordRequest;
+use App\Http\Requests\Users\StoreUserRequest;
+use App\Http\Requests\Users\UpdateUserRequest;
 use App\Models\User;
-use App\Models\UserSecurity;
-use App\Services\PasswordValidationService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private readonly CreateUserAction $createUserAction,
+        private readonly UpdateUserAction $updateUserAction,
+        private readonly ChangePasswordAction $changePasswordAction,
+        private readonly ChangeUserPasswordAction $changeUserPasswordAction,
+    ) {
+    }
+
     public function usersBySalesAndManagerRoles()
     {
         $allowedRoles = [
@@ -53,7 +65,7 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Perfil del usuario autenticado', $user));
     }
 
-    public function changePassword(Request $request)
+    public function changePassword(ChangePasswordRequest $request)
     {
         $authUser = $request->attributes->get('authUser');
 
@@ -61,56 +73,20 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
         }
 
-        $validator = Validator::make($request->all(), [
-            'currentPassword' => ['required', 'string'],
-            'newPassword' => ['required', 'string', 'min:6', 'different:currentPassword', 'confirmed'],
-        ], [
-            'newPassword.confirmed' => 'La confirmación de contraseña no coincide.',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
-        }
-
-        $user = User::query()->find((int) $authUser->id);
-
-        if (!$user) {
-            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
-        }
-
-        if (!Hash::check((string) $request->input('currentPassword'), (string) $user->passwordHash)) {
-            return response()->json(ApiResponse::error('La contraseña actual no es correcta', null, 422), 422);
-        }
-
-        /** @var PasswordValidationService $passwordService */
-        $passwordService = app(PasswordValidationService::class);
-        $passwordErrors = $passwordService->validatePassword((string) $request->input('newPassword'));
-
-        if (!empty($passwordErrors)) {
-            return response()->json(
-                ApiResponse::error('La nueva contraseña no cumple con los requisitos', [
-                    'errors' => $passwordErrors,
-                    'requirements' => $passwordService->getRequirements(),
-                ], 422),
-                422
+        try {
+            $this->changePasswordAction->execute(
+                (int) $authUser->id,
+                (string) $request->input('currentPassword'),
+                (string) $request->input('newPassword')
             );
+
+            return response()->json(ApiResponse::success('Contraseña actualizada correctamente. Inicia sesión nuevamente.'));
+        } catch (ValidationException $e) {
+            return response()->json(ApiResponse::error('Datos inválidos', $e->errors(), 422), 422);
         }
-
-        $user->update([
-            'passwordHash' => Hash::make((string) $request->input('newPassword')),
-        ]);
-
-        UserSecurity::query()
-            ->where('userId', (int) $user->id)
-            ->update([
-                'sessionToken' => null,
-                'lastActivityAt' => now(),
-            ]);
-
-        return response()->json(ApiResponse::success('Contraseña actualizada correctamente. Inicia sesión nuevamente.'));
     }
 
-    public function changePasswordByUserId(Request $request, int $id)
+    public function changePasswordByUserId(ChangeUserPasswordRequest $request, int $id)
     {
         $authUser = $request->attributes->get('authUser');
 
@@ -123,48 +99,23 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('No tienes permisos para cambiar la contraseña de otro usuario', null, 403), 403);
         }
 
-        $validator = Validator::make($request->all(), [
-            'newPassword' => ['required', 'string', 'min:6', 'confirmed'],
-        ], [
-            'newPassword.confirmed' => 'La confirmación de contraseña no coincide.',
-        ]);
+        try {
+            $this->changeUserPasswordAction->execute($actor, $id, (string) $request->input('newPassword'));
 
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+            return response()->json(ApiResponse::success('Contraseña del usuario actualizada correctamente.'));
+        } catch (ValidationException $e) {
+            $errors = $e->errors();
+
+            if (isset($errors['authorization'])) {
+                return response()->json(ApiResponse::error('No tienes permisos para cambiar la contraseña de otro usuario', null, 403), 403);
+            }
+
+            if (isset($errors['user'])) {
+                return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+            }
+
+            return response()->json(ApiResponse::error('Datos inválidos', $errors, 422), 422);
         }
-
-        $user = User::query()->find($id);
-        if (!$user) {
-            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
-        }
-
-        /** @var PasswordValidationService $passwordService */
-        $passwordService = app(PasswordValidationService::class);
-        $newPassword = (string) $request->input('newPassword');
-        $passwordErrors = $passwordService->validatePassword($newPassword);
-
-        if (!empty($passwordErrors)) {
-            return response()->json(
-                ApiResponse::error('La nueva contraseña no cumple con los requisitos', [
-                    'errors' => $passwordErrors,
-                    'requirements' => $passwordService->getRequirements(),
-                ], 422),
-                422
-            );
-        }
-
-        $user->update([
-            'passwordHash' => Hash::make($newPassword),
-        ]);
-
-        UserSecurity::query()
-            ->where('userId', (int) $user->id)
-            ->update([
-                'sessionToken' => null,
-                'lastActivityAt' => now(),
-            ]);
-
-        return response()->json(ApiResponse::success('Contraseña del usuario actualizada correctamente.'));
     }
 
     public function getAll()
@@ -208,73 +159,20 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Usuario', $user));
     }
 
-    public function store(Request $request)
+    public function store(StoreUserRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'fullName' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:150', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:6'],
-            'roleId' => ['required', 'integer', 'exists:roles,id'],
-            'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
-            'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
-            'isActive' => ['nullable', 'boolean'],
-        ]);
+        $user = $this->createUserAction->execute($request->validated());
 
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
-        }
-
-        $user = User::create([
-            'fullName' => $request->input('fullName'),
-            'email' => $request->input('email'),
-            'passwordHash' => Hash::make($request->input('password')),
-            'roleId' => (int) $request->input('roleId'),
-            'supervisorId' => $request->input('supervisorId'),
-            'preferredLanguage' => $request->input('preferredLanguage', 'en'),
-            'isActive' => $request->boolean('isActive', true),
-        ]);
-
-        UserSecurity::create([
-            'userId' => $user->id,
-            'failedAttempts' => 0,
-        ]);
-
-        return response()->json(ApiResponse::success('Usuario creado correctamente', $user->load('role'), 201), 201);
+        return response()->json(ApiResponse::success('Usuario creado correctamente', $user, 201), 201);
     }
 
-    public function update(Request $request, int $id)
+    public function update(UpdateUserRequest $request, int $id)
     {
-        $validator = Validator::make($request->all(), [
-            'fullName' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($id)],
-            'roleId' => ['required', 'integer', 'exists:roles,id'],
-            'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
-            'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
-            'isActive' => ['nullable', 'boolean'],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
-        }
-
-        $user = User::find($id);
+        $user = $this->updateUserAction->execute($id, $request->validated());
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
-
-        $user->fill([
-            'fullName' => $request->input('fullName'),
-            'email' => $request->input('email'),
-            'roleId' => (int) $request->input('roleId'),
-            'supervisorId' => $request->input('supervisorId'),
-            'preferredLanguage' => $request->input('preferredLanguage', 'en'),
-            'isActive' => $request->boolean('isActive', true),
-        ]);
-
-        $user->save();
-
-        $user->load('role');
 
         return response()->json(ApiResponse::success('Usuario actualizado', $user));
     }
