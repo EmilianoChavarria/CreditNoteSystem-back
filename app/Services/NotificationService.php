@@ -88,6 +88,47 @@ class NotificationService
         return $notification;
     }
 
+    /**
+     * Crea una notificación resumida para asignaciones masivas de solicitudes.
+     *
+     * @param array<int, string|int> $requestNumbers
+     */
+    public function createAssignedRequestsSummaryNotification(int $userId, array $requestNumbers): ?NotificationModel
+    {
+        $requestNumbers = array_values(array_filter(array_unique(array_map(static fn ($value) => trim((string) $value), $requestNumbers))));
+        $total = count($requestNumbers);
+
+        if ($total <= 0) {
+            return null;
+        }
+
+        $preview = implode(', ', array_slice($requestNumbers, 0, 5));
+        $remaining = max(0, $total - 5);
+
+        $message = "Tienes {$total} solicitudes nuevas pendientes por aprobar.";
+        if ($preview !== '') {
+            $message .= " Solicitudes: {$preview}";
+            if ($remaining > 0) {
+                $message .= " y {$remaining} mas.";
+            }
+            $message .= '.';
+        }
+
+        $notification = $this->createAndBroadcast(
+            userId: $userId,
+            type: 'assigned_request_bulk',
+            relatedId: null,
+            title: 'Tienes nuevas solicitudes pendientes por aprobar',
+            message: $message
+        );
+
+        if ($notification) {
+            $this->broadcastRequestAssignedBulk($userId, $total, $requestNumbers);
+        }
+
+        return $notification;
+    }
+
     private function broadcastBatchFinished(Batch $batch): void
     {
         try {
@@ -117,6 +158,35 @@ class NotificationService
         } catch (Throwable $e) {
             Log::error('Error emitiendo evento batch.finished', [
                 'batchId' => (int) $batch->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @param array<int, string> $requestNumbers
+     */
+    private function broadcastRequestAssignedBulk(int $userId, int $total, array $requestNumbers): void
+    {
+        try {
+            broadcast(new SocketMessageSent([
+                'event' => 'request.assigned.bulk',
+                'targetUserId' => $userId,
+                'summary' => [
+                    'total' => $total,
+                    'requestNumbers' => array_slice($requestNumbers, 0, 10),
+                ],
+                'sentAt' => now()->toIso8601String(),
+            ]));
+
+            Log::info('Evento request.assigned.bulk emitido por socket', [
+                'userId' => $userId,
+                'total' => $total,
+            ]);
+        } catch (Throwable $e) {
+            Log::error('Error emitiendo evento request.assigned.bulk', [
+                'userId' => $userId,
+                'total' => $total,
                 'error' => $e->getMessage(),
             ]);
         }
