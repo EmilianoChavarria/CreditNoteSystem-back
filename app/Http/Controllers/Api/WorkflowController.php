@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\RequestClassification;
-use App\Models\RequestType;
+use App\Http\Requests\Workflows\StoreWorkflowRequest;
+use App\Http\Requests\Workflows\UpdateWorkflowRequest;
 use App\Models\Workflow;
+use App\Services\WorkflowService;
 use App\Support\ApiResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class WorkflowController extends Controller
 {
+    public function __construct(
+        private readonly WorkflowService $workflowService
+    ) {
+    }
+
     public function getAll()
     {
         $workflows = Workflow::with(['requestType', 'classification'])->get();
@@ -30,38 +34,17 @@ class WorkflowController extends Controller
         return response()->json(ApiResponse::success('Workflow', $workflow));
     }
 
-    public function store(Request $request)
+    public function store(StoreWorkflowRequest $request)
     {
-        $requestTypeTable = (new RequestType())->getTable();
-        $classificationTable = (new RequestClassification())->getTable();
-
-        $validator = Validator::make($request->all(), [
-            'name' => ['required', 'string', 'max:255'],
-            'description' => ['required', 'string'],
-            'isActive' => ['nullable', 'boolean'],
-            'requestTypeId' => ['required', 'integer', 'exists:' . $requestTypeTable . ',id'],
-            'classificationType' => ['nullable', 'string', 'exists:' . $classificationTable . ',type'],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Invalid data', $validator->errors(), 422), 422);
-        }
-
-        $workflow = Workflow::create([
-            'name' => $request->input('name'),
-            'description' => $request->input('description'),
-            'isActive' => $request->input('isActive', true),
-            'requestTypeId' => $request->input('requestTypeId'),
-            'classificationType' => $request->input('classificationType'),
-        ]);
+        $workflow = $this->workflowService->create($request->validated());
 
         return response()->json(
-            ApiResponse::success('Workflow created successfully', $workflow->load(['requestType', 'classification']), 201),
+            ApiResponse::success('Workflow created successfully', $workflow, 201),
             201
         );
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateWorkflowRequest $request, $id)
     {
         $workflow = Workflow::find($id);
 
@@ -69,30 +52,9 @@ class WorkflowController extends Controller
             return response()->json(ApiResponse::error('Workflow not found', null, 404), 404);
         }
 
-        $requestTypeTable = (new RequestType())->getTable();
-        $classificationTable = (new RequestClassification())->getTable();
+        $workflow = $this->workflowService->update($workflow, $request->validated());
 
-        $validator = Validator::make($request->all(), [
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'description' => ['sometimes', 'required', 'string'],
-            'isActive' => ['sometimes', 'nullable', 'boolean'],
-            'requestTypeId' => ['sometimes', 'required', 'integer', 'exists:' . $requestTypeTable . ',id'],
-            'classificationType' => ['sometimes', 'nullable', 'string', 'exists:' . $classificationTable . ',type'],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Invalid data', $validator->errors(), 422), 422);
-        }
-
-        $workflow->update($request->only([
-            'name',
-            'description',
-            'isActive',
-            'requestTypeId',
-            'classificationType',
-        ]));
-
-        return response()->json(ApiResponse::success('Workflow updated successfully', $workflow->load(['requestType', 'classification'])));
+        return response()->json(ApiResponse::success('Workflow updated successfully', $workflow));
     }
 
     public function delete($id)
