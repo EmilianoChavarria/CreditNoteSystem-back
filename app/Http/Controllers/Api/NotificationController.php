@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\NotificationResource;
 use App\Models\Notification as NotificationModel;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ class NotificationController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Notificaciones', $notifications));
+        return response()->json(ApiResponse::success('Notificaciones', NotificationResource::collection($notifications)));
     }
 
     public function unread(Request $request)
@@ -39,7 +40,7 @@ class NotificationController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Notificaciones no leidas', $notifications));
+        return response()->json(ApiResponse::success('Notificaciones no leidas', NotificationResource::collection($notifications)));
     }
 
     public function markAsRead(Request $request, int $id)
@@ -66,6 +67,6 @@ class NotificationController extends Controller
             ]);
         }
 
-        return response()->json(ApiResponse::success('Notificacion marcada como leida', $notification->fresh()));
+        return response()->json(ApiResponse::success('Notificacion marcada como leida', NotificationResource::make($notification->fresh())));
     }
 }
