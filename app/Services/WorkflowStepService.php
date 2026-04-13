@@ -156,4 +156,59 @@ class WorkflowStepService
             ]);
         }
     }
+
+    public function delete(WorkflowStep $step): void
+    {
+        DB::transaction(function () use ($step) {
+            $workflowId = $step->workflowId;
+            $stepOrder = $step->stepOrder;
+
+            // Validar que no sea el único paso del workflow
+            $totalSteps = WorkflowStep::where('workflowId', $workflowId)->count();
+            if ($totalSteps === 1) {
+                throw ValidationException::withMessages([
+                    'id' => ['No se puede eliminar el único paso del workflow'],
+                ]);
+            }
+
+            // Validar si es paso inicial o final
+            if ($step->isInitialStep) {
+                $hasOtherInitialStep = WorkflowStep::where('workflowId', $workflowId)
+                    ->where('id', '!=', $step->id)
+                    ->where('isInitialStep', true)
+                    ->exists();
+
+                if (!$hasOtherInitialStep) {
+                    throw ValidationException::withMessages([
+                        'id' => ['No se puede eliminar el paso inicial. Asigna isInitialStep a otro paso primero'],
+                    ]);
+                }
+            }
+
+            if ($step->isFinalStep) {
+                $hasOtherFinalStep = WorkflowStep::where('workflowId', $workflowId)
+                    ->where('id', '!=', $step->id)
+                    ->where('isFinalStep', true)
+                    ->exists();
+
+                if (!$hasOtherFinalStep) {
+                    throw ValidationException::withMessages([
+                        'id' => ['No se puede eliminar el paso final. Asigna isFinalStep a otro paso primero'],
+                    ]);
+                }
+            }
+
+            // Eliminar transiciones relacionadas
+            WorkflowStepTransition::where('fromStepId', $step->id)->delete();
+            WorkflowStepTransition::where('toStepId', $step->id)->delete();
+
+            // Eliminar el paso
+            $step->delete();
+
+            // Reordenar los pasos posteriores
+            WorkflowStep::where('workflowId', $workflowId)
+                ->where('stepOrder', '>', $stepOrder)
+                ->decrement('stepOrder');
+        });
+    }
 }
