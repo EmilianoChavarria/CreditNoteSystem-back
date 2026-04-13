@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Models\UserAssignment;
 use App\Support\ApiResponse;
@@ -33,7 +34,7 @@ class UserAssignmentController extends Controller
             ->orderBy('fullName')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios CS LEADER', $leaders));
+        return response()->json(ApiResponse::success('Usuarios CS LEADER', UserResource::collection($leaders)));
     }
 
     public function assignableUsers(Request $request)
@@ -59,7 +60,7 @@ class UserAssignmentController extends Controller
             ->orderBy('fullName')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios asignables', $users));
+        return response()->json(ApiResponse::success('Usuarios asignables', UserResource::collection($users)));
     }
 
     public function index(Request $request, int $leaderUserId)
@@ -91,7 +92,7 @@ class UserAssignmentController extends Controller
             ->orderBy('fullName')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios asignados al CS LEADER', $assignedUsers));
+        return response()->json(ApiResponse::success('Usuarios asignados al CS LEADER', UserResource::collection($assignedUsers)));
     }
 
     public function upsert(Request $request)
