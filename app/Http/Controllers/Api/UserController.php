@@ -11,6 +11,7 @@ use App\Http\Requests\Users\ChangePasswordRequest;
 use App\Http\Requests\Users\ChangeUserPasswordRequest;
 use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -42,7 +43,7 @@ class UserController extends Controller
             ->orderBy('fullName')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $users));
+        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', UserResource::collection($users)));
     }
 
     public function me(Request $request)
@@ -62,7 +63,7 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Perfil del usuario autenticado', $user));
+        return response()->json(ApiResponse::success('Perfil del usuario autenticado', UserResource::make($user)));
     }
 
     public function changePassword(ChangePasswordRequest $request)
@@ -124,12 +125,12 @@ class UserController extends Controller
         $users = User::with('role')->where('isActive', '1')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios', $users));
+        return response()->json(ApiResponse::success('Usuarios', UserResource::collection($users)));
     }
 
     public function index(Request $request)
     {
-        $perPage = $request->query('perPage');
+        $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
 
         $users = User::with('role')
@@ -143,7 +144,9 @@ class UserController extends Controller
                         });
                 });
             })
-            ->cursorPaginate($perPage);
+            ->paginate($perPage);
+
+        $users->setCollection(UserResource::collection($users->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Usuarios', $users));
     }
@@ -156,14 +159,14 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Usuario', $user));
+        return response()->json(ApiResponse::success('Usuario', UserResource::make($user)));
     }
 
     public function store(StoreUserRequest $request)
     {
         $user = $this->createUserAction->execute($request->validated());
 
-        return response()->json(ApiResponse::success('Usuario creado correctamente', $user, 201), 201);
+        return response()->json(ApiResponse::success('Usuario creado correctamente', UserResource::make($user), 201), 201);
     }
 
     public function update(UpdateUserRequest $request, int $id)
@@ -174,7 +177,7 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Usuario actualizado', $user));
+        return response()->json(ApiResponse::success('Usuario actualizado', UserResource::make($user)));
     }
 
     public function destroy(int $id)
