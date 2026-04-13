@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\PermissionResource;
 use App\Models\Permission;
 use App\Services\PermissionService;
 use App\Support\ApiResponse;
@@ -43,7 +44,7 @@ class ModulePermissionController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Permisos', $permissions));
+        return response()->json(ApiResponse::success('Permisos', PermissionResource::collection($permissions)));
     }
 
     public function getByRole(int $roleId)
@@ -54,7 +55,7 @@ class ModulePermissionController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json(ApiResponse::success('Permisos por rol', $permissions));
+        return response()->json(ApiResponse::success('Permisos por rol', PermissionResource::collection($permissions)));
     }
 
     public function getSidebarByRole(int $roleId)
