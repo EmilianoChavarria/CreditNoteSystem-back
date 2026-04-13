@@ -156,10 +156,6 @@ class JwtAuth
                 return response()->json(ApiResponse::error('Solo SUPERADMIN puede usar impersonación', null, 403), 403);
             }
 
-            if (!$request->isMethodSafe()) {
-                return response()->json(ApiResponse::error('La impersonación solo permite operaciones de lectura', null, 403), 403);
-            }
-
             if ($impersonatedUserId !== (int) $user->id) {
                 $impersonatedUser = DB::table('users')
                     ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
