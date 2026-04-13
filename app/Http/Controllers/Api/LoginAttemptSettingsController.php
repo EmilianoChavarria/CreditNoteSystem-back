@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\LoginAttemptSettingResource;
 use App\Models\LoginAttemptSetting;
 use App\Services\LoginAttemptSettingsService;
 use App\Support\ApiResponse;
@@ -24,7 +25,7 @@ class LoginAttemptSettingsController extends Controller
             return response()->json(ApiResponse::error('No autorizado. Solo administradores pueden ver esta configuración', null, 403), 403);
         }
 
-        return response()->json(ApiResponse::success('Configuración de intentos obtenida', $this->loginAttemptSettingsService->getSettings()));
+        return response()->json(ApiResponse::success('Configuración de intentos obtenida', LoginAttemptSettingResource::make($this->loginAttemptSettingsService->getSettings())));
     }
 
     public function updateSettings(Request $request)
@@ -64,6 +65,6 @@ class LoginAttemptSettingsController extends Controller
             ]);
         }
 
-        return response()->json(ApiResponse::success('Configuración de intentos actualizada correctamente', $settings));
+        return response()->json(ApiResponse::success('Configuración de intentos actualizada correctamente', LoginAttemptSettingResource::make($settings)));
     }
 }
