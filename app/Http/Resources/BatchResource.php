@@ -17,6 +17,7 @@ class BatchResource extends JsonResource
             'status'            => $this->status,
             'totalRecords'      => (int) $this->totalRecords,
             'processedRecords'  => (int) $this->processedRecords,
+            'processingRecords' => (int) $this->processingRecords,
             'errorRecords'      => (int) $this->errorRecords,
             // Cálculo movido aquí para limpiar el controlador
             'progressPercent'   => round(((int) $this->processedRecords / $total) * 100, 2),
