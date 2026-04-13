@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\RoleResource;
 use App\Models\Role;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ class RoleController extends Controller
     {
         $roles = Role::orderBy('id')->get();
 
-        return response()->json(ApiResponse::success('Roles', $roles));
+        return response()->json(ApiResponse::success('Roles', RoleResource::collection($roles)));
     }
 
     public function show(int $id)
@@ -26,7 +27,7 @@ class RoleController extends Controller
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Rol', $role));
+        return response()->json(ApiResponse::success('Rol', RoleResource::make($role)));
     }
 
     public function store(Request $request)
@@ -45,7 +46,7 @@ class RoleController extends Controller
             'color' => $request->input('color'),
         ]);
 
-        return response()->json(ApiResponse::success('Rol creado correctamente', $role, 201), 201);
+        return response()->json(ApiResponse::success('Rol creado correctamente', RoleResource::make($role), 201), 201);
     }
 
     public function update(Request $request, int $id)
@@ -78,7 +79,7 @@ class RoleController extends Controller
 
         $role->load('role');
 
-        return response()->json(ApiResponse::success('Rol actualizado correctamente', $role, 201), 201);
+        return response()->json(ApiResponse::success('Rol actualizado correctamente', RoleResource::make($role), 201), 201);
     }
 
     public function destroy(int $id)
