@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\BlockedIpResource;
+use App\Http\Resources\BlockedUserResource;
 use App\Models\BlockedIp;
 use App\Models\IpBlockedHistory;
 use App\Models\User;
@@ -45,6 +47,8 @@ class AdminSecurityController extends Controller
             ->orderBy('fullName')
             ->paginate($perPage);
 
+        $users->setCollection(BlockedUserResource::collection($users->getCollection())->collection);
+
         return response()->json(ApiResponse::success('Usuarios bloqueados obtenidos correctamente', $users));
     }
 
@@ -74,6 +78,8 @@ class AdminSecurityController extends Controller
             ->addSelect('ip_history.reason', 'ip_history.createdAt as blockedHistoryAt')
             ->orderByDesc('blockedAt')
             ->paginate($perPage);
+
+        $ips->setCollection(BlockedIpResource::collection($ips->getCollection())->collection);
 
         return response()->json(ApiResponse::success('IPs bloqueadas obtenidas correctamente', $ips));
     }
