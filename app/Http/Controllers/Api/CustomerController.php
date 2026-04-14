@@ -66,7 +66,7 @@ class CustomerController extends Controller
      */
     public function show(int $id)
     {
-        $customer = Customer::find($id);
+        $customer = $this->customerQueryService->findById($id);
 
         if (!$customer) {
             return response()->json(
@@ -75,7 +75,7 @@ class CustomerController extends Controller
             );
         }
 
-        return response()->json(ApiResponse::success('Customer obtenido exitosamente', CustomerResource::make($customer)));
+        return response()->json(ApiResponse::success('Customer obtenido exitosamente', $customer));
     }
 
     /**
