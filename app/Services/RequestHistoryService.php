@@ -52,6 +52,15 @@ class RequestHistoryService
             ->orderBy('id')
             ->get();
 
+        $initialStep = $allWorkflowSteps->firstWhere('isInitialStep', true);
+        $actionableSteps = $initialStep
+            ? $allWorkflowSteps->reject(fn ($step) => (int) $step->id === (int) $initialStep->id)->values()
+            : $allWorkflowSteps->values();
+
+        $actionableOrderByStepId = $actionableSteps->mapWithKeys(function ($step, int $index) {
+            return [(int) $step->id => $index + 1];
+        })->all();
+
         $requestSteps = WorkflowRequestStep::with([
             'workflowStep:id,workflowId,stepName,stepOrder,roleId,isInitialStep,isFinalStep',
             'assignedRole:id,roleName',
@@ -122,13 +131,14 @@ class RequestHistoryService
 
         $visitedStepIds = $requestSteps->pluck('workflowStepId')->unique()->values()->all();
 
-        $steps = $allWorkflowSteps->map(function ($step) use ($visitedStepIds, $lastStepExecutionByStepId, $currentStep) {
+        $steps = $allWorkflowSteps->map(function ($step) use ($visitedStepIds, $lastStepExecutionByStepId, $currentStep, $actionableOrderByStepId) {
             $latestExecution = $lastStepExecutionByStepId->get($step->id);
 
             return [
                 'id' => $step->id,
                 'stepName' => $step->stepName,
                 'stepOrder' => $step->stepOrder,
+            'effectiveOrder' => $actionableOrderByStepId[(int) $step->id] ?? null,
                 'role' => $step->role,
                 'isInitialStep' => (bool) $step->isInitialStep,
                 'isFinalStep' => (bool) $step->isFinalStep,
@@ -140,8 +150,8 @@ class RequestHistoryService
             ];
         })->values();
 
-        $totalSteps = $allWorkflowSteps->count();
-        $currentStepOrder = $currentStep->workflowStep?->stepOrder;
+        $totalSteps = max(1, $actionableSteps->count());
+        $currentStepOrder = $actionableOrderByStepId[(int) $currentStep->workflowStepId] ?? 1;
         $percent = 0;
 
         if ($totalSteps > 0 && $currentStepOrder) {
