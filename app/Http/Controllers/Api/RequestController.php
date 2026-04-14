@@ -13,6 +13,7 @@ use App\Http\Requests\Requests\CreateRequestInput;
 use App\Http\Requests\Requests\RejectMassRequestInput;
 use App\Http\Requests\Requests\RejectRequestInput;
 use App\Http\Requests\Requests\SaveDraftRequestInput;
+use App\Http\Requests\Requests\UpdateRequestInput;
 use App\Http\Resources\RequestAttachmentResource;
 use App\Http\Resources\RequestReasonResource;
 use App\Http\Resources\RequestResource;
@@ -271,6 +272,24 @@ class RequestController extends Controller
         $created = $this->requestCrudService->createRequest($request->validated(), $user);
 
         return response()->json(ApiResponse::success('Request creado', RequestResource::make($created->refresh()), 201), 201);
+    }
+
+    public function updateRequest(UpdateRequestInput $request, int $requestId)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id, $authUser->roleId)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $isAdmin = $this->isAdminUser($authUser);
+        $result = $this->requestCrudService->updateRequest($requestId, $request->validated(), $authUser, $isAdmin);
+
+        if ($result['status'] >= 400) {
+            return response()->json(ApiResponse::error($result['message'], $result['errors'] ?? null, $result['status']), $result['status']);
+        }
+
+        return response()->json(ApiResponse::success($result['message'], RequestResource::make($result['data']), $result['status']), $result['status']);
     }
 
     public function approve(ApproveRequestInput $request, int $requestId)
