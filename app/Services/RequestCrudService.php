@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Request as RequestModel;
 use App\Models\WorkflowRequestCurrentStep;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class RequestCrudService
 {
@@ -159,19 +161,61 @@ class RequestCrudService
 
     public function getDrafts(int $userId, int $perPage, int $page)
     {
-        return RequestModel::with([
-            'requestType',
-            'user',
-            'reason',
-            'classification',
-        ])
-            ->where('userId', $userId)
-            ->where('status', 'draft')
-            ->orderByDesc('updatedAt')
+        return $this->buildDraftsQuery($userId)
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
     public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page)
+    {
+        return $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search)
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search)
+    {
+        return $this->buildByRequestTypeQuery($requestTypeId, $search)
+            ->paginate($perPage);
+    }
+
+    public function getRequestsForExport(string $module, mixed $authUser, bool $isAdmin, array $filters): Collection
+    {
+        $scope = mb_strtolower((string) ($filters['scope'] ?? 'page'));
+        $perPageInput = $filters['per_page'] ?? $filters['perPage'] ?? 15;
+        $perPage = max(1, (int) $perPageInput);
+        $page = max(1, (int) ($filters['page'] ?? 1));
+        $search = trim((string) ($filters['search'] ?? ''));
+
+        $query = match ($module) {
+            'pending_me' => $this->buildMyPendingQuery(
+                $authUser,
+                $isAdmin,
+                isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : null,
+                $search
+            ),
+            'request_type' => $this->buildByRequestTypeQuery(
+                isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : 0,
+                $search
+            ),
+            'drafts' => $this->buildDraftsQuery((int) ($authUser->id ?? 0)),
+            default => throw ValidationException::withMessages([
+                'module' => ['Módulo de exportación no soportado.'],
+            ]),
+        };
+
+        if ($module === 'request_type' && (int) ($filters['requestTypeId'] ?? 0) <= 0) {
+            throw ValidationException::withMessages([
+                'requestTypeId' => ['requestTypeId es requerido para module=request_type.'],
+            ]);
+        }
+
+        if ($scope === 'all') {
+            return $query->get();
+        }
+
+        return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
+    }
+
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search)
     {
         $query = RequestModel::with([
             'requestType',
@@ -196,29 +240,13 @@ class RequestCrudService
         }
 
         if ($search !== '') {
-            $query->where(function ($subQuery) use ($search) {
-                $subQuery->where('requestNumber', 'like', "%{$search}%")
-                    ->orWhere('status', 'like', "%{$search}%")
-                    ->orWhere('customerId', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($userQuery) use ($search) {
-                        $userQuery->where('fullName', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('reason', function ($reasonQuery) use ($search) {
-                        $reasonQuery->where('name', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('classification', function ($classificationQuery) use ($search) {
-                        $classificationQuery->where('name', 'like', "%{$search}%")
-                            ->orWhere('code', 'like', "%{$search}%")
-                            ->orWhere('type', 'like', "%{$search}%");
-                    });
-            });
+            $this->applySearchFilter($query, $search);
         }
 
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $query;
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search)
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search)
     {
         $query = RequestModel::with([
             'requestType',
@@ -230,27 +258,49 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery->where('requestNumber', 'like', "%{$search}%")
-                        ->orWhere('status', 'like', "%{$search}%")
-                        ->orWhere('customerId', 'like', "%{$search}%")
-                        ->orWhereHas('user', function ($userQuery) use ($search) {
-                            $userQuery->where('fullName', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                        })
-                        ->orWhereHas('reason', function ($reasonQuery) use ($search) {
-                            $reasonQuery->where('name', 'like', "%{$search}%");
-                        })
-                        ->orWhereHas('classification', function ($classificationQuery) use ($search) {
-                            $classificationQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('code', 'like', "%{$search}%")
-                                ->orWhere('type', 'like', "%{$search}%");
-                        });
-                });
-            })
             ->orderBy('id');
 
-        return $query->paginate($perPage);
+        if ($search !== '') {
+            $this->applySearchFilter($query, $search);
+        }
+
+        return $query;
+    }
+
+    private function buildDraftsQuery(int $userId)
+    {
+        return RequestModel::with([
+            'requestType',
+            'user',
+            'reason',
+            'classification',
+            'workflowCurrentStep.workflowStep',
+            'workflowCurrentStep.assignedRole',
+            'workflowCurrentStep.assignedUser',
+        ])
+            ->where('userId', $userId)
+            ->where('status', 'draft')
+            ->orderByDesc('updatedAt');
+    }
+
+    private function applySearchFilter($query, string $search): void
+    {
+        $query->where(function ($subQuery) use ($search) {
+            $subQuery->where('requestNumber', 'like', "%{$search}%")
+                ->orWhere('status', 'like', "%{$search}%")
+                ->orWhere('customerId', 'like', "%{$search}%")
+                ->orWhereHas('user', function ($userQuery) use ($search) {
+                    $userQuery->where('fullName', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                })
+                ->orWhereHas('reason', function ($reasonQuery) use ($search) {
+                    $reasonQuery->where('name', 'like', "%{$search}%");
+                })
+                ->orWhereHas('classification', function ($classificationQuery) use ($search) {
+                    $classificationQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%")
+                        ->orWhere('type', 'like', "%{$search}%");
+                });
+        });
     }
 }
