@@ -61,6 +61,10 @@ class CustomerQueryService
                         $subQuery->orWhere('cl.razonSocial', 'like', "%{$search}%");
                     }
 
+                    if (in_array('rfc', $clientColumns, true)) {
+                        $subQuery->orWhere('cl.rfc', 'like', "%{$search}%");
+                    }
+
                     if (in_array('email', $clientColumns, true)) {
                         $subQuery->orWhere('cl.email', 'like', "%{$search}%");
                     }
