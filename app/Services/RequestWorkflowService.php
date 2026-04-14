@@ -69,13 +69,69 @@ class RequestWorkflowService
             ]);
         }
 
-        $assignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $initialStep);
+        $firstOperationalStep = $this->resolveFirstOperationalStep($workflow, (int) $initialStep->id);
 
-        $requestStep = WorkflowRequestStep::create([
+        if (!$firstOperationalStep || (int) $firstOperationalStep->id === (int) $initialStep->id) {
+            $assignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $initialStep);
+
+            $requestStep = WorkflowRequestStep::create([
+                'requestId' => $requestModel->id,
+                'workflowStepId' => $initialStep->id,
+                'assignedRoleId' => $initialStep->roleId,
+                'assignedUserId' => $assignedUserId,
+                'status' => 'pending',
+                'startedAt' => now(),
+            ]);
+
+            WorkflowRequestCurrentStep::updateOrCreate(
+                ['requestId' => $requestModel->id],
+                [
+                    'workflowId' => $workflow->id,
+                    'workflowStepId' => $initialStep->id,
+                    'assignedRoleId' => $initialStep->roleId,
+                    'assignedUserId' => $assignedUserId,
+                    'status' => 'pending',
+                ]
+            );
+
+            WorkflowRequestHistory::create([
+                'requestWorkflowStepId' => $requestStep->id,
+                'requestId' => $requestModel->id,
+                'workflowStepId' => $initialStep->id,
+                'actionUserId' => $actionUserId,
+                'actionType' => 'created',
+                'comments' => 'Solicitud creada y asignada al flujo inicial.',
+            ]);
+
+            return;
+        }
+
+        $initialRequestStep = WorkflowRequestStep::create([
             'requestId' => $requestModel->id,
             'workflowStepId' => $initialStep->id,
             'assignedRoleId' => $initialStep->roleId,
-            'assignedUserId' => $assignedUserId,
+            'assignedUserId' => $actionUserId,
+            'status' => 'approved',
+            'startedAt' => now(),
+            'completedAt' => now(),
+        ]);
+
+        WorkflowRequestHistory::create([
+            'requestWorkflowStepId' => $initialRequestStep->id,
+            'requestId' => $requestModel->id,
+            'workflowStepId' => $initialStep->id,
+            'actionUserId' => $actionUserId,
+            'actionType' => 'created',
+            'comments' => 'Solicitud creada. El paso inicial se registró solo como referencia visual.',
+        ]);
+
+        $firstOperationalAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $firstOperationalStep);
+
+        $firstOperationalRequestStep = WorkflowRequestStep::create([
+            'requestId' => $requestModel->id,
+            'workflowStepId' => $firstOperationalStep->id,
+            'assignedRoleId' => $firstOperationalStep->roleId,
+            'assignedUserId' => $firstOperationalAssignedUserId,
             'status' => 'pending',
             'startedAt' => now(),
         ]);
@@ -84,20 +140,20 @@ class RequestWorkflowService
             ['requestId' => $requestModel->id],
             [
                 'workflowId' => $workflow->id,
-                'workflowStepId' => $initialStep->id,
-                'assignedRoleId' => $initialStep->roleId,
-                'assignedUserId' => $assignedUserId,
+                'workflowStepId' => $firstOperationalStep->id,
+                'assignedRoleId' => $firstOperationalStep->roleId,
+                'assignedUserId' => $firstOperationalAssignedUserId,
                 'status' => 'pending',
             ]
         );
 
         WorkflowRequestHistory::create([
-            'requestWorkflowStepId' => $requestStep->id,
+            'requestWorkflowStepId' => $firstOperationalRequestStep->id,
             'requestId' => $requestModel->id,
-            'workflowStepId' => $initialStep->id,
+            'workflowStepId' => $firstOperationalStep->id,
             'actionUserId' => $actionUserId,
-            'actionType' => 'created',
-            'comments' => 'Solicitud creada y asignada al flujo inicial.',
+            'actionType' => 'routed',
+            'comments' => 'Solicitud iniciada en el primer paso operativo del flujo.',
         ]);
     }
 
@@ -461,6 +517,16 @@ class RequestWorkflowService
             ->where('stepOrder', '<', $currentStep->stepOrder)
             ->orderByDesc('stepOrder')
             ->orderByDesc('id')
+            ->first();
+    }
+
+    private function resolveFirstOperationalStep(Workflow $workflow, int $initialStepId): ?WorkflowStep
+    {
+        return WorkflowStep::query()
+            ->where('workflowId', $workflow->id)
+            ->where('id', '!=', $initialStepId)
+            ->orderBy('stepOrder')
+            ->orderBy('id')
             ->first();
     }
 
