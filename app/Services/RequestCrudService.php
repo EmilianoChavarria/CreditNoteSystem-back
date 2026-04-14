@@ -102,7 +102,19 @@ class RequestCrudService
             ];
         }
 
+        $wasDraft = (string) $requestModel->status === 'draft';
         $requestModel->update($updateData);
+
+        if ($wasDraft) {
+            $alreadyAssignedToWorkflow = WorkflowRequestCurrentStep::query()
+                ->where('requestId', $requestModel->id)
+                ->exists();
+
+            if (!$alreadyAssignedToWorkflow) {
+                $this->requestWorkflowService->assignRequestToWorkflow($requestModel, (int) $authUser->id);
+                $this->requestWorkflowService->notifyAssignedUser($requestModel->id);
+            }
+        }
 
         return [
             'status' => 200,
