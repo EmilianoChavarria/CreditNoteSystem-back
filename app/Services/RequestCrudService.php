@@ -75,6 +75,50 @@ class RequestCrudService
         return $created->refresh();
     }
 
+    public function updateRequest(int $requestId, array $data, mixed $authUser, bool $isAdmin): array
+    {
+        $requestModel = RequestModel::query()->find($requestId);
+
+        if (!$requestModel) {
+            return ['status' => 404, 'message' => 'Request no encontrada', 'data' => null];
+        }
+
+        if (!$isAdmin && (int) $requestModel->userId !== (int) $authUser->id) {
+            return ['status' => 403, 'message' => 'No tienes permisos para editar esta solicitud', 'data' => null];
+        }
+
+        if (in_array((string) $requestModel->status, ['approved', 'rejected'], true)) {
+            return ['status' => 422, 'message' => 'No se puede editar una solicitud finalizada', 'data' => null];
+        }
+
+        $updateData = $this->buildEditableRequestData($data);
+
+        if (empty($updateData)) {
+            return [
+                'status' => 422,
+                'message' => 'No se enviaron campos válidos para actualizar',
+                'errors' => ['fields' => ['No hay campos editables en el payload']],
+                'data' => null,
+            ];
+        }
+
+        $requestModel->update($updateData);
+
+        return [
+            'status' => 200,
+            'message' => 'Solicitud actualizada',
+            'data' => $requestModel->load([
+                'requestType',
+                'user',
+                'reason',
+                'classification',
+                'workflowCurrentStep.workflowStep',
+                'workflowCurrentStep.assignedRole',
+                'workflowCurrentStep.assignedUser',
+            ]),
+        ];
+    }
+
     public function saveDraft(array $data, mixed $authUser): array
     {
         $draftData = [
@@ -302,5 +346,48 @@ class RequestCrudService
                         ->orWhere('type', 'like', "%{$search}%");
                 });
         });
+    }
+
+    private function buildEditableRequestData(array $data): array
+    {
+        $editableFields = [
+            'requestNumber',
+            'requestTypeId',
+            'customerId',
+            'requestDate',
+            'currency',
+            'area',
+            'reasonId',
+            'classificationId',
+            'deliveryNote',
+            'invoiceNumber',
+            'invoiceDate',
+            'exchangeRate',
+            'orderNumber',
+            'creditNumber',
+            'amount',
+            'hasIva',
+            'totalAmount',
+            'comments',
+            'creditDebitRefId',
+            'newInvoice',
+            'sapReturnOrder',
+            'hasRga',
+            'warehouseCode',
+            'replenishmentAmount',
+            'hasReplenishmentIva',
+            'replenishmentTotal',
+            'warehouseAmount',
+            'hasWarehouseIva',
+            'warehouseTotal',
+        ];
+
+        $filtered = array_intersect_key($data, array_flip($editableFields));
+
+        if (!array_key_exists('hasIva', $filtered) && array_key_exists('iva', $data)) {
+            $filtered['hasIva'] = $data['iva'];
+        }
+
+        return $filtered;
     }
 }

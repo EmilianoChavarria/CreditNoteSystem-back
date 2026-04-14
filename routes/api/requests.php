@@ -19,6 +19,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);
     Route::post('requests/draft', [RequestController::class, 'saveDraft']);
     Route::post('requests/newRequest', [RequestController::class, 'createRequest']);
+    Route::put('requests/{requestId}', [RequestController::class, 'updateRequest']);
     Route::post('requests/approve-mass', [RequestController::class, 'approveMass']);
     Route::post('requests/reject-mass', [RequestController::class, 'rejectMass']);
     Route::post('requests/{requestId}/approve', [RequestController::class, 'approve']);
