@@ -13,6 +13,7 @@ use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\UserClientService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -24,6 +25,7 @@ class UserController extends Controller
         private readonly UpdateUserAction $updateUserAction,
         private readonly ChangePasswordAction $changePasswordAction,
         private readonly ChangeUserPasswordAction $changeUserPasswordAction,
+        private readonly UserClientService $userClientService,
     ) {
     }
 
@@ -159,7 +161,14 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Usuario', UserResource::make($user)));
+        $userData = UserResource::make($user)->resolve();
+
+        $clientData = $this->userClientService->findClientSummaryForUser($user);
+        if ($clientData !== null) {
+            $userData['client'] = $clientData;
+        }
+
+        return response()->json(ApiResponse::success('Usuario', $userData));
     }
 
     public function store(StoreUserRequest $request)
