@@ -21,6 +21,7 @@ class UpdateUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($userId)],
             'roleId' => ['required', 'integer', 'exists:roles,id'],
             'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
+            'clientId' => ['nullable', 'string'],
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
             'isActive' => ['nullable', 'boolean'],
         ];

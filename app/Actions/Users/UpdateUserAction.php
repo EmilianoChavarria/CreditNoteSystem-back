@@ -19,6 +19,7 @@ class UpdateUserAction
             'email' => $data['email'],
             'roleId' => (int) $data['roleId'],
             'supervisorId' => $data['supervisorId'] ?? null,
+            'clientId' => $data['clientId'],
             'preferredLanguage' => $data['preferredLanguage'] ?? 'en',
             'isActive' => $data['isActive'] ?? true,
         ]);
