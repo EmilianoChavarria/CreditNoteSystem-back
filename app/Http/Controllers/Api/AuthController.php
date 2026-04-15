@@ -109,6 +109,7 @@ class AuthController extends Controller
                         'roleId' => $user->roleId,
                         'roleName' => $user->roleName,
                         'preferredLanguage' => $user->preferredLanguage,
+                        'clientId' => $user->clientId,
                     ],
                     'isAuthenticated' => true,
                     'sessionTimeoutMinutes' => $sessionTimeoutMinutes,
