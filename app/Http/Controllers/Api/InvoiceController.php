@@ -3,14 +3,26 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\InvoiceService;
 use App\Support\ApiResponse;
-use Illuminate\Support\Facades\DB;
 
 class InvoiceController extends Controller
 {
+    public function __construct(
+        private readonly InvoiceService $invoiceService
+    ) {
+    }
+
     public function getAll()
     {
-        $invoices = DB::table('comprobantes_tme700618rc7')->get();
+        $invoices = $this->invoiceService->getAll();
+
+        return response()->json(ApiResponse::success('Facturas', $invoices));
+    }
+
+    public function getInvoicesByClientId(int $clientId)
+    {
+        $invoices = $this->invoiceService->getInvoicesByClientId($clientId);
 
         return response()->json(ApiResponse::success('Facturas', $invoices));
     }
