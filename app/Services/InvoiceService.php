@@ -27,7 +27,8 @@ class InvoiceService
         $columns = Schema::getColumnListing('comprobantes_tme700618rc7');
 
         if (in_array('receptorId', $columns, true)) {
-            $query->where('receptorId', $clientId);
+            $query->where('receptorId', $clientId)
+            ->where('serie', '');
         }
 
         return $query->get();
