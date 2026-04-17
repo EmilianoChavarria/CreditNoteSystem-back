@@ -17,15 +17,17 @@ class ChargePolicy extends Model
     protected $table = 'chargePolicies';
 
     protected $fillable = [
+        'conditional',
         'day',
         'percentage',
     ];
 
     protected $casts = [
-        'day'        => 'integer',
-        'percentage' => 'float',
-        'createdAt'  => 'datetime',
-        'updatedAt'  => 'datetime',
-        'deletedAt'  => 'datetime',
+        'conditional' => 'string',
+        'day'         => 'integer',
+        'percentage'  => 'float',
+        'createdAt'   => 'datetime',
+        'updatedAt'   => 'datetime',
+        'deletedAt'   => 'datetime',
     ];
 }
