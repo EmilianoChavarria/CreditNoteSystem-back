@@ -8,19 +8,18 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('returnOrders', function (Blueprint $table) {
+        Schema::create('chargePolicies', function (Blueprint $table) {
             $table->id();
-            $table->unsignedInteger('clientId');
-            $table->unsignedBigInteger('userId')->nullable();
-            $table->enum('status', ['pending', 'approved', 'cancelled'])->default('pending');
-            $table->text('notes')->nullable();
+            $table->unsignedInteger('day');
+            $table->decimal('percentage', 5, 2);
             $table->timestamp('createdAt')->nullable();
             $table->timestamp('updatedAt')->nullable();
+            $table->softDeletes('deletedAt');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('returnOrders');
+        Schema::dropIfExists('chargePolicies');
     }
 };
