@@ -1,0 +1,4308 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Notas Creditos API",
+        "description": "API para el sistema de notas credito, solicitudes, devoluciones y facturacion.",
+        "contact": {
+            "email": "aldrickemilianoch@gmail.com"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "/api",
+            "description": "API Principal"
+        }
+    ],
+    "paths": {
+        "/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Iniciar sesion",
+                "operationId": "authLogin",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "user@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "secret123"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login exitoso - retorna token JWT en cookie"
+                    },
+                    "401": {
+                        "description": "Credenciales invalidas"
+                    },
+                    "423": {
+                        "description": "Usuario o IP bloqueado"
+                    }
+                }
+            }
+        },
+        "/auth/register": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Registrar nuevo usuario",
+                "operationId": "authRegister",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "fullName",
+                                    "email",
+                                    "password",
+                                    "roleId"
+                                ],
+                                "properties": {
+                                    "fullName": {
+                                        "type": "string",
+                                        "example": "Juan Perez"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "P@ssw0rd!"
+                                    },
+                                    "roleId": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "supervisorId": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "preferredLanguage": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "enum": [
+                                            "en",
+                                            "es"
+                                        ]
+                                    },
+                                    "clientId": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Usuario registrado"
+                    },
+                    "422": {
+                        "description": "Datos invalidos"
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Cerrar sesion",
+                "operationId": "authLogout",
+                "responses": {
+                    "200": {
+                        "description": "Sesion cerrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/verify": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Verificar token JWT",
+                "operationId": "authVerify",
+                "responses": {
+                    "200": {
+                        "description": "Token valido"
+                    },
+                    "401": {
+                        "description": "Token invalido o expirado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/me": {
+            "get": {
+                "tags": [
+                    "Me"
+                ],
+                "summary": "Datos del usuario autenticado",
+                "operationId": "me",
+                "responses": {
+                    "200": {
+                        "description": "Perfil del usuario"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/only": {
+            "get": {
+                "tags": [
+                    "Me"
+                ],
+                "summary": "Endpoint exclusivo para administradores",
+                "operationId": "adminOnly",
+                "responses": {
+                    "200": {
+                        "description": "Acceso permitido"
+                    },
+                    "403": {
+                        "description": "Sin permisos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/roles": {
+            "get": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Listar todos los roles",
+                "operationId": "rolesList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de roles"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Crear un rol",
+                "operationId": "rolesStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "roleName"
+                                ],
+                                "properties": {
+                                    "roleName": {
+                                        "type": "string",
+                                        "example": "SUPERVISOR"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Rol creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/roles/{id}": {
+            "get": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Obtener rol por ID",
+                "operationId": "rolesShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Datos del rol"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Actualizar rol",
+                "operationId": "rolesUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "roleName": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Rol actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Eliminar rol",
+                "operationId": "rolesDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Rol eliminado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/modules": {
+            "get": {
+                "tags": [
+                    "Modules"
+                ],
+                "summary": "Listar todos los modulos",
+                "operationId": "modulesList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de modulos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Modules"
+                ],
+                "summary": "Crear modulo",
+                "operationId": "modulesStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "slug"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "slug": {
+                                        "type": "string"
+                                    },
+                                    "icon": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "order": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Modulo creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/modules/{id}": {
+            "get": {
+                "tags": [
+                    "Modules"
+                ],
+                "summary": "Obtener modulo por ID",
+                "operationId": "modulesShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Datos del modulo"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Modules"
+                ],
+                "summary": "Actualizar modulo",
+                "operationId": "modulesUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Modulo actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Modules"
+                ],
+                "summary": "Eliminar modulo",
+                "operationId": "modulesDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Modulo eliminado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/actions": {
+            "get": {
+                "tags": [
+                    "Actions"
+                ],
+                "summary": "Listar todas las acciones",
+                "operationId": "actionsList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de acciones"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Actions"
+                ],
+                "summary": "Crear una accion",
+                "operationId": "actionsStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "slug"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Aprobar"
+                                    },
+                                    "slug": {
+                                        "type": "string",
+                                        "example": "approve"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Accion creada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/rolesPermission": {
+            "get": {
+                "tags": [
+                    "RolesPermission"
+                ],
+                "summary": "Listar permisos de modulos",
+                "operationId": "rolesPermissionList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de permisos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/rolesPermission/assign": {
+            "post": {
+                "tags": [
+                    "RolesPermission"
+                ],
+                "summary": "Asignar permisos de modulo a rol",
+                "operationId": "rolesPermissionAssign",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "roleId",
+                                    "moduleId",
+                                    "permissions"
+                                ],
+                                "properties": {
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "moduleId": {
+                                        "type": "integer"
+                                    },
+                                    "permissions": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Permisos asignados"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/rolesPermission/role/{roleId}": {
+            "get": {
+                "tags": [
+                    "RolesPermission"
+                ],
+                "summary": "Permisos de un rol",
+                "operationId": "rolesPermissionByRole",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Permisos del rol"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/rolesPermission/sidebar": {
+            "get": {
+                "tags": [
+                    "RolesPermission"
+                ],
+                "summary": "Sidebar del usuario autenticado",
+                "operationId": "rolesPermissionSidebar",
+                "responses": {
+                    "200": {
+                        "description": "Modulos visibles"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/rolesPermission/sidebar/{roleId}": {
+            "get": {
+                "tags": [
+                    "RolesPermission"
+                ],
+                "summary": "Sidebar por rol",
+                "operationId": "rolesPermissionSidebarByRole",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Modulos visibles del rol"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/rolesPermission/check": {
+            "post": {
+                "tags": [
+                    "RolesPermission"
+                ],
+                "summary": "Verificar acceso de rol a modulo",
+                "operationId": "rolesPermissionCheck",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "roleId",
+                                    "moduleSlug"
+                                ],
+                                "properties": {
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "moduleSlug": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de verificacion"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/classifications": {
+            "post": {
+                "tags": [
+                    "Classifications"
+                ],
+                "summary": "Crear clasificacion",
+                "operationId": "classificationsStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "requestTypeId"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "requestTypeId": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Clasificacion creada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/classifications/grouped": {
+            "get": {
+                "tags": [
+                    "Classifications"
+                ],
+                "summary": "Clasificaciones agrupadas por tipo",
+                "operationId": "classificationsGrouped",
+                "responses": {
+                    "200": {
+                        "description": "Clasificaciones agrupadas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/classifications/requestType/{typeRequestId}": {
+            "get": {
+                "tags": [
+                    "Classifications"
+                ],
+                "summary": "Clasificaciones por tipo de solicitud",
+                "operationId": "classificationsByType",
+                "parameters": [
+                    {
+                        "name": "typeRequestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Clasificaciones del tipo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestType": {
+            "get": {
+                "tags": [
+                    "RequestTypes"
+                ],
+                "summary": "Listar tipos de solicitud",
+                "operationId": "requestTypeList",
+                "responses": {
+                    "200": {
+                        "description": "Tipos de solicitud"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "RequestTypes"
+                ],
+                "summary": "Crear tipo de solicitud",
+                "operationId": "requestTypeStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Tipo creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestType/{id}": {
+            "put": {
+                "tags": [
+                    "RequestTypes"
+                ],
+                "summary": "Actualizar tipo",
+                "operationId": "requestTypeUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Tipo actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "RequestTypes"
+                ],
+                "summary": "Eliminar tipo",
+                "operationId": "requestTypeDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Tipo eliminado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestTypePermissions": {
+            "get": {
+                "tags": [
+                    "RequestTypePermissions"
+                ],
+                "summary": "Listar permisos por tipo",
+                "operationId": "rtpList",
+                "responses": {
+                    "200": {
+                        "description": "Permisos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestTypePermissions/assign": {
+            "post": {
+                "tags": [
+                    "RequestTypePermissions"
+                ],
+                "summary": "Asignar permiso de accion a rol",
+                "operationId": "rtpAssign",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "roleId",
+                                    "requestTypeId",
+                                    "actionId",
+                                    "isAllowed"
+                                ],
+                                "properties": {
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "requestTypeId": {
+                                        "type": "integer"
+                                    },
+                                    "actionId": {
+                                        "type": "integer"
+                                    },
+                                    "isAllowed": {
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Permiso asignado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestTypePermissions/role/{roleId}": {
+            "get": {
+                "tags": [
+                    "RequestTypePermissions"
+                ],
+                "summary": "Permisos de un rol",
+                "operationId": "rtpByRole",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Permisos del rol"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestTypePermissions/request-type/{requestTypeId}": {
+            "get": {
+                "tags": [
+                    "RequestTypePermissions"
+                ],
+                "summary": "Permisos por tipo de solicitud",
+                "operationId": "rtpByRequestType",
+                "parameters": [
+                    {
+                        "name": "requestTypeId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Permisos del tipo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requestTypePermissions/check": {
+            "post": {
+                "tags": [
+                    "RequestTypePermissions"
+                ],
+                "summary": "Verificar permiso de accion",
+                "operationId": "rtpCheck",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "roleId",
+                                    "requestTypeId",
+                                    "actionSlug"
+                                ],
+                                "properties": {
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "requestTypeId": {
+                                        "type": "integer"
+                                    },
+                                    "actionSlug": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de verificacion"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/charge-policies": {
+            "get": {
+                "tags": [
+                    "ChargePolicies"
+                ],
+                "summary": "Listar politicas de cargo",
+                "operationId": "chargePoliciesList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de politicas ordenadas por dia"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "ChargePolicies"
+                ],
+                "summary": "Crear politica individual",
+                "operationId": "chargePoliciesStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "day",
+                                    "percentage"
+                                ],
+                                "properties": {
+                                    "day": {
+                                        "type": "integer",
+                                        "example": 30
+                                    },
+                                    "conditional": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "percentage": {
+                                        "type": "number",
+                                        "example": 25
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Politica creada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/charge-policies/sync": {
+            "post": {
+                "tags": [
+                    "ChargePolicies"
+                ],
+                "summary": "Crear o actualizar politicas en lote (upsert)",
+                "description": "Cada item sin id se crea; con id se actualiza. Operacion atomica en transaccion.",
+                "operationId": "chargePoliciesSync",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "policies"
+                                ],
+                                "properties": {
+                                    "policies": {
+                                        "type": "array",
+                                        "items": {
+                                            "required": [
+                                                "day",
+                                                "percentage"
+                                            ],
+                                            "properties": {
+                                                "id": {
+                                                    "description": "Omitir para crear",
+                                                    "type": "integer",
+                                                    "nullable": true
+                                                },
+                                                "day": {
+                                                    "description": "Dias transcurridos",
+                                                    "type": "integer",
+                                                    "example": 8
+                                                },
+                                                "conditional": {
+                                                    "description": "Condicion opcional",
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "percentage": {
+                                                    "description": "Porcentaje a cobrar 0-100",
+                                                    "type": "number",
+                                                    "example": 10.5
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Politicas guardadas"
+                    },
+                    "422": {
+                        "description": "Datos invalidos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/charge-policies/{id}": {
+            "get": {
+                "tags": [
+                    "ChargePolicies"
+                ],
+                "summary": "Obtener politica por ID",
+                "operationId": "chargePoliciesShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Politica de cargo"
+                    },
+                    "404": {
+                        "description": "No encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "ChargePolicies"
+                ],
+                "summary": "Actualizar politica",
+                "operationId": "chargePoliciesUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "day": {
+                                        "type": "integer"
+                                    },
+                                    "conditional": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "percentage": {
+                                        "type": "number"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Politica actualizada"
+                    },
+                    "404": {
+                        "description": "No encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "ChargePolicies"
+                ],
+                "summary": "Eliminar politica (soft delete)",
+                "operationId": "chargePoliciesDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Politica eliminada"
+                    },
+                    "404": {
+                        "description": "No encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/invoices": {
+            "get": {
+                "tags": [
+                    "Invoices"
+                ],
+                "summary": "Listar todas las facturas",
+                "operationId": "invoicesList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de facturas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/invoices/{clientId}": {
+            "get": {
+                "tags": [
+                    "Invoices"
+                ],
+                "summary": "Facturas de un cliente",
+                "operationId": "invoicesByClient",
+                "parameters": [
+                    {
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "serie",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Facturas del cliente"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/invoices/{folio}/products/{clientId}": {
+            "get": {
+                "tags": [
+                    "Invoices"
+                ],
+                "summary": "Productos de factura con cantidades disponibles a devolver",
+                "operationId": "invoicesProducts",
+                "parameters": [
+                    {
+                        "name": "folio",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Productos con cantidad disponible"
+                    },
+                    "404": {
+                        "description": "Factura no encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/invoices/{folio}/products/{clientId}/{conceptoIndex}/history": {
+            "get": {
+                "tags": [
+                    "Invoices"
+                ],
+                "summary": "Historial de devoluciones de un concepto de factura",
+                "operationId": "invoicesProductHistory",
+                "parameters": [
+                    {
+                        "name": "folio",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "conceptoIndex",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Historial del producto"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-orders/search": {
+            "get": {
+                "tags": [
+                    "ReturnOrders"
+                ],
+                "summary": "Buscar ordenes de devolucion",
+                "operationId": "returnOrdersSearch",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ordenes encontradas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-orders/client/{clientId}": {
+            "get": {
+                "tags": [
+                    "ReturnOrders"
+                ],
+                "summary": "Ordenes de devolucion de un cliente",
+                "operationId": "returnOrdersByClient",
+                "parameters": [
+                    {
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ordenes del cliente"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-orders/{id}": {
+            "get": {
+                "tags": [
+                    "ReturnOrders"
+                ],
+                "summary": "Obtener orden de devolucion por ID",
+                "operationId": "returnOrdersShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Orden de devolucion"
+                    },
+                    "404": {
+                        "description": "No encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-orders": {
+            "post": {
+                "tags": [
+                    "ReturnOrders"
+                ],
+                "summary": "Crear orden de devolucion",
+                "operationId": "returnOrdersStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "clientId",
+                                    "items"
+                                ],
+                                "properties": {
+                                    "clientId": {
+                                        "type": "integer"
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "required": [
+                                                "invoiceFolio",
+                                                "invoiceClientId",
+                                                "conceptoIndex",
+                                                "requestedQuantity"
+                                            ],
+                                            "properties": {
+                                                "invoiceFolio": {
+                                                    "type": "string"
+                                                },
+                                                "invoiceClientId": {
+                                                    "type": "integer"
+                                                },
+                                                "conceptoIndex": {
+                                                    "type": "integer"
+                                                },
+                                                "requestedQuantity": {
+                                                    "type": "number"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Orden creada"
+                    },
+                    "422": {
+                        "description": "Cantidades invalidas o excedidas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-order-requests": {
+            "post": {
+                "tags": [
+                    "ReturnOrderRequests"
+                ],
+                "summary": "Vincular orden de devolucion a solicitud",
+                "operationId": "returnOrderRequestsStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "returnOrderId",
+                                    "requestId"
+                                ],
+                                "properties": {
+                                    "returnOrderId": {
+                                        "type": "integer"
+                                    },
+                                    "requestId": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Vinculo creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-order-requests/by-request/{requestId}": {
+            "get": {
+                "tags": [
+                    "ReturnOrderRequests"
+                ],
+                "summary": "Devoluciones vinculadas a una solicitud",
+                "operationId": "returnOrderRequestsByRequest",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Devoluciones de la solicitud"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-order-requests/{id}": {
+            "get": {
+                "tags": [
+                    "ReturnOrderRequests"
+                ],
+                "summary": "Obtener vinculo devolucion-solicitud por ID",
+                "operationId": "returnOrderRequestsShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Vinculo"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-order-requests/{id}/items/{itemId}": {
+            "put": {
+                "tags": [
+                    "ReturnOrderRequests"
+                ],
+                "summary": "Actualizar item de devolucion vinculada",
+                "operationId": "returnOrderRequestsUpdateItem",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "approvedQuantity": {
+                                        "type": "number"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Item actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/customers": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Listar clientes",
+                "operationId": "customersList",
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de clientes"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Crear cliente",
+                "operationId": "customersStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "idCliente",
+                                    "razonSocial"
+                                ],
+                                "properties": {
+                                    "idCliente": {
+                                        "type": "integer"
+                                    },
+                                    "razonSocial": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Cliente creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/customers/search": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Buscar clientes por nombre",
+                "operationId": "customersSearch",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Clientes encontrados"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/customers/{id}": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Obtener cliente por ID",
+                "operationId": "customersShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cliente"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Actualizar cliente",
+                "operationId": "customersUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "razonSocial": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Cliente actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Eliminar cliente (soft delete)",
+                "operationId": "customersDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cliente eliminado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/customers/saveLocal": {
+            "post": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Guardar cliente en tabla local",
+                "operationId": "customersStoreLocal",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "idCliente",
+                                    "razonSocial"
+                                ],
+                                "properties": {
+                                    "idCliente": {
+                                        "type": "integer"
+                                    },
+                                    "razonSocial": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Cliente creado localmente"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/notifications": {
+            "get": {
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Notificaciones del usuario",
+                "operationId": "notificationsList",
+                "responses": {
+                    "200": {
+                        "description": "Notificaciones"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/notifications/unread": {
+            "get": {
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Notificaciones no leidas",
+                "operationId": "notificationsUnread",
+                "responses": {
+                    "200": {
+                        "description": "Notificaciones no leidas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/notifications/{id}/read": {
+            "patch": {
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Marcar notificacion como leida",
+                "operationId": "notificationsMarkRead",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Notificacion marcada como leida"
+                    },
+                    "404": {
+                        "description": "No encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/dashboard": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Metricas de solicitudes por periodo",
+                "operationId": "dashboardMetrics",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "description": "Ultimos N dias (ej. 30)",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "from",
+                        "in": "query",
+                        "description": "Fecha inicio YYYY-MM-DD",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "to",
+                        "in": "query",
+                        "description": "Fecha fin YYYY-MM-DD",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "request_type_id",
+                        "in": "query",
+                        "description": "Filtrar por tipo de solicitud",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Series y totales por periodo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/security/users/blocked": {
+            "get": {
+                "tags": [
+                    "Security"
+                ],
+                "summary": "Usuarios bloqueados",
+                "operationId": "securityBlockedUsers",
+                "responses": {
+                    "200": {
+                        "description": "Usuarios bloqueados"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/security/ips/blocked": {
+            "get": {
+                "tags": [
+                    "Security"
+                ],
+                "summary": "IPs bloqueadas",
+                "operationId": "securityBlockedIps",
+                "responses": {
+                    "200": {
+                        "description": "IPs bloqueadas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/security/users/{id}/unlock": {
+            "post": {
+                "tags": [
+                    "Security"
+                ],
+                "summary": "Desbloquear usuario",
+                "operationId": "securityUnlockUser",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usuario desbloqueado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/security/ips/unlock": {
+            "post": {
+                "tags": [
+                    "Security"
+                ],
+                "summary": "Desbloquear IP",
+                "operationId": "securityUnlockIp",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "ip"
+                                ],
+                                "properties": {
+                                    "ip": {
+                                        "type": "string",
+                                        "example": "192.168.1.1"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "IP desbloqueada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/security/login-attempt-settings": {
+            "get": {
+                "tags": [
+                    "Security"
+                ],
+                "summary": "Configuracion de intentos de login",
+                "operationId": "securityLoginSettings",
+                "responses": {
+                    "200": {
+                        "description": "Configuracion"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Security"
+                ],
+                "summary": "Actualizar configuracion de intentos de login",
+                "operationId": "securityUpdateLoginSettings",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "maxUserAttempts",
+                                    "maxIpAttempts",
+                                    "sessionTimeoutMinutes"
+                                ],
+                                "properties": {
+                                    "maxUserAttempts": {
+                                        "type": "integer",
+                                        "example": 5
+                                    },
+                                    "maxIpAttempts": {
+                                        "type": "integer",
+                                        "example": 10
+                                    },
+                                    "sessionTimeoutMinutes": {
+                                        "type": "integer",
+                                        "example": 120
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Configuracion actualizada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/password-requirements/validate": {
+            "post": {
+                "tags": [
+                    "PasswordRequirements"
+                ],
+                "summary": "Validar contrasena (publica)",
+                "operationId": "passwordValidate",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "password"
+                                ],
+                                "properties": {
+                                    "password": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de validacion"
+                    }
+                }
+            }
+        },
+        "/password-requirements": {
+            "get": {
+                "tags": [
+                    "PasswordRequirements"
+                ],
+                "summary": "Requisitos de contrasena",
+                "operationId": "passwordRequirements",
+                "responses": {
+                    "200": {
+                        "description": "Requisitos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "PasswordRequirements"
+                ],
+                "summary": "Actualizar requisitos (admin)",
+                "operationId": "passwordRequirementsUpdate",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "minLength": {
+                                        "type": "integer"
+                                    },
+                                    "requireUppercase": {
+                                        "type": "boolean"
+                                    },
+                                    "requireNumbers": {
+                                        "type": "boolean"
+                                    },
+                                    "requireSymbols": {
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Requisitos actualizados"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/password-requirements/formatted": {
+            "get": {
+                "tags": [
+                    "PasswordRequirements"
+                ],
+                "summary": "Requisitos formateados para UI",
+                "operationId": "passwordRequirementsFormatted",
+                "responses": {
+                    "200": {
+                        "description": "Requisitos formateados"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Listar todas las solicitudes",
+                "operationId": "requestsList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de solicitudes"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/drafts": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Borradores del usuario autenticado",
+                "operationId": "requestsDrafts",
+                "responses": {
+                    "200": {
+                        "description": "Borradores"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/pending/me": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Solicitudes pendientes del usuario actual",
+                "operationId": "requestsPendingMe",
+                "responses": {
+                    "200": {
+                        "description": "Pendientes propias"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/pending/{id}": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Solicitudes pendientes por rol",
+                "operationId": "requestsPendingByRole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Pendientes del rol"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/reasons": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Listar razones de solicitud",
+                "operationId": "requestsReasons",
+                "responses": {
+                    "200": {
+                        "description": "Lista de razones"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/next-number/{requestTypeId}": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Siguiente numero de solicitud",
+                "operationId": "requestsNextNumber",
+                "parameters": [
+                    {
+                        "name": "requestTypeId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Siguiente numero"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{id}": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Solicitudes por tipo",
+                "operationId": "requestsByType",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "requestTypeId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Solicitudes del tipo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/history": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Historial de una solicitud",
+                "operationId": "requestsHistory",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Historial"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/attachments": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Adjuntos de una solicitud",
+                "operationId": "requestsAttachments",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de adjuntos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/attachments/{attachmentId}": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Obtener adjunto por ID",
+                "operationId": "requestsAttachmentShow",
+                "parameters": [
+                    {
+                        "name": "attachmentId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Adjunto"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/attachments/{attachmentId}/preview-link": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "URL firmada de preview del adjunto",
+                "operationId": "requestsAttachmentPreviewLink",
+                "parameters": [
+                    {
+                        "name": "attachmentId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "URL firmada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/attachments/{attachmentId}": {
+            "delete": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Eliminar adjunto de solicitud",
+                "operationId": "requestsAttachmentDelete",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "attachmentId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Adjunto eliminado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/draft": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Guardar borrador",
+                "operationId": "requestsSaveDraft",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestTypeId"
+                                ],
+                                "properties": {
+                                    "requestTypeId": {
+                                        "type": "integer"
+                                    },
+                                    "classificationId": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "clientId": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Borrador guardado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/newRequest": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Crear solicitud formal",
+                "operationId": "requestsCreate",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestTypeId",
+                                    "classificationId"
+                                ],
+                                "properties": {
+                                    "requestTypeId": {
+                                        "type": "integer"
+                                    },
+                                    "classificationId": {
+                                        "type": "integer"
+                                    },
+                                    "clientId": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "reasonId": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Solicitud creada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}": {
+            "put": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Actualizar solicitud",
+                "operationId": "requestsUpdate",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "notes": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Solicitud actualizada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/approve": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Aprobar solicitud",
+                "operationId": "requestsApprove",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "comment": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Solicitud aprobada"
+                    },
+                    "422": {
+                        "description": "No se puede aprobar"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/reject": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Rechazar solicitud",
+                "operationId": "requestsReject",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "reasonId"
+                                ],
+                                "properties": {
+                                    "reasonId": {
+                                        "type": "integer"
+                                    },
+                                    "comment": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Solicitud rechazada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/approve-mass": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Aprobar multiples solicitudes",
+                "operationId": "requestsApproveMass",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestIds"
+                                ],
+                                "properties": {
+                                    "requestIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de aprobacion masiva"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/reject-mass": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Rechazar multiples solicitudes",
+                "operationId": "requestsRejectMass",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestIds",
+                                    "reasonId"
+                                ],
+                                "properties": {
+                                    "requestIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "reasonId": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de rechazo masivo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Listar todos los usuarios",
+                "operationId": "usersList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de usuarios"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Crear usuario",
+                "operationId": "usersStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "fullName",
+                                    "email",
+                                    "password",
+                                    "roleId"
+                                ],
+                                "properties": {
+                                    "fullName": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    },
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "clientId": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Usuario creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/usersPag": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Usuarios paginados",
+                "operationId": "usersPaginated",
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usuarios paginados"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/managers": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Usuarios con rol de ventas o gerencia",
+                "operationId": "usersManagers",
+                "responses": {
+                    "200": {
+                        "description": "Lista de managers"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/me": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Perfil del usuario autenticado",
+                "operationId": "usersMe",
+                "responses": {
+                    "200": {
+                        "description": "Datos del usuario actual"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/me/password": {
+            "patch": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Cambiar contrasena propia",
+                "operationId": "usersChangeOwnPassword",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "currentPassword",
+                                    "newPassword"
+                                ],
+                                "properties": {
+                                    "currentPassword": {
+                                        "type": "string"
+                                    },
+                                    "newPassword": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Contrasena actualizada"
+                    },
+                    "422": {
+                        "description": "Contrasena invalida"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/{id}/password": {
+            "patch": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Cambiar contrasena de otro usuario (admin)",
+                "operationId": "usersChangePasswordById",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "newPassword"
+                                ],
+                                "properties": {
+                                    "newPassword": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Contrasena actualizada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Obtener usuario por ID",
+                "operationId": "usersShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Datos del usuario"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Actualizar usuario",
+                "operationId": "usersUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "fullName": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Usuario actualizado"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Eliminar usuario",
+                "operationId": "usersDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Eliminado"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/assignment/leaders": {
+            "get": {
+                "tags": [
+                    "UserAssignments"
+                ],
+                "summary": "Listar lideres disponibles",
+                "operationId": "assignmentLeaders",
+                "responses": {
+                    "200": {
+                        "description": "Lista de lideres"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/assignment/assignable-users": {
+            "get": {
+                "tags": [
+                    "UserAssignments"
+                ],
+                "summary": "Usuarios asignables",
+                "operationId": "assignableUsers",
+                "responses": {
+                    "200": {
+                        "description": "Lista de usuarios asignables"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/{leaderUserId}/assignments": {
+            "get": {
+                "tags": [
+                    "UserAssignments"
+                ],
+                "summary": "Asignaciones de un lider",
+                "operationId": "assignmentsIndex",
+                "parameters": [
+                    {
+                        "name": "leaderUserId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Asignaciones del lider"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/assignments": {
+            "put": {
+                "tags": [
+                    "UserAssignments"
+                ],
+                "summary": "Crear o actualizar asignaciones (upsert)",
+                "operationId": "assignmentsUpsert",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "leaderUserId": {
+                                        "type": "integer"
+                                    },
+                                    "assignedUserIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Asignaciones guardadas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/{leaderUserId}/assignments/{assignedUserId}": {
+            "delete": {
+                "tags": [
+                    "UserAssignments"
+                ],
+                "summary": "Eliminar asignacion",
+                "operationId": "assignmentsDestroy",
+                "parameters": [
+                    {
+                        "name": "leaderUserId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "assignedUserId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Asignacion eliminada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workflows": {
+            "get": {
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Listar todos los workflows",
+                "operationId": "workflowsList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de workflows"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Crear workflow",
+                "operationId": "workflowsStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "requestTypeId"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "requestTypeId": {
+                                        "type": "integer"
+                                    },
+                                    "isActive": {
+                                        "type": "boolean",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Workflow creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workflows/{id}": {
+            "get": {
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Obtener workflow por ID",
+                "operationId": "workflowsShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Datos del workflow"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Actualizar workflow",
+                "operationId": "workflowsUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Workflow actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Eliminar workflow",
+                "operationId": "workflowsDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow eliminado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workflowsteps": {
+            "get": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Listar todos los pasos",
+                "operationId": "workflowStepsList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de pasos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Crear paso de workflow",
+                "operationId": "workflowStepsStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "workflowId",
+                                    "stepName",
+                                    "stepOrder",
+                                    "roleId"
+                                ],
+                                "properties": {
+                                    "workflowId": {
+                                        "type": "integer"
+                                    },
+                                    "stepName": {
+                                        "type": "string"
+                                    },
+                                    "stepOrder": {
+                                        "type": "integer"
+                                    },
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "isInitialStep": {
+                                        "type": "boolean",
+                                        "nullable": true
+                                    },
+                                    "isFinalStep": {
+                                        "type": "boolean",
+                                        "nullable": true
+                                    },
+                                    "transitions": {
+                                        "type": "array",
+                                        "items": {
+                                            "properties": {
+                                                "toStepId": {
+                                                    "type": "integer"
+                                                },
+                                                "conditionField": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "conditionOperator": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "conditionValue": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "priority": {
+                                                    "type": "integer",
+                                                    "nullable": true
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Paso creado"
+                    },
+                    "422": {
+                        "description": "Error: paso inicial/final duplicado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workflowsteps/workflows": {
+            "get": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Todos los workflows activos con sus pasos",
+                "operationId": "workflowStepsAllWorkflows",
+                "responses": {
+                    "200": {
+                        "description": "Workflows con pasos"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workflowsteps/workflow/{workflowId}": {
+            "get": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Pasos de un workflow",
+                "operationId": "workflowStepsByWorkflow",
+                "parameters": [
+                    {
+                        "name": "workflowId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Pasos del workflow"
+                    },
+                    "404": {
+                        "description": "Workflow no encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workflowsteps/{id}": {
+            "get": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Obtener paso por ID",
+                "operationId": "workflowStepsShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Datos del paso"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Actualizar paso",
+                "operationId": "workflowStepsUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "stepName": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Paso actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "WorkflowSteps"
+                ],
+                "summary": "Eliminar paso",
+                "operationId": "workflowStepsDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paso eliminado"
+                    },
+                    "422": {
+                        "description": "No se puede eliminar"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/batches": {
+            "get": {
+                "tags": [
+                    "Batches"
+                ],
+                "summary": "Listar todos los lotes",
+                "operationId": "batchesList",
+                "responses": {
+                    "200": {
+                        "description": "Lista de lotes"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Batches"
+                ],
+                "summary": "Crear lote de solicitudes",
+                "operationId": "batchesStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestIds"
+                                ],
+                                "properties": {
+                                    "requestIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Lote creado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/batches/{id}": {
+            "get": {
+                "tags": [
+                    "Batches"
+                ],
+                "summary": "Obtener lote por ID",
+                "operationId": "batchesShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Datos del lote"
+                    },
+                    "404": {
+                        "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/batches/{id}/requests": {
+            "get": {
+                "tags": [
+                    "Batches"
+                ],
+                "summary": "Solicitudes de un lote",
+                "operationId": "batchesRequests",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Solicitudes del lote"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Auth",
+            "description": "Autenticacion de usuarios"
+        },
+        {
+            "name": "Me",
+            "description": "Perfil del usuario autenticado"
+        },
+        {
+            "name": "Users",
+            "description": "Gestion de usuarios"
+        },
+        {
+            "name": "UserAssignments",
+            "description": "Asignaciones de usuarios a lideres"
+        },
+        {
+            "name": "Roles",
+            "description": "Gestion de roles"
+        },
+        {
+            "name": "Modules",
+            "description": "Gestion de modulos"
+        },
+        {
+            "name": "RolesPermission",
+            "description": "Permisos de modulos por rol"
+        },
+        {
+            "name": "Actions",
+            "description": "Catalogo de acciones"
+        },
+        {
+            "name": "Classifications",
+            "description": "Clasificaciones de solicitud"
+        },
+        {
+            "name": "RequestTypes",
+            "description": "Tipos de solicitud"
+        },
+        {
+            "name": "RequestTypePermissions",
+            "description": "Permisos por tipo de solicitud"
+        },
+        {
+            "name": "Requests",
+            "description": "Ciclo de vida de solicitudes"
+        },
+        {
+            "name": "Workflows",
+            "description": "Flujos de trabajo"
+        },
+        {
+            "name": "WorkflowSteps",
+            "description": "Pasos de flujo de trabajo"
+        },
+        {
+            "name": "Batches",
+            "description": "Lotes de solicitudes"
+        },
+        {
+            "name": "Invoices",
+            "description": "Facturas XML"
+        },
+        {
+            "name": "ReturnOrders",
+            "description": "Ordenes de devolucion"
+        },
+        {
+            "name": "ReturnOrderRequests",
+            "description": "Vinculo devolucion-solicitud"
+        },
+        {
+            "name": "Customers",
+            "description": "Clientes"
+        },
+        {
+            "name": "Notifications",
+            "description": "Notificaciones del usuario"
+        },
+        {
+            "name": "Security",
+            "description": "Seguridad: IPs y usuarios bloqueados"
+        },
+        {
+            "name": "PasswordRequirements",
+            "description": "Requisitos de contrasena"
+        },
+        {
+            "name": "Dashboard",
+            "description": "Metricas y estadisticas"
+        },
+        {
+            "name": "ChargePolicies",
+            "description": "Politicas de cargo por dias transcurridos"
+        }
+    ]
+}
