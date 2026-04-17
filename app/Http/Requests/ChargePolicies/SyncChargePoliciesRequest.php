@@ -14,10 +14,11 @@ class SyncChargePoliciesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'policies'              => ['required', 'array', 'min:1'],
-            'policies.*.id'         => ['nullable', 'integer', 'exists:chargePolicies,id'],
-            'policies.*.day'        => ['required', 'integer', 'min:1'],
-            'policies.*.percentage' => ['required', 'numeric', 'min:0', 'max:100'],
+            'policies'                  => ['required', 'array', 'min:1'],
+            'policies.*.id'             => ['nullable', 'integer', 'exists:chargePolicies,id'],
+            'policies.*.conditional'    => ['required', 'string'],
+            'policies.*.day'            => ['required', 'integer', 'min:1'],
+            'policies.*.percentage'     => ['required', 'numeric', 'min:0', 'max:100'],
         ];
     }
 }

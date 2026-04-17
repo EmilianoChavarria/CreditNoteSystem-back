@@ -14,8 +14,9 @@ class UpdateChargePolicyRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'day'        => ['sometimes', 'integer', 'min:1'],
-            'percentage' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'conditional' => ['required', 'string'],
+            'day'         => ['sometimes', 'integer', 'min:1'],
+            'percentage'  => ['sometimes', 'numeric', 'min:0', 'max:100'],
         ];
     }
 }

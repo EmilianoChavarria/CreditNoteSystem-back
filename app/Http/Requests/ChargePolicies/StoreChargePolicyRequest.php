@@ -14,8 +14,9 @@ class StoreChargePolicyRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'day'        => ['required', 'integer', 'min:1'],
-            'percentage' => ['required', 'numeric', 'min:0', 'max:100'],
+            'conditional' => ['required', 'string'],
+            'day'         => ['required', 'integer', 'min:1'],
+            'percentage'  => ['required', 'numeric', 'min:0', 'max:100'],
         ];
     }
 }
