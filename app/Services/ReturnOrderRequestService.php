@@ -43,6 +43,8 @@ class ReturnOrderRequestService
                 ]);
             }
 
+            $returnOrder->update(['orderStatus' => 1]);
+
             return $returnOrderRequest->load(['returnOrder', 'items.returnOrderItem']);
         });
     }
@@ -65,7 +67,7 @@ class ReturnOrderRequestService
     public function getByRequestId(int $requestId): ReturnOrderRequest
     {
         $record = ReturnOrderRequest::with([
-            'returnOrder',
+            'returnOrder.chargePolicy',
             'items.returnOrderItem',
         ])->where('requestId', $requestId)->first();
 

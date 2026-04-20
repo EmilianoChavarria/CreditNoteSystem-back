@@ -18,6 +18,7 @@ class ReturnOrder extends Model
         'notes',
         'charge',
         'chargePolicyId',
+        'orderStatus'
     ];
 
     protected $casts = [
@@ -25,6 +26,7 @@ class ReturnOrder extends Model
         'updatedAt'      => 'datetime',
         'charge'         => 'boolean',
         'chargePolicyId' => 'integer',
+        'orderStatus'    => 'boolean',
     ];
 
     public function items()

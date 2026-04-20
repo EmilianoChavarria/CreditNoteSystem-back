@@ -69,7 +69,8 @@ class ReturnOrderService
             $query->select(
                 'returnOrders.*',
                 $hasRazonSocial ? 'cl.razonSocial' : DB::raw('NULL as razonSocial')
-            );
+            )->where('orderStatus', '0');
+            ;
         } else {
             if (is_numeric($search)) {
                 $query->where('clientId', (int) $search);

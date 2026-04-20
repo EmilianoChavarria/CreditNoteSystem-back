@@ -17,6 +17,7 @@ class ReturnOrderResource extends JsonResource
             'notes'          => $this->notes,
             'charge'         => $this->charge,
             'chargePolicyId' => $this->chargePolicyId,
+            'chargePolicy'   => $this->whenLoaded('chargePolicy'),
             'createdAt'      => $this->createdAt,
             'updatedAt'      => $this->updatedAt,
             'items'          => ReturnOrderItemResource::collection($this->whenLoaded('items')),

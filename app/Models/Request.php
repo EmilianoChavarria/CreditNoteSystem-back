@@ -9,8 +9,8 @@ class Request extends Model
 {
     use HasFactory;
 
-    const CREATED_AT = 'createdAt';
-    const UPDATED_AT = 'updatedAt';
+    public const CREATED_AT = 'createdAt';
+    public const UPDATED_AT = 'updatedAt';
 
     protected $table = 'requests';
     protected $fillable = [
@@ -92,5 +92,10 @@ class Request extends Model
     public function workflowHistory()
     {
         return $this->hasMany(WorkflowRequestHistory::class, 'requestId');
+    }
+
+    public function returnOrderRequest()
+    {
+        return $this->hasOne(ReturnOrderRequest::class, 'requestId');
     }
 }
