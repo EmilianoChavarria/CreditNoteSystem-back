@@ -233,6 +233,24 @@ class RequestCrudService
             ->paginate($perPage);
     }
 
+    public function getByCustomerId(string $customerId, int $perPage, int $page)
+    {
+        return RequestModel::with([
+            'requestType',
+            'user',
+            'reason',
+            'classification',
+            'workflowCurrentStep.workflowStep',
+            'workflowCurrentStep.assignedRole',
+            'workflowCurrentStep.assignedUser',
+        ])
+            ->where('customerId', $customerId)
+            ->where('requestTypeId', 6)
+            ->whereDoesntHave('returnOrderRequest')
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
     public function getRequestsForExport(string $module, mixed $authUser, bool $isAdmin, array $filters): Collection
     {
         $scope = mb_strtolower((string) ($filters['scope'] ?? 'page'));
