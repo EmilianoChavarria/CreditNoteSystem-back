@@ -3,8 +3,8 @@
 namespace App\Services\Batches\Handlers;
 
 use App\Models\Batch;
-use App\Models\Customer;
 use App\Models\Request as RequestModel;
+use Illuminate\Support\Facades\DB;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\RequestType;
@@ -76,7 +76,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             $aliases = (array) ($fieldConfig['aliases'] ?? []);
             if ($fieldName === 'customerId' || $fieldName === 'idCustomer') {
                 $resolvedCustomer = $this->resolveCustomer($row, $aliases);
-                $payload['customerId'] = (int) $resolvedCustomer->idCustomer;
+                $payload['customerId'] = (string) $resolvedCustomer->idCliente;
             } elseif ($fieldName === 'reasonId') {
                 $payload['reasonId'] = $this->resolveReasonId($row, $aliases);
             } elseif ($fieldName === 'classificationId') {
@@ -120,7 +120,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'status' => ['nullable', 'string', 'max:50'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
-            'customerId' => ['nullable', 'integer', Rule::exists((new Customer())->getTable(), 'idCustomer')],
+            'customerId' => ['nullable', 'string', Rule::exists('clientes_tme700618rc7', 'idCliente')],
             'area' => ['nullable', 'string', 'max:150'],
             'reasonId' => ['nullable', 'integer', Rule::exists((new RequestReason())->getTable(), 'id')],
             'classificationId' => ['nullable', 'integer', Rule::exists((new RequestClassification())->getTable(), 'id')],
@@ -213,7 +213,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
      * @param array<string, mixed> $row
      * @param array<int, string> $aliases
      */
-    private function resolveCustomer(array $row, array $aliases): ?Customer
+    private function resolveCustomer(array $row, array $aliases): ?object
     {
         $value = $this->value($row, $aliases);
 
@@ -221,28 +221,17 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             return null;
         }
 
-        // Si es numérico, intentar por idCustomer y luego por idClient
-        if (is_numeric($value)) {
-            $number = (int) $value;
+        \Log::error('[resolveCustomer] value', ['value' => $value, 'type' => gettype($value)]);
 
-            $customerById = Customer::query()->where('idCustomer', $number)->first();
-            if ($customerById) {
-                return $customerById;
-            }
+        $customer = DB::table('clientes_tme700618rc7')
+            ->where('idCliente', (string) $value)
+            ->first();
 
-            $customerByClientId = Customer::query()->where('idClient', $number)->first();
-            if ($customerByClientId) {
-                return $customerByClientId;
-            }
-        }
-
-        // En este sistema, también permitimos idClient como texto
-        $customer = Customer::query()->where('idClient', (int) $value)->first();
         if ($customer) {
             return $customer;
         }
 
-        // No se encontró el cliente
+        \Log::error('[resolveCustomer] no encontrado', ['value' => $value, 'query_result' => $customer]);
         throw new RuntimeException("Cliente no encontrado: '{$value}'");
     }
 
