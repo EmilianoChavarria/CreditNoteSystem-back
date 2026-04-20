@@ -365,6 +365,17 @@ class RequestController extends Controller
         return str_contains($roleName, 'ADMIN');
     }
 
+    public function getByCustomerId(Request $request, string $customerId)
+    {
+        $perPage = max(1, (int) $request->query('perPage', $request->query('per_page', 15)));
+        $page = max(1, (int) $request->query('page', 1));
+
+        $requests = $this->requestCrudService->getByCustomerId($customerId, $perPage, $page);
+        $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
+
+        return response()->json(ApiResponse::success('Solicitudes del cliente', $requests));
+    }
+
     public function saveDraft(SaveDraftRequestInput $request)
     {
         $user = $request->attributes->get('authUser');
