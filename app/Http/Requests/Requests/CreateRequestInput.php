@@ -25,6 +25,8 @@ class CreateRequestInput extends FormRequest
             'deliveryNote' => ['nullable', 'string', 'max:255'],
             'invoiceNumber' => ['nullable', 'string', 'max:50'],
             'invoiceDate' => ['nullable', 'date'],
+            'newInvoice' => ['nullable', 'date'], // sólo para re-invoicing
+            'warehouseCode' => ['nullable', 'date'], // sólo para material-return
             'exchangeRate' => ['nullable', 'numeric'],
             'status' => ['nullable', 'string', 'max:20'],
             'amount' => ['nullable', 'numeric'],
@@ -32,6 +34,12 @@ class CreateRequestInput extends FormRequest
             'iva' => ['nullable'],
             'totalAmount' => ['nullable', 'numeric'],
             'comments' => ['nullable', 'string', 'max:1000'],
+            'replenishmentAmount' => ['sometimes', 'nullable', 'numeric'],
+            'hasReplenishmentIva' => ['sometimes', 'nullable', 'boolean'],
+            'replenishmentTotal' => ['sometimes', 'nullable', 'numeric'],
+            'warehouseAmount' => ['sometimes', 'nullable', 'numeric'],
+            'hasWarehouseIva' => ['sometimes', 'nullable', 'boolean'],
+            'warehouseTotal' => ['sometimes', 'nullable', 'numeric'],
         ];
     }
 }
