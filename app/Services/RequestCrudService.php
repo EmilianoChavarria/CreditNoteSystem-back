@@ -31,6 +31,14 @@ class RequestCrudService
                 'deliveryNote' => $data['deliveryNote'] ?? null,
                 'invoiceNumber' => $data['invoiceNumber'] ?? null,
                 'invoiceDate' => $data['invoiceDate'] ?? null,
+                'newInvoice' => $data['newInvoice'] ?? null,
+                'warehouseCode' => $data['warehouseCode'] ?? null,
+                'replenishmentAmount' => $data['replenishmentAmount'] ?? null,
+                'hasReplenishmentIva' => $data['hasReplenishmentIva'] ?? false,
+                'replenishmentTotal' => $data['replenishmentTotal'] ?? null,
+                'warehouseAmount' => $data['warehouseAmount'] ?? null,
+                'hasWarehouseIva' => $data['hasWarehouseIva'] ?? false,
+                'warehouseTotal' => $data['warehouseTotal'] ?? null,
                 'exchangeRate' => $data['exchangeRate'] ?? null,
                 'status' => $data['status'] ?? 'created',
                 'amount' => $data['amount'] ?? null,
@@ -91,6 +99,13 @@ class RequestCrudService
             return ['status' => 422, 'message' => 'No se puede editar una solicitud finalizada', 'data' => null];
         }
 
+        if (
+            in_array((string) $requestModel->status, ['created', 'pending'], true) &&
+            isset($data['status']) && (string) $data['status'] === 'draft'
+        ) {
+            return ['status' => 422, 'message' => 'No se puede regresar a borrador una solicitud que ya fue enviada', 'data' => null];
+        }
+
         $updateData = $this->buildEditableRequestData($data);
 
         if (empty($updateData)) {
@@ -103,6 +118,11 @@ class RequestCrudService
         }
 
         $wasDraft = (string) $requestModel->status === 'draft';
+
+        if ($wasDraft) {
+            $updateData['status'] = 'pending';
+        }
+
         $requestModel->update($updateData);
 
         if ($wasDraft) {
@@ -170,19 +190,22 @@ class RequestCrudService
         $requestNumber = $data['requestNumber'] ?? null;
 
         if (!$draftId && !empty($requestNumber)) {
-            $existingDraft = RequestModel::query()
+            $existingRequest = RequestModel::query()
                 ->where('userId', $authUser->id)
-                ->where('status', 'draft')
                 ->where('requestNumber', $requestNumber)
                 ->first();
 
-            if ($existingDraft) {
-                $existingDraft->update($draftData);
+            if ($existingRequest) {
+                if ((string) $existingRequest->status !== 'draft') {
+                    return ['status' => 422, 'message' => 'No se puede guardar como borrador una solicitud que ya fue enviada', 'data' => null];
+                }
+
+                $existingRequest->update($draftData);
 
                 return [
                     'status' => 200,
                     'message' => 'Borrador actualizado',
-                    'data' => $existingDraft->load(['requestType', 'user', 'reason', 'classification']),
+                    'data' => $existingRequest->load(['requestType', 'user', 'reason', 'classification']),
                 ];
             }
         }
@@ -195,6 +218,10 @@ class RequestCrudService
 
             if ((int) $draft->userId !== (int) $authUser->id) {
                 return ['status' => 403, 'message' => 'No tienes permisos para actualizar este borrador', 'data' => null];
+            }
+
+            if ((string) $draft->status !== 'draft') {
+                return ['status' => 422, 'message' => 'No se puede guardar como borrador una solicitud que ya fue enviada', 'data' => null];
             }
 
             $draft->update($draftData);
