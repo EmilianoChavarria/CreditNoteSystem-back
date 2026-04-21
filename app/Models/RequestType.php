@@ -31,6 +31,16 @@ class RequestType extends Model
         );
     }
 
+    public function requestReasons()
+    {
+        return $this->belongsToMany(
+            RequestReason::class,
+            'requestreasontype',
+            'requestTypeId',
+            'reasonId'
+        );
+    }
+
     public function permissions()
     {
         return $this->hasMany(RequestTypePermission::class, 'request_type_id');

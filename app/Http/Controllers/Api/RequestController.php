@@ -19,6 +19,7 @@ use App\Http\Resources\RequestReasonResource;
 use App\Http\Resources\RequestResource;
 use App\Models\Request as RequestModel;
 use App\Models\RequestReason;
+use App\Models\RequestType;
 use App\Services\RequestAttachmentService;
 use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
@@ -241,9 +242,15 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success('Requests', $requests));
     }
 
-    public function getAllReasons()
+    public function getAllReasonsByRequestType(int $requestTypeId)
     {
-        $reasons = RequestReason::all();
+        $requestType = RequestType::find($requestTypeId);
+
+        if (!$requestType) {
+            return response()->json(ApiResponse::error('Request type not found', null, 404), 404);
+        }
+
+        $reasons = $requestType->requestReasons;
 
         return response()->json(ApiResponse::success("Reasons", RequestReasonResource::collection($reasons)));
     }

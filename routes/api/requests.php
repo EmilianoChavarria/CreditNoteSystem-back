@@ -14,7 +14,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/attachments/{attachmentId}', [RequestController::class, 'getAttachmentById']);
     Route::get('requests/attachments/{attachmentId}/preview-link', [RequestController::class, 'getAttachmentPreviewLinkById']);
     Route::delete('requests/{requestId}/attachments/{attachmentId}', [RequestController::class, 'deleteAttachmentById']);
-    Route::get('requests/reasons', [RequestController::class, 'getAllReasons']);
+    Route::get('requests/reasons/{requestTypeId}', [RequestController::class, 'getAllReasonsByRequestType']);
     Route::get('requests/next-number/{requestTypeId}', [RequestController::class, 'getNextRequestNumber']);
     Route::get('requests/customer/{customerId}', [RequestController::class, 'getByCustomerId']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);

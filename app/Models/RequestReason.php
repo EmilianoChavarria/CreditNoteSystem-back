@@ -20,4 +20,14 @@ class RequestReason extends Model
     {
         return $this->hasMany(Request::class, 'reasonId');
     }
+
+    public function requestTypes()
+    {
+        return $this->belongsToMany(
+            RequestType::class,
+            'requestreasontype',
+            'reasonId',
+            'requestTypeId'
+        );
+    }
 }

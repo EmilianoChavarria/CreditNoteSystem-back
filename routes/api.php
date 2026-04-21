@@ -24,3 +24,4 @@ require __DIR__.'/api/workflows.php';
 require __DIR__.'/api/workflowSteps.php';
 require __DIR__.'/api/returnOrders.php';
 require __DIR__.'/api/chargePolicy.php';
+require __DIR__.'/api/requestReasonType.php';
