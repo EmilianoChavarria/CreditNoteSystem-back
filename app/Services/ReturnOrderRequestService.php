@@ -112,6 +112,20 @@ class ReturnOrderRequestService
     }
 
     /**
+     * Actualiza múltiples items del revisor en una sola transacción.
+     */
+    public function updateItems(int $returnOrderRequestId, array $items): ReturnOrderRequest
+    {
+        DB::transaction(function () use ($returnOrderRequestId, $items) {
+            foreach ($items as $data) {
+                $this->updateItem($returnOrderRequestId, (int) $data['id'], $data);
+            }
+        });
+
+        return $this->getById($returnOrderRequestId);
+    }
+
+    /**
      * Extrae el part number de la descripcion del XML.
      * Formato esperado: ^PARTNUMBER;^...
      */

@@ -21,5 +21,6 @@ Route::middleware(['jwt'])->group(function () {
     Route::post('return-order-requests', [ReturnOrderRequestController::class, 'store']);
     Route::get('return-order-requests/by-request/{requestId}', [ReturnOrderRequestController::class, 'showByRequestId']);
     Route::get('return-order-requests/{id}', [ReturnOrderRequestController::class, 'show']);
+    Route::put('return-order-requests/{id}/items', [ReturnOrderRequestController::class, 'updateItems']);
     Route::put('return-order-requests/{id}/items/{itemId}', [ReturnOrderRequestController::class, 'updateItem']);
 });
