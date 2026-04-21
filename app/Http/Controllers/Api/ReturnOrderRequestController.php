@@ -11,6 +11,7 @@ use App\Http\Resources\ReturnOrderRequestResource;
 use App\Services\ReturnOrderRequestService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Http\Requests\ReturnOrders\UpdateReturnOrderRequestItemsInput;
 use RuntimeException;
 
 class ReturnOrderRequestController extends Controller
@@ -71,6 +72,23 @@ class ReturnOrderRequestController extends Controller
             return response()->json(ApiResponse::success('Material return', new ReturnOrderRequestResource($returnOrderRequest)));
         } catch (RuntimeException $e) {
             return response()->json(ApiResponse::error($e->getMessage(), null, 404), 404);
+        }
+    }
+
+    /**
+     * El revisor actualiza múltiples productos en una sola llamada.
+     * PUT /return-order-requests/{id}/items
+     */
+    public function updateItems(UpdateReturnOrderRequestItemsInput $request, int $id)
+    {
+        try {
+            $returnOrderRequest = $this->returnOrderRequestService->updateItems($id, $request->input('items'));
+
+            return response()->json(ApiResponse::success('Productos actualizados', new ReturnOrderRequestResource($returnOrderRequest)));
+        } catch (ModelNotFoundException) {
+            return response()->json(ApiResponse::error('No encontrado', null, 404), 404);
+        } catch (RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
         }
     }
 
