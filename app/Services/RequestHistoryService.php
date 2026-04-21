@@ -82,48 +82,48 @@ class RequestHistoryService
             ->orderBy('id')
             ->get();
 
-        $historyValues = $history->values();
+        $messages = [
+            'created'    => 'Solicitud creada en el flujo',
+            'approved'   => 'Paso aprobado',
+            'rejected'   => 'Paso rechazado',
+            'routed_back' => 'Solicitud regresada al paso anterior',
+        ];
 
-        $timeline = $historyValues->map(function ($entry, $index) use ($historyValues) {
-            $previous = $index > 0 ? $historyValues->get($index - 1) : null;
+        $decisiones = $history
+            ->filter(fn ($entry) => (string) $entry->actionType !== 'routed')
+            ->values();
+
+        $timeline = $decisiones->map(function ($entry, $index) use ($messages) {
             $actionType = (string) $entry->actionType;
 
-            $messages = [
-                'created' => 'Solicitud creada en el flujo',
-                'approved' => 'Paso aprobado',
-                'rejected' => 'Paso rechazado',
-                'routed' => 'Solicitud enviada al siguiente paso',
-                'routed_back' => 'Solicitud regresada al paso anterior',
-            ];
-
             return [
-                'sequence' => $index + 1,
-                'timestamp' => $entry->createdAt,
+                'sequence'   => $index + 1,
+                'timestamp'  => $entry->createdAt,
                 'actionType' => $actionType,
-                'message' => $messages[$actionType] ?? 'Evento del workflow',
-                'comments' => $entry->comments,
-                'step' => [
-                    'id' => $entry->workflowStep?->id,
-                    'name' => $entry->workflowStep?->stepName,
+                'message'    => $messages[$actionType] ?? 'Evento del workflow',
+                'comments'   => $entry->comments,
+                'step'       => [
+                    'id'    => $entry->workflowStep?->id,
+                    'name'  => $entry->workflowStep?->stepName,
                     'order' => $entry->workflowStep?->stepOrder,
                 ],
-                'fromStep' => $actionType === 'routed' || $actionType === 'routed_back'
-                    ? [
-                        'id' => $previous?->workflowStep?->id,
-                        'name' => $previous?->workflowStep?->stepName,
-                        'order' => $previous?->workflowStep?->stepOrder,
-                    ]
-                    : null,
-                'toStep' => $actionType === 'routed' || $actionType === 'routed_back'
-                    ? [
-                        'id' => $entry->workflowStep?->id,
-                        'name' => $entry->workflowStep?->stepName,
-                        'order' => $entry->workflowStep?->stepOrder,
-                    ]
-                    : null,
                 'actionUser' => $entry->actionUser,
             ];
         })->values();
+
+        $timeline->push([
+            'sequence'   => $timeline->count() + 1,
+            'timestamp'  => $currentStep->startedAt ?? null,
+            'actionType' => 'current',
+            'message'    => 'Paso actual',
+            'comments'   => null,
+            'step'       => [
+                'id'    => $currentStep->workflowStep?->id,
+                'name'  => $currentStep->workflowStep?->stepName,
+                'order' => $currentStep->workflowStep?->stepOrder,
+            ],
+            'actionUser' => $currentStep->assignedUser,
+        ]);
 
         $lastStepExecutionByStepId = $requestSteps->groupBy('workflowStepId')->map(static function ($executions) {
             return $executions->last();
