@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 30.1.0, SVG Export Plug-In . SVG Version: 9.03 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+	<!ENTITY ns_vars "http://ns.adobe.com/Variables/1.0/">
+	<!ENTITY ns_imrep "http://ns.adobe.com/ImageReplacement/1.0/">
+	<!ENTITY ns_sfw "http://ns.adobe.com/SaveForWeb/1.0/">
+	<!ENTITY ns_custom "http://ns.adobe.com/GenericCustomNamespace/1.0/">
+	<!ENTITY ns_adobe_xpath "http://ns.adobe.com/XPath/1.0/">
+]>
+<svg version="1.1" id="Capa_1" xmlns:x="&ns_extend;" xmlns:i="&ns_ai;" xmlns:graph="&ns_graphs;"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 195.9 45.5"
+	 style="enable-background:new 0 0 195.9 45.5;" xml:space="preserve">
+<style type="text/css">
+	.Sombra_x0020_paralela{fill:none;}
+	.Resplandor_x0020_externo_x0020_5_x0020_pt_x002E_{fill:none;}
+	.Neón_x0020_azul{fill:none;stroke:#8AACDA;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;}
+	.Resalte_x0020_cromado{fill:url(#SVGID_1_);stroke:#FFFFFF;stroke-width:0.3629;stroke-miterlimit:1;}
+	.A_x0020_todo_x0020_ritmo_GS{fill:#FFDD00;}
+	.Alyssa_GS{fill:#A6D0E4;}
+	.st0{fill:#FF8300;}
+</style>
+<metadata>
+	<sfw  xmlns="&ns_sfw;">
+		<slices></slices>
+		<sliceSourceBounds  bottomLeftOrigin="true" height="40.1" width="190.9" x="12" y="-128.3"></sliceSourceBounds>
+	</sfw>
+</metadata>
+<linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="-9.6852" y1="-84.9879" x2="-9.6852" y2="-85.9879">
+	<stop  offset="0" style="stop-color:#656565"/>
+	<stop  offset="0.618" style="stop-color:#1B1B1B"/>
+	<stop  offset="0.6292" style="stop-color:#545454"/>
+	<stop  offset="0.9831" style="stop-color:#3E3E3E"/>
+</linearGradient>
+<path class="st0" d="M49.7,43.3v-5.2h-1.2C47.1,38,46.1,37,46,35.7v-25c0.1-1.3,1.1-2.4,2.5-2.5l1.3,0l0-4.9H33.7v4.9h1.2
+	c1.3,0.1,2.4,1.2,2.5,2.5v25C37.3,37,36.3,38,35,38.1h-1.4v5.2L49.7,43.3z M174.4,3.3l-12.8,0l0,4.9l1.2,0c1.2,0,2.4,1.4,2.4,2.7
+	l0,24.8c-0.1,1.3-1.1,2.4-2.4,2.4h-1.3v5.2h13.3v-5.2l-1.2,0c-1.3-0.1-2.3-1-2.5-2.3l0-18.1l10,25.6h8.4l0-32.7
+	c0.1-1.4,1.2-2.4,2.6-2.4h1.1V3.3H180v4.9h1.3c1.3,0.1,2.4,1.1,2.5,2.4v16.1L174.4,3.3z M129.8,38.1c-1.3,0-1.4-0.4-2.6-2
+	c0,0-8.7-12.2-10.1-14.3c0.9-1.4,8.8-12.7,8.8-12.7c0.3-0.6,1-1,1.7-0.9h1.5V3.3l-13.5,0v4.9h0.8c0.4,0,0.7,0.1,0.9,0.4
+	c0.4,0.5-0.4,1.6-0.6,1.9l-6.7,9.8l0-9.7c0.1-1.3,1.1-2.4,2.4-2.4h1.3l0-4.9H97.2v4.9h1.3c1.3,0.1,2.3,1.1,2.4,2.4v25.1
+	c-0.1,1.3-1.1,2.4-2.5,2.5l-1.3,0v5.2h16.5v-5.2h-1.2c-1.4,0-2.5-1.1-2.6-2.4l0-10.9c0.6,0.7,7.8,11.5,7.8,11.5
+	c0.9,1.9-0.4,1.9-1.1,1.9h-0.9l0,5.2h14.4l0-5.2L129.8,38.1z M132.2,43.3h26.8V33l-4.5,0l0,2.7c-0.1,1.3-1.1,2.3-2.5,2.4h-7.2
+	l0-13.4l2.9,0c1.3,0.2,2.3,1.2,2.4,2.4l0,1.6l4.4,0V16.2h-4.4l0,1.5c0.1,1.3-0.9,2.3-2.2,2.4c0,0-0.1,0-0.1,0l-3,0l0-11.9l6.8,0
+	c1.3,0,2.4,1.1,2.4,2.4l0,2.6h4.4V3.3h-26.1v4.9h1.2c1.3,0.1,2.3,1.1,2.4,2.4v25.2c-0.2,1.3-1.2,2.3-2.5,2.4h-1.2V43.3z M24.5,43.3
+	v-5.2h-1.7c-1.3,0-2.4-1.1-2.4-2.4c0,0,0,0,0,0V8.2h3.5c1.4,0,2.4,1.1,2.4,2.4v3.5h3.9V3.3H2.4l0,10.9l3.9,0l0-3.5
+	c0-1.4,1.1-2.4,2.4-2.4c0,0,0,0,0,0l3.5,0l0,27.5c0,1.3-1.1,2.4-2.4,2.4c0,0,0,0,0,0H8.1v5.2L24.5,43.3z M57.2,10.6
+	c-0.1-1.3-1.1-2.4-2.4-2.4h-1.2l0-4.9h12.9l7,23.9l7.1-23.9h12.9v4.9h-1.2c-1.3,0.1-2.4,1.1-2.5,2.5v25.1c0.1,1.3,1.1,2.3,2.4,2.4
+	h1.2v5.2H78.7l0-5.2h0.8c1.1,0,2-1,2-2.4l0-17.9L74,43.3h-3.7l-7.2-25.4l0,17.8c-0.1,1.2,0.8,2.3,1.9,2.4c0,0,0,0,0,0h0.7v5.2H53.5
+	v-5.2l1.3,0c1.3,0,2.4-1.1,2.5-2.4C57.2,35.7,57.2,12,57.2,10.6"/>
+</svg>

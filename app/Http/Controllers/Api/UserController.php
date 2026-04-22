@@ -12,10 +12,13 @@ use App\Http\Requests\Users\ChangeUserPasswordRequest;
 use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
 use App\Http\Resources\UserResource;
+use App\Mail\UserRegisteredMail;
 use App\Models\User;
 use App\Services\UserClientService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -219,6 +222,49 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Usuario desactivado', null, 201));
     }
 
+    public function resendWelcomeEmail(Request $request, int $id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+        }
+
+        $isTestOnly = $request->boolean('testOnly');
+        $mailLocale = $isTestOnly
+            ? $this->normalizeMailLocale((string) $request->input('language', $request->input('locale', $user->preferredLanguage ?? 'es')))
+            : $this->normalizeMailLocale((string) ($user->preferredLanguage ?? 'es'));
+
+        $tempPassword = $this->generateTempPassword();
+
+        if (!$isTestOnly) {
+            $user->passwordHash = Hash::make($tempPassword);
+            $user->save();
+        }
+
+        Mail::to($user->email)->send(new UserRegisteredMail(
+            (string) $user->fullName,
+            (string) $user->email,
+            $tempPassword,
+            $mailLocale
+        ));
+
+        $message = $isTestOnly
+            ? 'Correo de prueba enviado sin actualizar la contraseña del usuario'
+            : 'Correo de bienvenida reenviado correctamente';
+
+        return response()->json(ApiResponse::success($message));
+    }
+
+    private function normalizeMailLocale(string $locale): string
+    {
+        $locale = strtolower(trim($locale));
+
+        return in_array($locale, ['en', 'es'], true)
+            ? $locale
+            : 'es';
+    }
+
     private function findUser(int $id): ?object
     {
         return User::with('role')->find($id);
@@ -229,5 +275,25 @@ class UserController extends Controller
         $roleName = mb_strtoupper(trim((string) optional($user->role)->roleName));
 
         return str_contains($roleName, 'ADMIN') || str_contains($roleName, 'MANAGER');
+    }
+
+    private function generateTempPassword(): string
+    {
+        $upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $lower   = 'abcdefghijklmnopqrstuvwxyz';
+        $digits  = '0123456789';
+        $special = '@#$!%';
+
+        $password  = $upper[random_int(0, strlen($upper) - 1)];
+        $password .= $lower[random_int(0, strlen($lower) - 1)];
+        $password .= $digits[random_int(0, strlen($digits) - 1)];
+        $password .= $special[random_int(0, strlen($special) - 1)];
+
+        $all = $upper . $lower . $digits . $special;
+        for ($i = 0; $i < 6; $i++) {
+            $password .= $all[random_int(0, strlen($all) - 1)];
+        }
+
+        return str_shuffle($password);
     }
 }

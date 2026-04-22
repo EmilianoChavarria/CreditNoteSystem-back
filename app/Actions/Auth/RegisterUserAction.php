@@ -89,7 +89,8 @@ class RegisterUserAction
                 Mail::to($data['email'])->send(new UserRegisteredMail(
                     (string) $data['fullName'],
                     (string) $data['email'],
-                    $password
+                    $password,
+                    (string) ($data['preferredLanguage'] ?? 'es')
                 ));
             }
 

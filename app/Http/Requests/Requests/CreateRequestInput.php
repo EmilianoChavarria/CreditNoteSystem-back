@@ -26,7 +26,7 @@ class CreateRequestInput extends FormRequest
             'invoiceNumber' => ['nullable', 'string', 'max:50'],
             'invoiceDate' => ['nullable', 'date'],
             'newInvoice' => ['nullable', 'date'], // sólo para re-invoicing
-            'warehouseCode' => ['nullable', 'date'], // sólo para material-return
+            'warehouseCode' => ['nullable', 'string'], // sólo para material-return
             'exchangeRate' => ['nullable', 'numeric'],
             'status' => ['nullable', 'string', 'max:20'],
             'amount' => ['nullable', 'numeric'],
