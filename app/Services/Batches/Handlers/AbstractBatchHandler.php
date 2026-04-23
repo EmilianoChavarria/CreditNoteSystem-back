@@ -17,13 +17,36 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
      */
     protected function value(array $row, array $aliases, mixed $default = null): mixed
     {
+        $normalizedRow = [];
+
+        foreach ($row as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $normalizedRow[$this->normalizeLookupKey($key)] = $value;
+        }
+
         foreach ($aliases as $alias) {
             if (array_key_exists($alias, $row)) {
                 return $row[$alias];
             }
+
+            $normalizedAlias = $this->normalizeLookupKey($alias);
+            if (array_key_exists($normalizedAlias, $normalizedRow)) {
+                return $normalizedRow[$normalizedAlias];
+            }
         }
 
         return $default;
+    }
+
+    private function normalizeLookupKey(string $value): string
+    {
+        $normalized = mb_strtolower(trim($value));
+        $normalized = preg_replace('/[^a-z0-9]+/i', '', $normalized) ?? $normalized;
+
+        return $normalized;
     }
 
     /**
