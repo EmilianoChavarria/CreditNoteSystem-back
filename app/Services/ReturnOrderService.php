@@ -2,11 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\ChargePolicy;
 use App\Models\ReturnOrder;
 use App\Models\ReturnOrderItem;
 use App\Models\ReturnOrderItemHistory;
-use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -41,7 +39,6 @@ class ReturnOrderService
 
         $query = ReturnOrder::
         with('items')->
-        with('chargePolicy')->
         orderByDesc('createdAt');
 
         if ($hasClientTable) {
@@ -122,16 +119,13 @@ class ReturnOrderService
     {
         $this->validateItems($items);
 
-        $chargePolicy = $this->resolveChargePolicy($items);
-
-        return DB::transaction(function () use ($clientId, $userId, $items, $notes, $chargePolicy) {
+        return DB::transaction(function () use ($clientId, $userId, $items, $notes) {
             $returnOrder = ReturnOrder::create([
-                'clientId'       => $clientId,
-                'userId'         => $userId,
-                'status'         => 'pending',
-                'notes'          => $notes,
-                'charge'         => true,
-                'chargePolicyId' => $chargePolicy?->id,
+                'clientId' => $clientId,
+                'userId'   => $userId,
+                'status'   => 'pending',
+                'notes'    => $notes,
+                'charge'   => true,
             ]);
 
             foreach ($items as $itemData) {
@@ -226,57 +220,6 @@ class ReturnOrderService
             ],
             'history' => $history,
         ];
-    }
-
-    /**
-     * Evalúa las fechas de emisión de cada item contra las políticas de cargo activas.
-     * Retorna la política con el porcentaje más alto entre todas las que coincidan.
-     * Usa la tabla comprobantes_tme700618rc7 como fuente de fechaEmision.
-     */
-    private function resolveChargePolicy(array $items): ?ChargePolicy
-    {
-        $policies = ChargePolicy::orderByDesc('percentage')->get();
-
-        if ($policies->isEmpty()) {
-            return null;
-        }
-
-        $folios = array_unique(array_column($items, 'invoiceFolio'));
-
-        $fechasPorFolio = DB::table('comprobantes_tme700618rc7')
-            ->whereIn('folio', $folios)
-            ->pluck('fechaEmision', 'folio');
-
-        $today = Carbon::today();
-        $bestPolicy = null;
-
-        foreach ($folios as $folio) {
-            if (!isset($fechasPorFolio[$folio])) {
-                continue;
-            }
-
-            $fechaEmision = Carbon::parse($fechasPorFolio[$folio]);
-            $elapsedDays  = $fechaEmision->diffInDays($today);
-
-            foreach ($policies as $policy) {
-                $matches = match($policy->conditional) {
-                    '<'  => $elapsedDays < $policy->day,
-                    '>'  => $elapsedDays > $policy->day,
-                    '<=' => $elapsedDays <= $policy->day,
-                    '>=' => $elapsedDays >= $policy->day,
-                    default => false,
-                };
-
-                if ($matches) {
-                    if ($bestPolicy === null || $policy->percentage > $bestPolicy->percentage) {
-                        $bestPolicy = $policy;
-                    }
-                    break; // policies are sorted desc by percentage, first match per folio is best for this folio
-                }
-            }
-        }
-
-        return $bestPolicy;
     }
 
     /**
