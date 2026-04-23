@@ -17,16 +17,14 @@ class ReturnOrder extends Model
         'status',
         'notes',
         'charge',
-        'chargePolicyId',
         'orderStatus'
     ];
 
     protected $casts = [
-        'createdAt'      => 'datetime',
-        'updatedAt'      => 'datetime',
-        'charge'         => 'boolean',
-        'chargePolicyId' => 'integer',
-        'orderStatus'    => 'boolean',
+        'createdAt'   => 'datetime',
+        'updatedAt'   => 'datetime',
+        'charge'      => 'boolean',
+        'orderStatus' => 'boolean',
     ];
 
     public function items()
@@ -37,10 +35,5 @@ class ReturnOrder extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'userId');
-    }
-
-    public function chargePolicy()
-    {
-        return $this->belongsTo(ChargePolicy::class, 'chargePolicyId');
     }
 }
