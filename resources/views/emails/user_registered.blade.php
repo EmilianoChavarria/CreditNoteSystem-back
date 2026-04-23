@@ -80,11 +80,8 @@
                                 {{ __('emails.footer_notice') }}
                             </p>
                             <p style="margin: 8px 0 0; color: #FFFFFF; font-size: 13px;">
-                                © 2026 ITTEC.
-                                <span style="text-decoration: underline;">
-                                    Tecnología Inteligente.
-                                </span>
-                                {{ __('emails.footer_rights') }}
+                                © {{ now()->year }}
+                                <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> {{ __('emails.footer_rights') }}
                             </p>
                         </td>
                     </tr>
