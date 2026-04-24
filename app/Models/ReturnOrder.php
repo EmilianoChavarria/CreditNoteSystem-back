@@ -16,15 +16,17 @@ class ReturnOrder extends Model
         'userId',
         'status',
         'notes',
-        'charge',
-        'orderStatus'
+        'chargeTypeId',
+        'customRate',
+        'orderStatus',
     ];
 
     protected $casts = [
-        'createdAt'   => 'datetime',
-        'updatedAt'   => 'datetime',
-        'charge'      => 'boolean',
-        'orderStatus' => 'boolean',
+        'createdAt'    => 'datetime',
+        'updatedAt'    => 'datetime',
+        'chargeTypeId' => 'integer',
+        'customRate'   => 'decimal:2',
+        'orderStatus'  => 'boolean',
     ];
 
     public function items()
@@ -35,5 +37,10 @@ class ReturnOrder extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'userId');
+    }
+
+    public function chargeType()
+    {
+        return $this->belongsTo(ChargeType::class, 'chargeTypeId');
     }
 }
