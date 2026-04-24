@@ -52,8 +52,9 @@ class LoginUserAction
         }
 
         $security = $this->getOrCreateUserSecurity((int) $user->id);
+        $isAdmin = $user->role?->roleName === 'ADMIN';
 
-        if ($security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
+        if (!$isAdmin && $security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
             $this->registerIpFailure($ip, $maxIpAttempts, $now);
 
             return [
@@ -64,7 +65,9 @@ class LoginUserAction
         }
 
         if (!Hash::check((string) $data['password'], (string) $user->passwordHash)) {
-            $this->registerUserFailure((int) $user->id, $maxUserAttempts, $lockMinutes, $now);
+            if (!$isAdmin) {
+                $this->registerUserFailure((int) $user->id, $maxUserAttempts, $lockMinutes, $now);
+            }
             $this->registerIpFailure($ip, $maxIpAttempts, $now);
 
             return [
