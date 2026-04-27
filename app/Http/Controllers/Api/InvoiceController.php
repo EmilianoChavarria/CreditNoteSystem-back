@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\InvoiceService;
+use App\Services\InvoicePdfService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use RuntimeException;
 
 class InvoiceController extends Controller
 {
     public function __construct(
-        private readonly InvoiceService $invoiceService
+        private readonly InvoiceService $invoiceService,
+        private readonly InvoicePdfService $invoicePdfService,
     ) {
     }
 
@@ -48,5 +51,18 @@ class InvoiceController extends Controller
         $invoices = $this->invoiceService->getInvoicesByClientIdAndChargeType($clientId, $chargeType);
 
         return response()->json(ApiResponse::success('Facturas', $invoices));
+    }
+
+    /**
+     * Genera y descarga el PDF de una factura.
+     * GET /invoices/{id}/pdf
+     */
+    public function downloadPdf(string $id)
+    {
+        try {
+            return $this->invoicePdfService->generatePdf($id);
+        } catch (RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 404), 404);
+        }
     }
 }
