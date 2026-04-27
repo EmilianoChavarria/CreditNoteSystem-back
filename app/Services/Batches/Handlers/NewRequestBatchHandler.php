@@ -9,6 +9,7 @@ use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\RequestType;
 use App\Models\User;
+use App\Services\BanxicoService;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
 use App\Services\RequestNumberService;
@@ -22,7 +23,8 @@ class NewRequestBatchHandler extends AbstractBatchHandler
     public function __construct(
         private readonly BulkFileParser $fileParser,
         private readonly RequestNumberService $requestNumberService,
-        private readonly RequestWorkflowService $requestWorkflowService
+        private readonly RequestWorkflowService $requestWorkflowService,
+        private readonly BanxicoService $banxicoService,
     ) {
     }
 
@@ -96,22 +98,22 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         $payload['hasWarehouseIva'] = $this->boolFromMixed($payload['hasWarehouseIva'] ?? null, false);
 
         // Convertir fechas a formato YYYY-MM-DD
-        if (isset($payload['requestDate'])) {
-            $payload['requestDate'] = $this->dateFromMixed($payload['requestDate']);
-        }
+        $payload['requestDate'] = $this->dateFromMixed($payload['requestDate'] ?? null)
+            ?? now()->toDateString();
         if (isset($payload['invoiceDate'])) {
             $payload['invoiceDate'] = $this->dateFromMixed($payload['invoiceDate']);
         }
 
-        foreach (['exchangeRate', 'amount', 'replenishmentAmount', 'warehouseAmount'] as $numericField) {
+        foreach (['amount', 'replenishmentAmount', 'warehouseAmount'] as $numericField) {
             if (array_key_exists($numericField, $payload)) {
                 $payload[$numericField] = $this->floatFromMixed($payload[$numericField], 0);
             }
         }
 
-        if (!array_key_exists('exchangeRate', $payload) || $payload['exchangeRate'] === 0.0) {
-            $payload['exchangeRate'] = 1;
-        }
+        $currency = mb_strtoupper((string) ($payload['currency'] ?? ''));
+        $payload['exchangeRate'] = $currency === 'USD'
+            ? $this->banxicoService->getCurrentUsdRate()
+            : 1;
 
         $rules = [
             'requestTypeId' => ['required', 'integer', Rule::exists((new RequestType())->getTable(), 'id')],
@@ -127,7 +129,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'deliveryNote' => ['nullable', 'string', 'max:255'],
             'invoiceNumber' => ['nullable', 'string', 'max:255'],
             'invoiceDate' => ['nullable', 'date'],
-            'exchangeRate' => ['nullable', 'numeric', 'min:0'],
+            'exchangeRate' => ['required', 'numeric', 'min:0'],
             'creditNumber' => ['nullable', 'string', 'max:255'],
             'amount' => ['nullable', 'numeric', 'min:0'],
             'hasIva' => ['nullable', 'boolean'],
