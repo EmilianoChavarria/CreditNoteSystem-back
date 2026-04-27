@@ -67,7 +67,7 @@ class ReturnOrderRequestService
     public function getByRequestId(int $requestId): ReturnOrderRequest
     {
         $record = ReturnOrderRequest::with([
-            'returnOrder.chargePolicy',
+            'returnOrder.chargeType',
             'items.returnOrderItem',
         ])->where('requestId', $requestId)->first();
 

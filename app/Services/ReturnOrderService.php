@@ -115,17 +115,18 @@ class ReturnOrderService
      *   'requestedQuantity' => 3,
      * ]
      */
-    public function createReturnOrder(int $clientId, ?int $userId, array $items, ?string $notes): ReturnOrder
+    public function createReturnOrder(int $clientId, ?int $userId, array $items, ?string $notes, int $chargeTypeId, ?float $customRate): ReturnOrder
     {
         $this->validateItems($items);
 
-        return DB::transaction(function () use ($clientId, $userId, $items, $notes) {
+        return DB::transaction(function () use ($clientId, $userId, $items, $notes, $chargeTypeId, $customRate) {
             $returnOrder = ReturnOrder::create([
-                'clientId' => $clientId,
-                'userId'   => $userId,
-                'status'   => 'pending',
-                'notes'    => $notes,
-                'charge'   => true,
+                'clientId'     => $clientId,
+                'userId'       => $userId,
+                'status'       => 'pending',
+                'notes'        => $notes,
+                'chargeTypeId' => $chargeTypeId,
+                'customRate'   => $customRate,
             ]);
 
             foreach ($items as $itemData) {
@@ -160,6 +161,29 @@ class ReturnOrderService
 
             return $returnOrder->load('items');
         });
+    }
+
+    /**
+     * Actualiza la configuración de cargo de una orden de devolución.
+     *
+     * Tres modos:
+     *  - chargeTypeId  → porcentaje default del tipo; customRate se limpia
+     *  - customRate    → porcentaje personalizado; chargeTypeId se limpia
+     *  - ninguno       → sin cargo; ambos campos se limpian
+     */
+    public function updateCharge(int $returnOrderId, ?int $chargeTypeId, ?float $customRate): ReturnOrder
+    {
+        $returnOrder = ReturnOrder::findOrFail($returnOrderId);
+
+        if ($chargeTypeId !== null) {
+            $returnOrder->update(['chargeTypeId' => $chargeTypeId, 'customRate' => null]);
+        } elseif ($customRate !== null) {
+            $returnOrder->update(['chargeTypeId' => null, 'customRate' => $customRate]);
+        } else {
+            $returnOrder->update(['chargeTypeId' => null, 'customRate' => null]);
+        }
+
+        return $returnOrder->fresh();
     }
 
     /**
