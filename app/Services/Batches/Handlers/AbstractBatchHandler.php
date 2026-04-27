@@ -75,7 +75,7 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
         }
 
         $normalized = mb_strtolower((string) $value);
-        return in_array($normalized, ['1', 'true', 'si', 'sí', 'yes'], true);
+        return in_array($normalized, ['1', 'true', 'si', 'sí', 'yes', 'y'], true);
     }
 
     protected function floatFromMixed(mixed $value, float $default = 0): float
