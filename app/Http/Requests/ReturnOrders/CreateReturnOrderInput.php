@@ -15,6 +15,8 @@ class CreateReturnOrderInput extends FormRequest
     {
         return [
             'clientId'                    => ['required', 'integer'],
+            'chargeTypeId'                => ['required', 'integer', 'exists:chargeTypes,id'],
+            'customRate'                  => ['nullable', 'numeric', 'min:0'],
             'notes'                       => ['nullable', 'string', 'max:1000'],
             'items'                       => ['required', 'array', 'min:1'],
             'items.*.invoiceFolio'         => ['required', 'string', 'max:50'],
@@ -27,6 +29,8 @@ class CreateReturnOrderInput extends FormRequest
     public function messages(): array
     {
         return [
+            'chargeTypeId.required'                  => 'El tipo de cargo es requerido.',
+            'chargeTypeId.exists'                    => 'El tipo de cargo seleccionado no existe.',
             'items.required'                         => 'Debe incluir al menos un producto.',
             'items.min'                              => 'Debe incluir al menos un producto.',
             'items.*.invoiceFolio.required'           => 'El folio de la factura es requerido.',
