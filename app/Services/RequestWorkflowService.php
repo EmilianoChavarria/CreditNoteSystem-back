@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Services\BanxicoService;
 use App\Models\Request as RequestModel;
 use App\Models\RequestClassification;
 use App\Models\User;
@@ -19,8 +20,14 @@ use Illuminate\Validation\ValidationException;
 
 class RequestWorkflowService
 {
+    private const AMOUNT_FIELDS = [
+        'totalAmount', 'amount', 'replenishmentAmount', 'replenishmentTotal',
+        'warehouseAmount', 'warehouseTotal',
+    ];
+
     public function __construct(
-        private readonly NotificationService $notificationService
+        private readonly NotificationService $notificationService,
+        private readonly BanxicoService $banxicoService,
     ) {
     }
 
@@ -536,7 +543,8 @@ class RequestWorkflowService
             return true;
         }
 
-        $left = data_get($requestModel, $transition->conditionField);
+        $field    = (string) $transition->conditionField;
+        $left     = data_get($requestModel, $field);
         $operator = (string) ($transition->conditionOperator ?? '==');
         $rightRaw = $transition->conditionValue;
 
@@ -545,19 +553,31 @@ class RequestWorkflowService
                 return false;
             }
 
-            $leftNumber = (float) $left;
+            $leftNumber  = (float) $left;
             $rightNumber = (float) $rightRaw;
 
+            // Convert amount fields to USD before comparing so condition values
+            // are always expressed in USD regardless of request currency.
+            if (in_array($field, self::AMOUNT_FIELDS, true)) {
+                $currency = mb_strtoupper((string) ($requestModel->currency ?? ''));
+                if ($currency === 'MXN') {
+                    $rate = $this->banxicoService->getCurrentUsdRate();
+                    if ($rate > 0) {
+                        $leftNumber = $leftNumber / $rate;
+                    }
+                }
+            }
+
             return match ($operator) {
-                '>' => $leftNumber > $rightNumber,
-                '<' => $leftNumber < $rightNumber,
+                '>'  => $leftNumber > $rightNumber,
+                '<'  => $leftNumber < $rightNumber,
                 '>=' => $leftNumber >= $rightNumber,
                 '<=' => $leftNumber <= $rightNumber,
                 default => false,
             };
         }
 
-        $leftString = (string) $left;
+        $leftString  = (string) $left;
         $rightString = (string) $rightRaw;
 
         return match ($operator) {
