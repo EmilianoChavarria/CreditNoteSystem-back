@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Actions\ReturnOrders\CreateReturnOrderAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReturnOrders\CreateReturnOrderInput;
+use App\Http\Requests\ReturnOrders\UpdateReturnOrderChargeInput;
 use App\Http\Resources\ReturnOrderResource;
 use App\Services\ReturnOrderService;
 use App\Support\ApiResponse;
@@ -118,6 +119,8 @@ class ReturnOrderController extends Controller
                 $userId,
                 $request->input('items'),
                 $request->input('notes'),
+                $request->integer('chargeTypeId'),
+                $request->input('customRate') !== null ? (float) $request->input('customRate') : null,
             );
 
             return response()->json(
@@ -126,6 +129,29 @@ class ReturnOrderController extends Controller
             );
         } catch (RuntimeException $e) {
             return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
+    }
+
+    /**
+     * Actualiza la configuración de cargo de una orden de devolución.
+     * PATCH /return-orders/{id}/charge
+     *
+     * Body (todos opcionales/nullable):
+     * { "chargeTypeId": 1 }            → porcentaje default del tipo
+     * { "customRate": 12.5 }           → porcentaje personalizado
+     * {}                               → sin cargo
+     */
+    public function updateCharge(UpdateReturnOrderChargeInput $request, int $id)
+    {
+        try {
+            $chargeTypeId = $request->input('chargeTypeId') !== null ? $request->integer('chargeTypeId') : null;
+            $customRate   = $request->input('customRate') !== null ? (float) $request->input('customRate') : null;
+
+            $order = $this->returnOrderService->updateCharge($id, $chargeTypeId, $customRate);
+
+            return response()->json(ApiResponse::success('Cargo actualizado', new ReturnOrderResource($order)));
+        } catch (ModelNotFoundException) {
+            return response()->json(ApiResponse::error('Orden no encontrada', null, 404), 404);
         }
     }
 }
