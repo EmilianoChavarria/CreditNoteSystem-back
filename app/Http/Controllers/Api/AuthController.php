@@ -110,6 +110,7 @@ class AuthController extends Controller
                         'roleName' => $user->roleName,
                         'preferredLanguage' => $user->preferredLanguage,
                         'clientId' => $user->clientId,
+                        'mustChangePassword' => (bool) $user->mustChangePassword,
                     ],
                     'isAuthenticated' => true,
                     'sessionTimeoutMinutes' => $sessionTimeoutMinutes,

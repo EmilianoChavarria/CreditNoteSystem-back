@@ -104,6 +104,7 @@ class LoginUserAction
                 'roleName' => $roleName,
                 'preferredLanguage' => $user->preferredLanguage,
                 'clientId' => $user->clientId,
+                'mustChangePassword' => (bool) $user->mustChangePassword,
             ],
         ];
     }

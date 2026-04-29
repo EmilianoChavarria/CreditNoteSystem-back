@@ -24,6 +24,7 @@ class User extends Authenticatable
         'supervisorId',
         'preferredLanguage',
         'isActive',
+        'mustChangePassword',
         'clientId'
     ];
 
@@ -36,6 +37,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'isActive' => 'boolean',
+        'mustChangePassword' => 'boolean',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
         'deletedAt' => 'datetime',
