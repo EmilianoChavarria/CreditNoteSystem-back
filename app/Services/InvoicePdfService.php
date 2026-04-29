@@ -14,6 +14,31 @@ class InvoicePdfService
     private const TFD_NS   = 'http://www.sat.gob.mx/TimbreFiscalDigital';
     private const ITTEC_NS = 'http://www.ittec.com.mx/schemas';
 
+    public function downloadXml(string $invoiceId): mixed
+    {
+        $invoice = DB::table('comprobantes_tme700618rc7')
+            ->where('id', $invoiceId)
+            ->first();
+
+        if (!$invoice) {
+            throw new RuntimeException("Factura {$invoiceId} no encontrada.");
+        }
+
+        $path = "{$invoice->folio}-{$invoice->receptorId}.xml";
+
+        if (!Storage::disk('public')->exists($path)) {
+            throw new RuntimeException("XML no encontrado: {$path}");
+        }
+
+        $content = Storage::disk('public')->get($path);
+        $filename = "factura-{$invoice->folio}.xml";
+
+        return response($content, 200, [
+            'Content-Type'        => 'application/xml',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
     public function generatePdf(string $invoiceId): mixed
     {
         $invoice = DB::table('comprobantes_tme700618rc7')

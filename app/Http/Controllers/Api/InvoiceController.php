@@ -65,4 +65,17 @@ class InvoiceController extends Controller
             return response()->json(ApiResponse::error($e->getMessage(), null, 404), 404);
         }
     }
+
+    /**
+     * Descarga el XML de una factura.
+     * GET /invoices/{id}/xml
+     */
+    public function downloadXml(string $id)
+    {
+        try {
+            return $this->invoicePdfService->downloadXml($id);
+        } catch (RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 404), 404);
+        }
+    }
 }
