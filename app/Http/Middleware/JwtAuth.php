@@ -133,6 +133,10 @@ class JwtAuth
                 'lastKnownIp' => $request->ip(),
             ]);
 
+        if ($user->mustChangePassword && !$this->isPasswordChangeExemptRoute($request)) {
+            return response()->json(ApiResponse::error('Debe cambiar su contraseña antes de continuar', null, 403), 403);
+        }
+
         $request->attributes->set('authUser', $user);
         $request->attributes->set('authRole', $user->roleName);
         $request->attributes->set('authActor', $user);
@@ -193,6 +197,14 @@ class JwtAuth
     private function isVerifyRoute(Request $request): bool
     {
         return str_ends_with($request->path(), 'auth/verify');
+    }
+
+    private function isPasswordChangeExemptRoute(Request $request): bool
+    {
+        $path = $request->path();
+
+        return str_ends_with($path, 'auth/logout') ||
+               str_ends_with($path, 'auth/change-password');
     }
 
     private function isSuperAdmin(object $user): bool
