@@ -70,11 +70,11 @@ class AdminSecurityController extends Controller
                     ->where('action', 'blocked'),
                 'ip_history',
                 function ($join) {
-                    $join->on('blockedIps.ipAddress', '=', 'ip_history.ipAddress')
+                    $join->on('blockedips.ipAddress', '=', 'ip_history.ipAddress')
                         ->where('ip_history.rn', '=', 1);
                 }
             )
-            ->select('blockedIps.*')
+            ->select('blockedips.*')
             ->addSelect('ip_history.reason', 'ip_history.createdAt as blockedHistoryAt')
             ->orderByDesc('blockedAt')
             ->paginate($perPage);
