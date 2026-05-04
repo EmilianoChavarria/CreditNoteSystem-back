@@ -48,7 +48,13 @@ class UserController extends Controller
             ->orderBy('fullName')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', UserResource::collection($users)));
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $data));
     }
 
     public function me(Request $request)
