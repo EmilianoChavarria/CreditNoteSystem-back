@@ -69,7 +69,7 @@ class UploadSupportBatchHandler extends AbstractBatchHandler
             throw new RuntimeException('Request no encontrada para id=' . $data['requestId']);
         }
 
-        $this->createAttachment($request, (array) ($row['file'] ?? []));
+        $this->createAttachment($request, (array) ($row['file'] ?? []), $this->batchType());
 
         return (int) $request->id;
     }
