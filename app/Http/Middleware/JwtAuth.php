@@ -23,7 +23,7 @@ class JwtAuth
         $token = $this->extractToken($request);
         $isVerifyRoute = $this->isVerifyRoute($request);
         $sessionTimeoutMinutes = (int) $this->loginAttemptSettingsService->getSettings()->sessionTimeoutMinutes;
-        $isIpBlocked = DB::table('blockedIps')
+        $isIpBlocked = DB::table('blockedips')
             ->where('ipAddress', $request->ip())
             ->where('isBlockedPermanently', true)
             ->exists();
@@ -80,7 +80,7 @@ class JwtAuth
             return response()->json(ApiResponse::error('Usuario no autorizado', null, 403), 403);
         }
 
-        $security = DB::table('userSecurity')->where('userId', $user->id)->first();
+        $security = DB::table('usersecurity')->where('userId', $user->id)->first();
 
         if ($security && $security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
             if ($isVerifyRoute) {
@@ -97,7 +97,7 @@ class JwtAuth
             $lastActivityAt = Carbon::parse($security->lastActivityAt);
 
             if ($lastActivityAt->addMinutes($sessionTimeoutMinutes)->isPast()) {
-                DB::table('userSecurity')
+                DB::table('usersecurity')
                     ->where('userId', $user->id)
                     ->update([
                         'sessionToken' => null,
@@ -126,7 +126,7 @@ class JwtAuth
             return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
         }
 
-        DB::table('userSecurity')
+        DB::table('usersecurity')
             ->where('userId', $user->id)
             ->update([
                 'lastActivityAt' => Carbon::now(),
