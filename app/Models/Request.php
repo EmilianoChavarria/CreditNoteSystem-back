@@ -98,4 +98,9 @@ class Request extends Model
     {
         return $this->hasOne(ReturnOrderRequest::class, 'requestId');
     }
+
+    public function attachments()
+    {
+        return $this->hasMany(RequestAttachment::class, 'requestId')->where('isActive', true);
+    }
 }

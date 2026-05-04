@@ -21,6 +21,7 @@ class RequestAttachment extends Model
         'fileSize',
         'filePath',
         'fileExtension',
+        'fileType',
         'isActive',
         'deletedAt',
     ];

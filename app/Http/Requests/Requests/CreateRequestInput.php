@@ -40,6 +40,10 @@ class CreateRequestInput extends FormRequest
             'warehouseAmount' => ['sometimes', 'nullable', 'numeric'],
             'hasWarehouseIva' => ['sometimes', 'nullable', 'boolean'],
             'warehouseTotal' => ['sometimes', 'nullable', 'numeric'],
+            'uploadSupport'   => ['nullable', 'array'],
+            'uploadSupport.*' => ['file'],
+            'sapScreen'       => ['nullable', 'array'],
+            'sapScreen.*'     => ['file'],
         ];
     }
 }

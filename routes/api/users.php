@@ -4,12 +4,12 @@ use App\Http\Controllers\Api\UserAssignmentController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('users/managers', [UserController::class, 'usersBySalesAndManagerRoles']);
 Route::middleware(['jwt'])->group(function () {
     Route::get('users', [UserController::class, 'getAll']);
     Route::get('usersPag', [UserController::class, 'index']);
     Route::get('users/assignment/leaders', [UserAssignmentController::class, 'leaders']);
     Route::get('users/assignment/assignable-users', [UserAssignmentController::class, 'assignableUsers']);
-    Route::get('users/managers', [UserController::class, 'usersBySalesAndManagerRoles']);
     Route::get('users/me', [UserController::class, 'me']);
     Route::patch('users/me/password', [UserController::class, 'changePassword']);
     Route::patch('users/{id}/password', [UserController::class, 'changePasswordByUserId']);

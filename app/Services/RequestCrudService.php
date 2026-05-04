@@ -326,6 +326,7 @@ class RequestCrudService
             'workflowCurrentStep.workflowStep',
             'workflowCurrentStep.assignedRole',
             'workflowCurrentStep.assignedUser',
+            'attachments',
         ])
             ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin) {
                 $workflowQuery->where('status', 'pending');

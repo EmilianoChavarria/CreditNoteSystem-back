@@ -4,7 +4,11 @@ namespace App\Services;
 
 use App\Models\Request as RequestModel;
 use App\Models\RequestAttachment;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class RequestAttachmentService
 {
@@ -58,6 +62,38 @@ class RequestAttachmentService
                 fn ($query) => $query->whereNull('deletedAt')
             )
             ->first();
+    }
+
+    /**
+     * @param UploadedFile[] $files
+     */
+    public function storeAndAttachFiles(RequestModel $request, array $files, string $fileType): void
+    {
+        $configKey = $fileType === 'sapScreen' ? 'sap_screen' : 'upload_support';
+        $disk      = (string) Config::get("bulk_upload.{$configKey}.disk", 'public');
+        $basePath  = trim((string) Config::get("bulk_upload.{$configKey}.path", $fileType), '/');
+
+        foreach ($files as $file) {
+            if (!$file instanceof UploadedFile) {
+                continue;
+            }
+
+            $extension  = strtolower((string) $file->getClientOriginalExtension());
+            $path       = $basePath . '/' . now()->format('Y/m/d') . '/' . Str::uuid() . '.' . $extension;
+
+            Storage::disk($disk)->put($path, (string) file_get_contents($file->getRealPath()));
+
+            RequestAttachment::create([
+                'requestId'     => $request->id,
+                'fileName'      => $file->getClientOriginalName(),
+                'fileSize'      => $file->getSize(),
+                'filePath'      => $path,
+                'fileExtension' => $extension,
+                'fileType'      => $fileType,
+                'isActive'      => true,
+                'deletedAt'     => null,
+            ]);
+        }
     }
 
     public function deleteAttachment(int $requestId, int $attachmentId): array

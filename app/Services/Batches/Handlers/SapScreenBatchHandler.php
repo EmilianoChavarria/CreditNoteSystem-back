@@ -49,7 +49,7 @@ class SapScreenBatchHandler extends AbstractBatchHandler
         }
 
         $file = (array) ($row['file'] ?? []);
-        $this->createAttachment($request, $file);
+        $this->createAttachment($request, $file, $this->batchType());
 
         $storedPath = (string) ($file['storedPath'] ?? '');
         $disk = (string) ($file['disk'] ?? 'local');

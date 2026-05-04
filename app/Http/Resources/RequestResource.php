@@ -49,6 +49,9 @@ class RequestResource extends JsonResource
             'reason' => $this->whenLoaded('reason'),
             'classification' => $this->whenLoaded('classification'),
             'workflowCurrentStep' => $this->whenLoaded('workflowCurrentStep'),
+            'attachments' => $this->whenLoaded('attachments', function () {
+                return $this->attachments->groupBy('fileType')->map(fn ($items) => $items->values())->toArray();
+            }),
         ];
     }
 }

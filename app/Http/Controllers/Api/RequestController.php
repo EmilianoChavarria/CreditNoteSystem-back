@@ -275,8 +275,19 @@ class RequestController extends Controller
 
     public function createRequest(CreateRequestInput $request)
     {
-        $user = $request->attributes->get('authUser');
+        $user    = $request->attributes->get('authUser');
         $created = $this->requestCrudService->createRequest($request->validated(), $user);
+
+        foreach (['uploadSupport', 'sapScreen'] as $fileType) {
+            if ($request->hasFile($fileType)) {
+                $files = $request->file($fileType);
+                $this->requestAttachmentService->storeAndAttachFiles(
+                    $created,
+                    \is_array($files) ? $files : [$files],
+                    $fileType
+                );
+            }
+        }
 
         return response()->json(ApiResponse::success('Request creado', RequestResource::make($created->refresh()), 201), 201);
     }
@@ -296,7 +307,18 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error($result['message'], $result['errors'] ?? null, $result['status']), $result['status']);
         }
 
-        return response()->json(ApiResponse::success($result['message'], RequestResource::make($result['data']), $result['status']), $result['status']);
+        foreach (['uploadSupport', 'sapScreen'] as $fileType) {
+            if ($request->hasFile($fileType)) {
+                $files = $request->file($fileType);
+                $this->requestAttachmentService->storeAndAttachFiles(
+                    $result['data'],
+                    \is_array($files) ? $files : [$files],
+                    $fileType
+                );
+            }
+        }
+
+        return response()->json(ApiResponse::success($result['message'], RequestResource::make($result['data']->refresh()), $result['status']), $result['status']);
     }
 
     public function approve(ApproveRequestInput $request, int $requestId)

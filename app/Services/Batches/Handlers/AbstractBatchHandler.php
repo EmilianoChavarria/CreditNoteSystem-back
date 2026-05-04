@@ -124,7 +124,7 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
     /**
      * @param array<string, mixed> $file
      */
-    protected function createAttachment(RequestModel $request, array $file): void
+    protected function createAttachment(RequestModel $request, array $file, string $fileType = ''): void
     {
         RequestAttachment::create([
             'requestId' => $request->id,
@@ -132,6 +132,7 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
             'fileSize' => (int) ($file['size'] ?? 0),
             'filePath' => (string) ($file['storedPath'] ?? ''),
             'fileExtension' => (string) ($file['extension'] ?? ''),
+            'fileType' => $fileType,
             'isActive' => true,
             'deletedAt' => null,
         ]);
