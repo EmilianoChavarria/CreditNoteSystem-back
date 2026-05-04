@@ -9,7 +9,7 @@ class LoginAttemptSetting extends Model
 {
     use HasFactory;
 
-    protected $table = 'loginAttemptSettings';
+    protected $table = 'loginattemptsettings';
     public $timestamps = false;
 
     protected $fillable = [

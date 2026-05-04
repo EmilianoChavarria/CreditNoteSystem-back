@@ -9,7 +9,7 @@ class PasswordRequirement extends Model
 {
     use HasFactory;
 
-    protected $table = 'passwordRequirements';
+    protected $table = 'passwordrequirements';
     public $timestamps = false;
 
     protected $fillable = [
