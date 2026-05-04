@@ -62,11 +62,11 @@ class DashboardController extends Controller
                     'label' => 'Aprobaciones',
                     'data' => $this->buildSeriesData(
                         WorkflowRequestHistory::query()
-                            ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                            ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                             ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                            ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                            ->where('workflowRequestHistory.actionType', 'approved'),
-                        'workflowRequestHistory.createdAt',
+                            ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                            ->where('workflowrequesthistory.actionType', 'approved'),
+                        'workflowrequesthistory.createdAt',
                         $inicio,
                         $fin,
                         $granularity
@@ -77,11 +77,11 @@ class DashboardController extends Controller
                     'label' => 'Rechazos',
                     'data' => $this->buildSeriesData(
                         WorkflowRequestHistory::query()
-                            ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                            ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                             ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                            ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                            ->where('workflowRequestHistory.actionType', 'rejected'),
-                        'workflowRequestHistory.createdAt',
+                            ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                            ->where('workflowrequesthistory.actionType', 'rejected'),
+                        'workflowrequesthistory.createdAt',
                         $inicio,
                         $fin,
                         $granularity
@@ -118,12 +118,12 @@ class DashboardController extends Controller
                 'label' => 'Aprobaciones',
                 'data' => $this->buildSeriesData(
                     WorkflowRequestHistory::query()
-                        ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                        ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                         ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                        ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                        ->where('workflowRequestHistory.actionUserId', $userId)
-                        ->where('workflowRequestHistory.actionType', 'approved'),
-                    'workflowRequestHistory.createdAt',
+                        ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                        ->where('workflowrequesthistory.actionUserId', $userId)
+                        ->where('workflowrequesthistory.actionType', 'approved'),
+                    'workflowrequesthistory.createdAt',
                     $inicio,
                     $fin,
                     $granularity
@@ -137,12 +137,12 @@ class DashboardController extends Controller
                 'label' => 'Rechazos',
                 'data' => $this->buildSeriesData(
                     WorkflowRequestHistory::query()
-                        ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                        ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                         ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                        ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                        ->where('workflowRequestHistory.actionUserId', $userId)
-                        ->where('workflowRequestHistory.actionType', 'rejected'),
-                    'workflowRequestHistory.createdAt',
+                        ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                        ->where('workflowrequesthistory.actionUserId', $userId)
+                        ->where('workflowrequesthistory.actionType', 'rejected'),
+                    'workflowrequesthistory.createdAt',
                     $inicio,
                     $fin,
                     $granularity
@@ -283,17 +283,17 @@ class DashboardController extends Controller
                 ->count();
 
             $totals['approved'] = WorkflowRequestHistory::query()
-                ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                 ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                ->where('workflowRequestHistory.actionType', 'approved')
+                ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                ->where('workflowrequesthistory.actionType', 'approved')
                 ->count();
 
             $totals['declined'] = WorkflowRequestHistory::query()
-                ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                 ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                ->where('workflowRequestHistory.actionType', 'rejected')
+                ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                ->where('workflowrequesthistory.actionType', 'rejected')
                 ->count();
         } else {
             $canCreate = $this->roleCanCreate($roleId);
@@ -310,21 +310,21 @@ class DashboardController extends Controller
 
             if ($canApprove) {
                 $totals['approved'] = WorkflowRequestHistory::query()
-                    ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                    ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                     ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                    ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                    ->where('workflowRequestHistory.actionUserId', $userId)
-                    ->where('workflowRequestHistory.actionType', 'approved')
+                    ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                    ->where('workflowrequesthistory.actionUserId', $userId)
+                    ->where('workflowrequesthistory.actionType', 'approved')
                     ->count();
             }
 
             if ($canReject) {
                 $totals['declined'] = WorkflowRequestHistory::query()
-                    ->join('requests', 'workflowRequestHistory.requestId', '=', 'requests.id')
+                    ->join('requests', 'workflowrequesthistory.requestId', '=', 'requests.id')
                     ->when($requestTypeId, fn ($query) => $query->where('requests.requestTypeId', $requestTypeId))
-                    ->whereBetween('workflowRequestHistory.createdAt', [$inicio, $fin])
-                    ->where('workflowRequestHistory.actionUserId', $userId)
-                    ->where('workflowRequestHistory.actionType', 'rejected')
+                    ->whereBetween('workflowrequesthistory.createdAt', [$inicio, $fin])
+                    ->where('workflowrequesthistory.actionUserId', $userId)
+                    ->where('workflowrequesthistory.actionType', 'rejected')
                     ->count();
             }
 
