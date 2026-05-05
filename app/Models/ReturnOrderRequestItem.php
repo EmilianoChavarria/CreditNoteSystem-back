@@ -9,7 +9,7 @@ class ReturnOrderRequestItem extends Model
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = 'updatedAt';
 
-    protected $table = 'returnOrderRequestItems';
+    protected $table = 'returnorderrequestitems';
 
     protected $fillable = [
         'returnOrderRequestId',

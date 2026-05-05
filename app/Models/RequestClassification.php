@@ -12,7 +12,7 @@ class RequestClassification extends Model
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = 'updatedAt';
 
-    protected $table = 'requestClassification';
+    protected $table = 'requestclassification';
     protected $fillable = [
         'code',
         'name',

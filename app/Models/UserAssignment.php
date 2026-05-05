@@ -12,7 +12,7 @@ class UserAssignment extends Model
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = 'updatedAt';
 
-    protected $table = 'userAssignments';
+    protected $table = 'userassignments';
 
     protected $fillable = [
         'leaderUserId',
