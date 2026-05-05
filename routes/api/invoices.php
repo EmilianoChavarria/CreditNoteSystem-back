@@ -8,6 +8,6 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('invoices/{clientId}/search', [InvoiceController::class, 'search']);
     Route::get('invoices/{clientId}', [InvoiceController::class, 'getInvoicesByClientId']);
     Route::get('invoices/{clientId}/charge-type/{chargeType}', [InvoiceController::class, 'getInvoicesByClientIdAndChargeType']);
-    Route::get('invoices/{id}/pdf', [InvoiceController::class, 'downloadPdf']);
-    Route::get('invoices/{id}/xml', [InvoiceController::class, 'downloadXml']);
+    Route::get('invoices/fesa/test/pdf', [InvoiceController::class, 'testFesaPdf']);
+    Route::get('invoices/fesa/test/xml', [InvoiceController::class, 'testFesaXml']);
 });
