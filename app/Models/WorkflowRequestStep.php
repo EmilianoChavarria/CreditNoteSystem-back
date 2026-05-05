@@ -18,6 +18,7 @@ class WorkflowRequestStep extends Model
         'requestId',
         'workflowStepId',
         'assignedRoleId',
+        'assignedUserId',
         'status',
         'startedAt',
         'completedAt',
@@ -27,6 +28,7 @@ class WorkflowRequestStep extends Model
         'requestId' => 'integer',
         'workflowStepId' => 'integer',
         'assignedRoleId' => 'integer',
+        'assignedUserId' => 'integer',
         'startedAt' => 'datetime',
         'completedAt' => 'datetime',
         'createdAt' => 'datetime',
@@ -46,6 +48,11 @@ class WorkflowRequestStep extends Model
     public function assignedRole()
     {
         return $this->belongsTo(Role::class, 'assignedRoleId');
+    }
+
+    public function assignedUser()
+    {
+        return $this->belongsTo(User::class, 'assignedUserId');
     }
 
     public function history()

@@ -12,7 +12,7 @@ class WorkflowRequestHistory extends Model
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = null;
 
-    protected $table = 'workflowRequestHistory';
+    protected $table = 'workflowrequesthistory';
     public $timestamps = false;
 
     protected $fillable = [

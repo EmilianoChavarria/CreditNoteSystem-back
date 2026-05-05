@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'banxico' => [
+        'token' => env('BANXICO_TOKEN'),
+    ],
+
 ];

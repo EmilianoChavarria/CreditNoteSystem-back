@@ -9,7 +9,7 @@ class UserSecurity extends Model
 {
     use HasFactory;
 
-    protected $table = 'userSecurity';
+    protected $table = 'usersecurity';
     protected $primaryKey = 'userId';
     public $incrementing = false;
     protected $keyType = 'int';

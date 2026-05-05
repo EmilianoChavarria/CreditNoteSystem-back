@@ -17,13 +17,36 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
      */
     protected function value(array $row, array $aliases, mixed $default = null): mixed
     {
+        $normalizedRow = [];
+
+        foreach ($row as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $normalizedRow[$this->normalizeLookupKey($key)] = $value;
+        }
+
         foreach ($aliases as $alias) {
             if (array_key_exists($alias, $row)) {
                 return $row[$alias];
             }
+
+            $normalizedAlias = $this->normalizeLookupKey($alias);
+            if (array_key_exists($normalizedAlias, $normalizedRow)) {
+                return $normalizedRow[$normalizedAlias];
+            }
         }
 
         return $default;
+    }
+
+    private function normalizeLookupKey(string $value): string
+    {
+        $normalized = mb_strtolower(trim($value));
+        $normalized = preg_replace('/[^a-z0-9]+/i', '', $normalized) ?? $normalized;
+
+        return $normalized;
     }
 
     /**
@@ -52,7 +75,7 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
         }
 
         $normalized = mb_strtolower((string) $value);
-        return in_array($normalized, ['1', 'true', 'si', 'sí', 'yes'], true);
+        return in_array($normalized, ['1', 'true', 'si', 'sí', 'yes', 'y'], true);
     }
 
     protected function floatFromMixed(mixed $value, float $default = 0): float
@@ -65,10 +88,43 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
         return (float) $normalized;
     }
 
+    protected function dateFromMixed(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $stringValue = (string) $value;
+
+        // Intentar parsear como DD/MM/YYYY
+        if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $stringValue, $matches)) {
+            $day = (int) $matches[1];
+            $month = (int) $matches[2];
+            $year = (int) $matches[3];
+
+            if (checkdate($month, $day, $year)) {
+                return sprintf('%04d-%02d-%02d', $year, $month, $day);
+            }
+        }
+
+        // Si ya viene en YYYY-MM-DD, devolverlo
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $stringValue)) {
+            return $stringValue;
+        }
+
+        // Intentar otros formatos comunes
+        $timestamp = strtotime($stringValue);
+        if ($timestamp !== false) {
+            return date('Y-m-d', $timestamp);
+        }
+
+        return null;
+    }
+
     /**
      * @param array<string, mixed> $file
      */
-    protected function createAttachment(RequestModel $request, array $file): void
+    protected function createAttachment(RequestModel $request, array $file, string $fileType = ''): void
     {
         RequestAttachment::create([
             'requestId' => $request->id,
@@ -76,6 +132,9 @@ abstract class AbstractBatchHandler implements BatchTypeHandler
             'fileSize' => (int) ($file['size'] ?? 0),
             'filePath' => (string) ($file['storedPath'] ?? ''),
             'fileExtension' => (string) ($file['extension'] ?? ''),
+            'fileType' => $fileType,
+            'isActive' => true,
+            'deletedAt' => null,
         ]);
     }
 

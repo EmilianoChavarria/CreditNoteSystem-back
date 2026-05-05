@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\PasswordRequirementResource;
 use App\Models\PasswordRequirement;
 use App\Support\ApiResponse;
 use App\Services\PasswordValidationService;
@@ -29,20 +30,20 @@ class PasswordRequirementsController extends Controller
             return response()->json(ApiResponse::error('Configuración de requisitos no encontrada', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Requisitos de contraseña obtenidos', $requirements));
+        return response()->json(ApiResponse::success('Requisitos de contraseña obtenidos', PasswordRequirementResource::make($requirements)));
     }
 
     /**
      * Actualizar los requisitos de contraseña (solo admin)
      */
     public function updateRequirements(Request $request)
-    {   
+    {
 
         $existRequirements = $this->passwordService->getRequirements();
 
         $admin = $request->attributes->get('authUser');
-        
-        if (!$admin || $admin->roleId != 1) { // Ajusta la validación de rol según tu implementación
+
+        if (!$admin || $admin->roleName !== "ADMIN") { // Ajusta la validación de rol según tu implementación
             return response()->json(ApiResponse::error('No autorizado. Solo administradores pueden actualizar requisitos', null, 403), 403);
         }
 
@@ -66,6 +67,7 @@ class PasswordRequirementsController extends Controller
                 'requireLowercase',
                 'requireNumbers',
                 'requireSpecialChars',
+                'allowedSpecialChars'
             ]);
 
             $updateData['createdAt'] = $existRequirements ? $existRequirements->createdAt : now();
@@ -78,7 +80,7 @@ class PasswordRequirementsController extends Controller
 
             return response()->json(ApiResponse::success(
                 'Requisitos de contraseña actualizados correctamente',
-                $this->passwordService->getRequirements()
+                PasswordRequirementResource::make($this->passwordService->getRequirements())
             ));
         } catch (\Exception $e) {
             return response()->json(ApiResponse::error('Error al actualizar requisitos', $e->getMessage(), 500), 500);
@@ -114,13 +116,7 @@ class PasswordRequirementsController extends Controller
 
         return response()->json(ApiResponse::error(
             'La contraseña no cumple con los requisitos',
-            [
-                'isValid' => false,
-                'requirements' => $requirements,
-            ],
-            [
-                'errors' => $errors
-            ],
+            ['isValid' => false, 'requirements' => $requirements, 'errors' => $errors],
             422
         ), 422);
     }

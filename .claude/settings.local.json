@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer require *)",
+      "Bash(php artisan *)",
+      "Bash(php /c/Users/ITTMORE5/Desktop/Prueba/notasCreditos_back/artisan l5-swagger:generate)",
+      "Bash(composer show *)",
+      "Bash(php -r \"echo \\(new \\\\OpenApi\\\\Generator\\(\\)\\)->getVersion\\(\\);\" --define auto_prepend_file=/c/Users/ITTMORE5/Desktop/Prueba/notasCreditos_back/vendor/autoload.php)",
+      "Bash(php -r ' *)"
+    ]
+  }
+}

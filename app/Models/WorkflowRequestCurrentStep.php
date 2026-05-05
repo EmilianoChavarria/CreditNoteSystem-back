@@ -19,6 +19,7 @@ class WorkflowRequestCurrentStep extends Model
         'workflowId',
         'workflowStepId',
         'assignedRoleId',
+        'assignedUserId',
         'status',
     ];
 
@@ -27,6 +28,7 @@ class WorkflowRequestCurrentStep extends Model
         'workflowId' => 'integer',
         'workflowStepId' => 'integer',
         'assignedRoleId' => 'integer',
+        'assignedUserId' => 'integer',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
     ];
@@ -49,5 +51,10 @@ class WorkflowRequestCurrentStep extends Model
     public function assignedRole()
     {
         return $this->belongsTo(Role::class, 'assignedRoleId');
+    }
+
+    public function assignedUser()
+    {
+        return $this->belongsTo(User::class, 'assignedUserId');
     }
 }

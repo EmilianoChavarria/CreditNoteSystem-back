@@ -21,12 +21,17 @@ class RequestAttachment extends Model
         'fileSize',
         'filePath',
         'fileExtension',
+        'fileType',
+        'isActive',
+        'deletedAt',
     ];
 
     protected $casts = [
         'requestId' => 'integer',
         'fileSize' => 'integer',
+        'isActive' => 'boolean',
         'createdAt' => 'datetime',
+        'deletedAt' => 'datetime',
     ];
 
     public function request()

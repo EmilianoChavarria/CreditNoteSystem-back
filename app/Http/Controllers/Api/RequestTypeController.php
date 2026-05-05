@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\RequestTypeResource;
 use App\Models\RequestType;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,7 @@ class RequestTypeController extends Controller
     public function getAll()
     {
         $requestTypes = RequestType::all();
-        return response()->json(ApiResponse::success('Request Types', $requestTypes));
+        return response()->json(ApiResponse::success('Request Types', RequestTypeResource::collection($requestTypes)));
     }
 
     public function saveRequestType(Request $request)
@@ -30,7 +31,7 @@ class RequestTypeController extends Controller
             'name' => $request->input('name'),
         ]);
 
-        return response()->json(ApiResponse::success('Request type created succesfully', $requestType, 201), 201);
+        return response()->json(ApiResponse::success('Request type created succesfully', RequestTypeResource::make($requestType), 201), 201);
     }
 
     public function updateRequestType(Request $request, $id)
@@ -53,7 +54,7 @@ class RequestTypeController extends Controller
             'name' => $request->input('name'),
         ]);
 
-        return response()->json(ApiResponse::success('Request type updated successfully', $requestType));
+        return response()->json(ApiResponse::success('Request type updated successfully', RequestTypeResource::make($requestType)));
     }
 
     public function deleteRequestType($id)

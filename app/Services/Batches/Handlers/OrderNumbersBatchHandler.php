@@ -32,17 +32,22 @@ class OrderNumbersBatchHandler extends AbstractBatchHandler
     public function process(array $row, Batch $batch): ?int
     {
         $data = $this->validateRow([
-            'requestNumber' => $this->value($row, ['requestnumber', 'request_number']),
-            'orderNumber' => $this->value($row, ['ordernumber', 'order_number']),
+            'requestNumber' => $this->value($row, ['request_number', 'requestnumber', 'request']),
+            'orderNumber' => $this->value($row, ['order_number', 'ordernumber', 'order']),
         ], [
-            'requestNumber' => ['required', 'integer'],
+            'requestNumber' => ['required', 'string', 'max:255'],
             'orderNumber' => ['required', 'string', 'max:255'],
         ]);
 
-        $request = RequestModel::where('requestNumber', (int) $data['requestNumber'])->first();
+        $requestNumber = trim((string) $data['requestNumber']);
+        $request = RequestModel::where('requestNumber', $requestNumber)->first();
+
+        if (!$request && is_numeric($requestNumber)) {
+            $request = RequestModel::where('requestNumber', (int) $requestNumber)->first();
+        }
 
         if (!$request) {
-            throw new RuntimeException('Request no encontrada para requestNumber=' . $data['requestNumber']);
+            throw new RuntimeException('Request no encontrada para requestNumber=' . $requestNumber);
         }
 
         $request->update([

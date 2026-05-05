@@ -2,17 +2,36 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Users\ChangePasswordAction;
+use App\Actions\Users\ChangeUserPasswordAction;
+use App\Actions\Users\CreateUserAction;
+use App\Actions\Users\UpdateUserAction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Users\ChangePasswordRequest;
+use App\Http\Requests\Users\ChangeUserPasswordRequest;
+use App\Http\Requests\Users\StoreUserRequest;
+use App\Http\Requests\Users\UpdateUserRequest;
+use App\Http\Resources\UserResource;
+use App\Mail\UserRegisteredMail;
 use App\Models\User;
-use App\Models\UserSecurity;
+use App\Services\UserClientService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private readonly CreateUserAction $createUserAction,
+        private readonly UpdateUserAction $updateUserAction,
+        private readonly ChangePasswordAction $changePasswordAction,
+        private readonly ChangeUserPasswordAction $changeUserPasswordAction,
+        private readonly UserClientService $userClientService,
+    ) {
+    }
+
     public function usersBySalesAndManagerRoles()
     {
         $allowedRoles = [
@@ -29,7 +48,86 @@ class UserController extends Controller
             ->orderBy('fullName')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $users));
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $data));
+    }
+
+    public function me(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $user = User::with([
+            'role',
+            'supervisor',
+        ])->find((int) $authUser->id);
+
+        if (!$user) {
+            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+        }
+
+        return response()->json(ApiResponse::success('Perfil del usuario autenticado', UserResource::make($user)));
+    }
+
+    public function changePassword(ChangePasswordRequest $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        try {
+            $this->changePasswordAction->execute(
+                (int) $authUser->id,
+                (string) $request->input('currentPassword'),
+                (string) $request->input('newPassword')
+            );
+
+            return response()->json(ApiResponse::success('Contraseña actualizada correctamente. Inicia sesión nuevamente.'));
+        } catch (ValidationException $e) {
+            return response()->json(ApiResponse::error('Datos inválidos', $e->errors(), 422), 422);
+        }
+    }
+
+    public function changePasswordByUserId(ChangeUserPasswordRequest $request, int $id)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $actor = User::with('role')->find((int) $authUser->id);
+        if (!$actor || !$this->canManagePasswords($actor)) {
+            return response()->json(ApiResponse::error('No tienes permisos para cambiar la contraseña de otro usuario', null, 403), 403);
+        }
+
+        try {
+            $this->changeUserPasswordAction->execute($actor, $id, (string) $request->input('newPassword'));
+
+            return response()->json(ApiResponse::success('Contraseña del usuario actualizada correctamente.'));
+        } catch (ValidationException $e) {
+            $errors = $e->errors();
+
+            if (isset($errors['authorization'])) {
+                return response()->json(ApiResponse::error('No tienes permisos para cambiar la contraseña de otro usuario', null, 403), 403);
+            }
+
+            if (isset($errors['user'])) {
+                return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+            }
+
+            return response()->json(ApiResponse::error('Datos inválidos', $errors, 422), 422);
+        }
     }
 
     public function getAll()
@@ -38,14 +136,28 @@ class UserController extends Controller
         $users = User::with('role')->where('isActive', '1')
             ->get();
 
-        return response()->json(ApiResponse::success('Usuarios', $users));
+        return response()->json(ApiResponse::success('Usuarios', UserResource::collection($users)));
     }
 
     public function index(Request $request)
     {
-        $perPage = $request->query('perPage');
-        $users = User::with('role')->where('isActive', '1')
-            ->cursorPaginate($perPage);
+        $perPage = max(1, (int) $request->query('per_page', 15));
+        $search = trim((string) $request->query('search', ''));
+
+        $users = User::with('role')
+            ->where('isActive', '1')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('fullName', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhereHas('role', function ($roleQuery) use ($search) {
+                            $roleQuery->where('roleName', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->paginate($perPage);
+
+        $users->setCollection(UserResource::collection($users->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Usuarios', $users));
     }
@@ -58,78 +170,32 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Usuario', $user));
-    }
+        $userData = UserResource::make($user)->resolve();
 
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'fullName' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:150', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:6'],
-            'roleId' => ['required', 'integer', 'exists:roles,id'],
-            'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
-            'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
-            'isActive' => ['nullable', 'boolean'],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+        $clientData = $this->userClientService->findClientSummaryForUser($user);
+        if ($clientData !== null) {
+            $userData['client'] = $clientData;
         }
 
-        $user = User::create([
-            'fullName' => $request->input('fullName'),
-            'email' => $request->input('email'),
-            'passwordHash' => Hash::make($request->input('password')),
-            'roleId' => (int) $request->input('roleId'),
-            'supervisorId' => $request->input('supervisorId'),
-            'preferredLanguage' => $request->input('preferredLanguage', 'en'),
-            'isActive' => $request->boolean('isActive', true),
-        ]);
-
-        UserSecurity::create([
-            'userId' => $user->id,
-            'failedAttempts' => 0,
-        ]);
-
-        return response()->json(ApiResponse::success('Usuario creado correctamente', $user->load('role'), 201), 201);
+        return response()->json(ApiResponse::success('Usuario', $userData));
     }
 
-    public function update(Request $request, int $id)
+    public function store(StoreUserRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'fullName' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($id)],
-            'roleId' => ['required', 'integer', 'exists:roles,id'],
-            'supervisorId' => ['nullable', 'integer', 'exists:users,id'],
-            'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
-            'isActive' => ['nullable', 'boolean'],
-        ]);
+        $user = $this->createUserAction->execute($request->validated());
 
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
-        }
+        return response()->json(ApiResponse::success('Usuario creado correctamente', UserResource::make($user), 201), 201);
+    }
 
-        $user = User::find($id);
+    public function update(UpdateUserRequest $request, int $id)
+    {
+        $user = $this->updateUserAction->execute($id, $request->validated());
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $user->fill([
-            'fullName' => $request->input('fullName'),
-            'email' => $request->input('email'),
-            'roleId' => (int) $request->input('roleId'),
-            'supervisorId' => $request->input('supervisorId'),
-            'preferredLanguage' => $request->input('preferredLanguage', 'en'),
-            'isActive' => $request->boolean('isActive', true),
-        ]);
-
-        $user->save();
-
-        $user->load('role');
-
-        return response()->json(ApiResponse::success('Usuario actualizado', $user));
+        return response()->json(ApiResponse::success('Usuario actualizado', UserResource::make($user)));
     }
 
     public function destroy(int $id)
@@ -162,8 +228,78 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Usuario desactivado', null, 201));
     }
 
+    public function resendWelcomeEmail(Request $request, int $id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+        }
+
+        $isTestOnly = $request->boolean('testOnly');
+        $mailLocale = $isTestOnly
+            ? $this->normalizeMailLocale((string) $request->input('language', $request->input('locale', $user->preferredLanguage ?? 'es')))
+            : $this->normalizeMailLocale((string) ($user->preferredLanguage ?? 'es'));
+
+        $tempPassword = $this->generateTempPassword();
+
+        if (!$isTestOnly) {
+            $user->passwordHash = Hash::make($tempPassword);
+            $user->save();
+        }
+
+        Mail::to($user->email)->send(new UserRegisteredMail(
+            (string) $user->fullName,
+            (string) $user->email,
+            $tempPassword,
+            $mailLocale
+        ));
+
+        $message = $isTestOnly
+            ? 'Correo de prueba enviado sin actualizar la contraseña del usuario'
+            : 'Correo de bienvenida reenviado correctamente';
+
+        return response()->json(ApiResponse::success($message));
+    }
+
+    private function normalizeMailLocale(string $locale): string
+    {
+        $locale = strtolower(trim($locale));
+
+        return in_array($locale, ['en', 'es'], true)
+            ? $locale
+            : 'es';
+    }
+
     private function findUser(int $id): ?object
     {
         return User::with('role')->find($id);
+    }
+
+    private function canManagePasswords(User $user): bool
+    {
+        $roleName = mb_strtoupper(trim((string) optional($user->role)->roleName));
+
+        return str_contains($roleName, 'ADMIN') || str_contains($roleName, 'MANAGER');
+    }
+
+    private function generateTempPassword(): string
+    {
+        $upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $lower   = 'abcdefghijklmnopqrstuvwxyz';
+        $digits  = '0123456789';
+        $special = '@#$!%';
+
+        $password  = $upper[random_int(0, strlen($upper) - 1)];
+        $password .= $lower[random_int(0, strlen($lower) - 1)];
+        $password .= $digits[random_int(0, strlen($digits) - 1)];
+        $password .= $special[random_int(0, strlen($special) - 1)];
+
+        $all = $upper . $lower . $digits . $special;
+        for ($i = 0; $i < 6; $i++) {
+            $password .= $all[random_int(0, strlen($all) - 1)];
+        }
+
+        return str_shuffle($password);
     }
 }

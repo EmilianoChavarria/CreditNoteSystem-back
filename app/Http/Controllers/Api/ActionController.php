@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ActionResource;
 use App\Models\Action;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -14,7 +15,7 @@ class ActionController extends Controller
     {
         $actions = Action::all();
 
-        return response()->json(ApiResponse::success('Actions', $actions));
+        return response()->json(ApiResponse::success('Actions', ActionResource::collection($actions)));
     }
 
     public function store(Request $request)
@@ -33,6 +34,6 @@ class ActionController extends Controller
             'slug' => strtolower((string) $request->input('slug')),
         ]);
 
-        return response()->json(ApiResponse::success('Action creada', $action, 201), 201);
+        return response()->json(ApiResponse::success('Action creada', ActionResource::make($action), 201), 201);
     }
 }
