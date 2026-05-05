@@ -125,7 +125,7 @@ class BatchService
             }
 
             foreach (array_chunk($insertRows, 500) as $chunk) {
-                DB::table('batchItems')->insertOrIgnore($chunk);
+                DB::table('batchitems')->insertOrIgnore($chunk);
             }
 
             $totalRecords = BatchItem::where('batchId', $batch->id)->count();
