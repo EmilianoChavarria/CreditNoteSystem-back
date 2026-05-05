@@ -39,4 +39,12 @@ return [
         'token' => env('BANXICO_TOKEN'),
     ],
 
+    'fesa' => [
+        'modo'             => env('FESA_MODO', 'PR'),
+        'usuario'          => env('FESA_USUARIO'),
+        'contrasena'       => env('FESA_CONTRASENA'),
+        'tipo_comprobante' => env('FESA_TIPO_COMPROBANTE', 'Factura'),
+        'nombre_sucursal'  => env('FESA_NOMBRE_SUCURSAL', 'MATRIZ'),
+    ],
+
 ];
