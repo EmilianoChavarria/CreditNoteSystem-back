@@ -9,7 +9,7 @@ class UserBlockedHistory extends Model
 {
     use HasFactory;
 
-    protected $table = 'userBlockedHistory';
+    protected $table = 'userblockedhistory';
     public $timestamps = false;
 
     protected $fillable = [

@@ -14,7 +14,7 @@ class WorkflowStep extends Model
     const UPDATED_AT = 'updatedAt';
     const DELETED_AT = 'deletedAt';
 
-    protected $table = 'workflowSteps';
+    protected $table = 'workflowsteps';
 
     protected $fillable = [
         'workflowId',

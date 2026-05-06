@@ -9,8 +9,6 @@ class WorkflowService
     public function create(array $data): Workflow
     {
         $workflow = Workflow::create([
-            'name' => $data['name'],
-            'description' => $data['description'],
             'isActive' => $data['isActive'] ?? true,
             'requestTypeId' => $data['requestTypeId'],
             'classificationType' => $data['classificationType'] ?? null,
