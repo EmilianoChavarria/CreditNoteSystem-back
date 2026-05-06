@@ -19,8 +19,8 @@ class StoreWorkflowRequest extends FormRequest
         $classificationTable = (new RequestClassification())->getTable();
 
         return [
-            'name' => ['required', 'string', 'max:255'],
-            'description' => ['required', 'string'],
+            // 'name' => ['required', 'string', 'max:255'],
+            // 'description' => ['required', 'string'],
             'isActive' => ['nullable', 'boolean'],
             'requestTypeId' => ['required', 'integer', 'exists:' . $requestTypeTable . ',id'],
             'classificationType' => ['nullable', 'string', 'exists:' . $classificationTable . ',type'],
