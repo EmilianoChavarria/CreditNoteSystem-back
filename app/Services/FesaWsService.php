@@ -160,7 +160,7 @@ class FesaWsService
 
     private function buildPlaceholderXml(): string
     {
-        $fecha = '2020-01-01T00:00:00';
+        $fecha = now()->format('Y-m-d') . 'T00:00:00';
 
         return '<?xml version="1.0" encoding="utf-8"?>'
             . '<cfdi:Comprobante xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
@@ -170,11 +170,11 @@ class FesaWsService
             . ' http://www.sat.gob.mx/TimbreFiscalDigital http://www.sat.gob.mx/sitio_internet/cfd/TimbreFiscalDigital/TimbreFiscalDigitalv11.xsd"'
             . ' Version="4.0" Folio="000000" Fecha="' . $fecha . '"'
             . ' Sello="" FormaPago="99" NoCertificado="" Certificado=""'
-            . ' Moneda="MXN" TipoDeComprobante="I" MetodoPago="PPD" LugarExpedicion="00000" Exportacion="01"'
+            . ' Moneda="MXN" TipoDeComprobante="I" MetodoPago="PPD" LugarExpedicion="54715" Exportacion="01"'
             . ' SubTotal="0.00" Total="0.00">'
-            . '<cfdi:Emisor Rfc="XAXX010101000" Nombre="PLACEHOLDER" RegimenFiscal="601"/>'
+            . '<cfdi:Emisor Rfc="TME700618RC7" Nombre="TIMKEN DE MEXICO" RegimenFiscal="601"/>'
             . '<cfdi:Receptor Rfc="XAXX010101000" Nombre="PLACEHOLDER" UsoCFDI="S01"'
-            . ' DomicilioFiscalReceptor="00000" RegimenFiscalReceptor="616"/>'
+            . ' DomicilioFiscalReceptor="54715" RegimenFiscalReceptor="616"/>'
             . '<cfdi:Conceptos>'
             . '<cfdi:Concepto ClaveProdServ="01010101" NoIdentificacion="000" Cantidad="1.000"'
             . ' ClaveUnidad="H87" Unidad="PC" Descripcion="PLACEHOLDER" ValorUnitario="0.00" Importe="0.00" ObjetoImp="01"/>'
