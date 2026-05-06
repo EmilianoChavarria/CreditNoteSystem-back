@@ -136,6 +136,53 @@ class FesaWsService
         ];
     }
 
+    /**
+     * Obtiene el XML de una factura desde FESA usando el idTransaccion.
+     * Retorna el XML decodificado como string.
+     */
+    public function fetchXmlString(string $idTransaccion): string
+    {
+        $result = $this->emitirRaw($idTransaccion, $this->buildPlaceholderXml());
+
+        if (!empty($result['fault']) || !empty($result['error'])) {
+            $msg = $result['error'] ?: print_r($result['fault'], true);
+            throw new RuntimeException('FESA WS: ' . $msg);
+        }
+
+        $xmlB64 = $result['response']['xml'] ?? null;
+
+        if (!$xmlB64) {
+            throw new RuntimeException("FESA no retornó XML para idTransaccion {$idTransaccion}.");
+        }
+
+        return base64_decode($xmlB64);
+    }
+
+    private function buildPlaceholderXml(): string
+    {
+        $fecha = '2020-01-01T00:00:00';
+
+        return '<?xml version="1.0" encoding="utf-8"?>'
+            . '<cfdi:Comprobante xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+            . ' xmlns:cfdi="http://www.sat.gob.mx/cfd/4"'
+            . ' xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital"'
+            . ' xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd'
+            . ' http://www.sat.gob.mx/TimbreFiscalDigital http://www.sat.gob.mx/sitio_internet/cfd/TimbreFiscalDigital/TimbreFiscalDigitalv11.xsd"'
+            . ' Version="4.0" Folio="000000" Fecha="' . $fecha . '"'
+            . ' Sello="" FormaPago="99" NoCertificado="" Certificado=""'
+            . ' Moneda="MXN" TipoDeComprobante="I" MetodoPago="PPD" LugarExpedicion="00000" Exportacion="01"'
+            . ' SubTotal="0.00" Total="0.00">'
+            . '<cfdi:Emisor Rfc="XAXX010101000" Nombre="PLACEHOLDER" RegimenFiscal="601"/>'
+            . '<cfdi:Receptor Rfc="XAXX010101000" Nombre="PLACEHOLDER" UsoCFDI="S01"'
+            . ' DomicilioFiscalReceptor="00000" RegimenFiscalReceptor="616"/>'
+            . '<cfdi:Conceptos>'
+            . '<cfdi:Concepto ClaveProdServ="01010101" NoIdentificacion="000" Cantidad="1.000"'
+            . ' ClaveUnidad="H87" Unidad="PC" Descripcion="PLACEHOLDER" ValorUnitario="0.00" Importe="0.00" ObjetoImp="01"/>'
+            . '</cfdi:Conceptos>'
+            . '<cfdi:Complemento><tfd:TimbreFiscalDigital/></cfdi:Complemento>'
+            . '</cfdi:Comprobante>';
+    }
+
     private function readXmlFromStorage(string $folio, string $receptorId): string
     {
         $path = "{$folio}-{$receptorId}.xml";
