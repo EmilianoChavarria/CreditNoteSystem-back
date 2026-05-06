@@ -12,6 +12,13 @@ class StoreUserRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ((int) $this->input('supervisorId') === 0) {
+            $this->merge(['supervisorId' => null]);
+        }
+    }
+
     public function rules(): array
     {
         return [
