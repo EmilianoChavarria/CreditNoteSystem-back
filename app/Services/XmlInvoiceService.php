@@ -69,6 +69,46 @@ class XmlInvoiceService
     }
 
     /**
+     * Parsea el XML desde un string ya cargado (p. ej. obtenido de FESA)
+     * y retorna los conceptos con el mismo formato que getConceptos().
+     */
+    public function getConceptosFromXmlString(string $xmlContent, array $returnedByIndex = []): array
+    {
+        $xml = simplexml_load_string($xmlContent);
+
+        if ($xml === false) {
+            throw new RuntimeException('No se pudo parsear el XML recibido.');
+        }
+
+        $xml->registerXPathNamespace('cfdi', self::CFDI_NS);
+        $nodes = $xml->xpath('//cfdi:Concepto');
+
+        $conceptos = [];
+
+        foreach ($nodes as $index => $node) {
+            $attrs        = $node->attributes();
+            $cantidad     = (float) $attrs->Cantidad;
+            $returnedQty  = (float) ($returnedByIndex[$index] ?? 0);
+            $availableQty = max(0, $cantidad - $returnedQty);
+
+            $conceptos[] = [
+                'conceptoIndex'     => $index,
+                'claveProdServ'     => (string) $attrs->ClaveProdServ,
+                'cantidad'          => $cantidad,
+                'claveUnidad'       => (string) $attrs->ClaveUnidad,
+                'unidad'            => (string) $attrs->Unidad,
+                'descripcion'       => (string) $attrs->Descripcion,
+                'valorUnitario'     => (float) $attrs->ValorUnitario,
+                'importe'           => (float) $attrs->Importe,
+                'returnedQuantity'  => $returnedQty,
+                'availableQuantity' => $availableQty,
+            ];
+        }
+
+        return $conceptos;
+    }
+
+    /**
      * Retorna los atributos de un concepto específico por su índice.
      */
     public function getConceptoByIndex(string $invoiceFolio, int $clientId, int $conceptoIndex): ?array
