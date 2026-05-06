@@ -38,11 +38,11 @@ class UsersBatchHandler extends AbstractBatchHandler
         $payload = [
             'fullName' => $this->value($row, ['fullname', 'full_name']),
             'email' => $this->value($row, ['email']),
-            'roleId' => $this->resolveRoleId($row, ['roleid', 'role_id']),
-            'supervisorId' => $this->resolveSupervisorId($row, ['supervisorid', 'supervisor_id']),
+            'roleId' => $this->resolveRoleId($row, ['roleid', 'role_id', 'role']),
+            'supervisorId' => $this->resolveSupervisorId($row, ['supervisorid', 'supervisor_id', 'supervisor']),
             'preferredLanguage' => $this->value($row, ['preferredlanguage', 'preferred_language'], 'es'),
             'isActive' => $this->boolFromMixed($this->value($row, ['isactive', 'is_active'], true), true),
-            'password' => $this->value($row, ['password'], config('bulk_upload.users.default_password', 'ChangeMe123!')),
+            'password' => config('bulk_upload.users.default_password', 'ChangeMe123!'),
         ];
 
         $validated = $this->validateRow($payload, [
@@ -63,6 +63,7 @@ class UsersBatchHandler extends AbstractBatchHandler
             'supervisorId' => $validated['supervisorId'] ?? null,
             'preferredLanguage' => $validated['preferredLanguage'] ?? 'es',
             'isActive' => (bool) ($validated['isActive'] ?? true),
+            'mustChangePassword' => true,
         ]);
 
         UserSecurity::create([
