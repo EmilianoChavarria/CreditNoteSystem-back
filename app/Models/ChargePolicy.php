@@ -14,7 +14,7 @@ class ChargePolicy extends Model
     const UPDATED_AT = 'updatedAt';
     const DELETED_AT = 'deletedAt';
 
-    protected $table = 'chargePolicies';
+    protected $table = 'chargepolicies';
 
     protected $fillable = [
         'conditional',

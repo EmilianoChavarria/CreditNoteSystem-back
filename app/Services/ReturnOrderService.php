@@ -13,18 +13,21 @@ use RuntimeException;
 class ReturnOrderService
 {
     public function __construct(
-        private readonly XmlInvoiceService $xmlInvoiceService
+        private readonly XmlInvoiceService $xmlInvoiceService,
+        private readonly FesaWsService $fesaWsService,
     ) {
     }
 
     /**
      * Retorna los productos de una factura con sus cantidades disponibles a devolver.
+     * Obtiene el XML directamente desde FESA usando el folio como idTransaccion.
      */
     public function getInvoiceProducts(string $invoiceFolio, int $clientId): array
     {
         $returnedByIndex = $this->getReturnedQuantitiesByIndex($invoiceFolio, $clientId);
+        $xmlContent      = $this->fesaWsService->fetchXmlString($invoiceFolio);
 
-        return $this->xmlInvoiceService->getConceptos($invoiceFolio, $clientId, $returnedByIndex);
+        return $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent, $returnedByIndex);
     }
 
     /**

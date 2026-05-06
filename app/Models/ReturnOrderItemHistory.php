@@ -9,7 +9,7 @@ class ReturnOrderItemHistory extends Model
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = 'updatedAt';
 
-    protected $table = 'returnOrderItemHistory';
+    protected $table = 'returnorderitemhistory';
 
     protected $fillable = [
         'invoiceFolio',

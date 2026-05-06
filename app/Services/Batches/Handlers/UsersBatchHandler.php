@@ -38,11 +38,12 @@ class UsersBatchHandler extends AbstractBatchHandler
         $payload = [
             'fullName' => $this->value($row, ['fullname', 'full_name']),
             'email' => $this->value($row, ['email']),
-            'roleId' => $this->resolveRoleId($row, ['roleid', 'role_id']),
-            'supervisorId' => $this->resolveSupervisorId($row, ['supervisorid', 'supervisor_id']),
+            'roleId' => $this->resolveRoleId($row, ['roleid', 'role_id', 'role']),
+            'supervisorId' => $this->resolveSupervisorId($row, ['supervisorid', 'supervisor_id', 'supervisor']),
+            'clientId' => $this->value($row, ['clientid', 'client_id', 'customernumber', 'customer_number']),
             'preferredLanguage' => $this->value($row, ['preferredlanguage', 'preferred_language'], 'es'),
             'isActive' => $this->boolFromMixed($this->value($row, ['isactive', 'is_active'], true), true),
-            'password' => $this->value($row, ['password'], config('bulk_upload.users.default_password', 'ChangeMe123!')),
+            'password' => config('bulk_upload.users.default_password', 'ChangeMe123!'),
         ];
 
         $validated = $this->validateRow($payload, [
@@ -50,6 +51,7 @@ class UsersBatchHandler extends AbstractBatchHandler
             'email' => ['required', 'email', 'max:150', Rule::unique((new User())->getTable(), 'email')],
             'roleId' => ['required', 'integer', Rule::exists((new Role())->getTable(), 'id')],
             'supervisorId' => ['nullable', 'integer', Rule::exists((new User())->getTable(), 'id')],
+            'clientId' => ['nullable', 'string', 'max:255'],
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
             'isActive' => ['nullable', 'boolean'],
             'password' => ['nullable', 'string', 'min:6'],
@@ -61,8 +63,10 @@ class UsersBatchHandler extends AbstractBatchHandler
             'passwordHash' => Hash::make($validated['password']),
             'roleId' => (int) $validated['roleId'],
             'supervisorId' => $validated['supervisorId'] ?? null,
+            'clientId' => $validated['clientId'] ?? null,
             'preferredLanguage' => $validated['preferredLanguage'] ?? 'es',
             'isActive' => (bool) ($validated['isActive'] ?? true),
+            'mustChangePassword' => true,
         ]);
 
         UserSecurity::create([
