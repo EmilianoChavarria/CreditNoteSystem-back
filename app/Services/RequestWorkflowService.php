@@ -441,22 +441,21 @@ class RequestWorkflowService
                 ->lockForUpdate()
                 ->first();
 
+            $stepForHistory = $activeRequestStep ?? WorkflowRequestStep::query()
+                ->where('requestId', $requestId)
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+
             if ($activeRequestStep) {
                 $activeRequestStep->update(['status' => 'cancelled', 'completedAt' => now()]);
+            }
 
+            if ($stepForHistory) {
                 WorkflowRequestHistory::create([
-                    'requestWorkflowStepId' => $activeRequestStep->id,
+                    'requestWorkflowStepId' => $stepForHistory->id,
                     'requestId' => $requestId,
-                    'workflowStepId' => $activeRequestStep->workflowStepId,
-                    'actionUserId' => (int) $authUser->id,
-                    'actionType' => 'cancelled',
-                    'comments' => $comments,
-                ]);
-            } elseif ($currentStep) {
-                WorkflowRequestHistory::create([
-                    'requestWorkflowStepId' => null,
-                    'requestId' => $requestId,
-                    'workflowStepId' => $currentStep->workflowStepId,
+                    'workflowStepId' => $stepForHistory->workflowStepId,
                     'actionUserId' => (int) $authUser->id,
                     'actionType' => 'cancelled',
                     'comments' => $comments,
