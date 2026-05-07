@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Actions\Requests\ApproveMassRequestsAction;
 use App\Actions\Requests\ApproveRequestAction;
+use App\Actions\Requests\CancelRequestAction;
 use App\Actions\Requests\RejectMassRequestsAction;
 use App\Actions\Requests\RejectRequestAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Requests\ApproveMassRequestInput;
 use App\Http\Requests\Requests\ApproveRequestInput;
+use App\Http\Requests\Requests\CancelRequestInput;
 use App\Http\Requests\Requests\CreateRequestInput;
 use App\Http\Requests\Requests\RejectMassRequestInput;
 use App\Http\Requests\Requests\RejectRequestInput;
@@ -41,6 +43,7 @@ class RequestController extends Controller
         private readonly RequestWorkflowService $requestWorkflowService,
         private readonly ApproveRequestAction $approveRequestAction,
         private readonly RejectRequestAction $rejectRequestAction,
+        private readonly CancelRequestAction $cancelRequestAction,
         private readonly ApproveMassRequestsAction $approveMassRequestsAction,
         private readonly RejectMassRequestsAction $rejectMassRequestsAction,
     )
@@ -345,6 +348,20 @@ class RequestController extends Controller
         $isAdmin = $this->isAdminUser($authUser);
 
         $result = $this->rejectRequestAction->execute($requestId, $authUser, $isAdmin, (string) $request->input('comments'));
+
+        if (!$result['ok']) {
+            return response()->json(ApiResponse::error($result['payload']['message'], null, $result['status']), $result['status']);
+        }
+
+        return response()->json(ApiResponse::success($result['payload']['message'], RequestResource::make($result['payload']['data'])), $result['status']);
+    }
+
+    public function cancel(CancelRequestInput $request, int $requestId)
+    {
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+
+        $result = $this->cancelRequestAction->execute($requestId, $authUser, $isAdmin, $request->input('comments'));
 
         if (!$result['ok']) {
             return response()->json(ApiResponse::error($result['payload']['message'], null, $result['status']), $result['status']);
