@@ -38,8 +38,7 @@ class PasswordValidationService
 
         // Validar caracteres especiales
         if ($requirements->requireSpecialChars) {
-            $specialCharsPattern = preg_quote($requirements->allowedSpecialChars);
-            if (!preg_match("/[{$specialCharsPattern}]/", $password)) {
+            if (strpbrk($password, $requirements->allowedSpecialChars) === false) {
                 $errors[] = "La contraseña debe contener al menos uno de estos caracteres especiales: {$requirements->allowedSpecialChars}";
             }
         }
