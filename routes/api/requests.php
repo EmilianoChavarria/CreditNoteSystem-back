@@ -25,6 +25,8 @@ Route::middleware(['jwt'])->group(function () {
     Route::post('requests/reject-mass', [RequestController::class, 'rejectMass']);
     Route::post('requests/{requestId}/approve', [RequestController::class, 'approve']);
     Route::post('requests/{requestId}/reject', [RequestController::class, 'reject']);
+    Route::post('requests/{requestId}/cancel', [RequestController::class, 'cancel']);
+    Route::post('requests/{requestId}/send-back', [RequestController::class, 'sendBack']);
 });
 
 Route::get('attachments/{attachmentId}/preview', [RequestController::class, 'previewAttachment'])
