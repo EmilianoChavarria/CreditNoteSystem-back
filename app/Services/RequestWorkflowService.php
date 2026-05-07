@@ -479,6 +479,117 @@ class RequestWorkflowService
         });
     }
 
+    public function sendBack(int $requestId, int $targetWorkflowStepId, mixed $authUser, bool $isAdmin, string $comments): array
+    {
+        return DB::transaction(function () use ($requestId, $targetWorkflowStepId, $authUser, $isAdmin, $comments) {
+            $requestModel = RequestModel::query()->lockForUpdate()->find($requestId);
+
+            if (!$requestModel) {
+                return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
+            }
+
+            if (in_array($requestModel->status, ['approved', 'rejected', 'cancelled', 'draft'], true)) {
+                return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede regresar una solicitud con estatus "' . $requestModel->status . '"']];
+            }
+
+            $currentStep = WorkflowRequestCurrentStep::query()
+                ->where('requestId', $requestId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$currentStep) {
+                return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'La solicitud no tiene un paso actual asignado']];
+            }
+
+            if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
+                return ['ok' => false, 'status' => 403, 'payload' => ['message' => 'No tienes permisos para regresar esta solicitud en el paso actual']];
+            }
+
+            $currentWorkflowStep = WorkflowStep::query()->find($currentStep->workflowStepId);
+
+            if (!$currentWorkflowStep) {
+                return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'El paso actual del workflow no existe']];
+            }
+
+            $targetWorkflowStep = WorkflowStep::query()
+                ->where('id', $targetWorkflowStepId)
+                ->where('workflowId', $currentWorkflowStep->workflowId)
+                ->where('stepOrder', '<', $currentWorkflowStep->stepOrder)
+                ->first();
+
+            if (!$targetWorkflowStep) {
+                return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'El paso destino no es válido. Debe ser un paso anterior del mismo flujo de trabajo']];
+            }
+
+            $activeRequestStep = WorkflowRequestStep::query()
+                ->where('requestId', $requestId)
+                ->where('workflowStepId', $currentStep->workflowStepId)
+                ->where('status', 'pending')
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+
+            if ($activeRequestStep) {
+                $activeRequestStep->update(['status' => 'sent_back', 'completedAt' => now()]);
+            }
+
+            WorkflowRequestHistory::create([
+                'requestWorkflowStepId' => $activeRequestStep?->id ?? WorkflowRequestStep::query()
+                    ->where('requestId', $requestId)
+                    ->orderByDesc('id')
+                    ->value('id'),
+                'requestId' => $requestId,
+                'workflowStepId' => $currentWorkflowStep->id,
+                'actionUserId' => (int) $authUser->id,
+                'actionType' => 'sent_back',
+                'comments' => $comments,
+            ]);
+
+            $targetAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $targetWorkflowStep);
+
+            $targetRequestStep = WorkflowRequestStep::create([
+                'requestId' => $requestId,
+                'workflowStepId' => $targetWorkflowStep->id,
+                'assignedRoleId' => $targetWorkflowStep->roleId,
+                'assignedUserId' => $targetAssignedUserId,
+                'status' => 'pending',
+                'startedAt' => now(),
+            ]);
+
+            WorkflowRequestCurrentStep::updateOrCreate(
+                ['requestId' => $requestId],
+                [
+                    'workflowId' => $currentStep->workflowId,
+                    'workflowStepId' => $targetWorkflowStep->id,
+                    'assignedRoleId' => $targetWorkflowStep->roleId,
+                    'assignedUserId' => $targetAssignedUserId,
+                    'status' => 'pending',
+                ]
+            );
+
+            WorkflowRequestHistory::create([
+                'requestWorkflowStepId' => $targetRequestStep->id,
+                'requestId' => $requestId,
+                'workflowStepId' => $targetWorkflowStep->id,
+                'actionUserId' => (int) $authUser->id,
+                'actionType' => 'routed_back',
+                'comments' => 'Solicitud regresada al paso: ' . $targetWorkflowStep->stepName,
+            ]);
+
+            $requestModel->update(['status' => 'pending']);
+
+            return [
+                'ok' => true,
+                'status' => 200,
+                'payload' => [
+                    'message' => 'Solicitud regresada al paso: ' . $targetWorkflowStep->stepName,
+                    'data' => $requestModel->refresh(),
+                ],
+                'notifyUserId' => $targetAssignedUserId,
+            ];
+        });
+    }
+
     public function approveMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
         $approvedIds = [];
