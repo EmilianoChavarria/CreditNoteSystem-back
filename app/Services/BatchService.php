@@ -326,7 +326,7 @@ class BatchService
         $this->notificationService->createBatchFinishedNotification($batch);
 
         $batchWithUser = Batch::query()
-            ->with('user:id,fullName,email')
+            ->with('user:id,fullName,email,preferredLanguage')
             ->find((int) $batch->id);
 
         $recipientEmail = $batchWithUser?->user?->email;
@@ -345,7 +345,8 @@ class BatchService
                     processedRecords: (int) $batch->processedRecords,
                     errorRecords: (int) $batch->errorRecords,
                     processingRecords: (int) $batch->processingRecords,
-                    fullName: (string) ($batchWithUser?->user?->fullName ?? 'Usuario')
+                    fullName: (string) ($batchWithUser?->user?->fullName ?? 'Usuario'),
+                    locale: (string) ($batchWithUser?->user?->preferredLanguage ?? 'es')
                 )
             );
         } catch (Throwable $e) {

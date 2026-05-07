@@ -95,7 +95,7 @@ class RequestCrudService
             return ['status' => 403, 'message' => 'No tienes permisos para editar esta solicitud', 'data' => null];
         }
 
-        if (in_array((string) $requestModel->status, ['approved', 'rejected'], true)) {
+        if (in_array((string) $requestModel->status, ['approved', 'rejected', 'cancelled'], true)) {
             return ['status' => 422, 'message' => 'No se puede editar una solicitud finalizada', 'data' => null];
         }
 
