@@ -24,7 +24,7 @@ class UserRegisteredMail extends Mailable
         $this->email = $email;
         $this->password = $password;
         $this->mailLocale = $this->normalizeLocale($locale);
-        $this->isTimkenUser = str_ends_with(strtolower($email), '@timken.com');
+        $this->isTimkenUser = str_ends_with(strtolower($email), '@ittec.mx');
         $this->supportEmail = (string) (EmailConfig::find(1)?->emailSupport ?? '');
     }
 
