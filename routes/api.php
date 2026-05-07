@@ -26,3 +26,4 @@ require __DIR__.'/api/returnOrders.php';
 require __DIR__.'/api/chargePolicy.php';
 require __DIR__.'/api/chargeTypes.php';
 require __DIR__.'/api/requestReasonType.php';
+require __DIR__.'/api/emailConfig.php';
