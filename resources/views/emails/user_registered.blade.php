@@ -69,6 +69,18 @@
                                 </tr>
                             </table>
 
+                            <!-- Login Button -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 10px;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="https://qa.timken.ittec.mx/"
+                                            style="display: inline-block; background-color: #ff8200; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600; padding: 14px 40px; border-radius: 6px;">
+                                            {{ __('emails.login_button') }}
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
                         </td>
                     </tr>
 
@@ -76,10 +88,21 @@
                     <tr>
                         <td
                             style="background-color: #ff8200; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
-                            <p style="margin: 0; color: #FFFFFF; font-size: 13px; line-height: 1.5;">
-                                {{ __('emails.footer_notice') }}
-                            </p>
-                            <p style="margin: 8px 0 0; color: #FFFFFF; font-size: 13px;">
+                            @if ($isTimkenUser)
+                                <p style="margin: 0; color: #FFFFFF; font-size: 13px; line-height: 1.5;">
+                                    {{ __('emails.footer_notice_timken') }}
+                                </p>
+                                @if ($supportEmail)
+                                    <p style="margin: 6px 0 0; color: #FFFFFF; font-size: 13px; font-weight: 600;">
+                                        <a href="mailto:{{ $supportEmail }}" style="color: #FFFFFF;">{{ $supportEmail }}</a>
+                                    </p>
+                                @endif
+                            @else
+                                <p style="margin: 0; color: #FFFFFF; font-size: 13px; line-height: 1.5;">
+                                    {{ __('emails.footer_notice_non_timken') }}
+                                </p>
+                            @endif
+                            <p style="margin: 16px 0 0; color: #FFFFFF; font-size: 13px;">
                                 © {{ now()->year }}
                                 <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> {{ __('emails.footer_rights') }}
                             </p>
