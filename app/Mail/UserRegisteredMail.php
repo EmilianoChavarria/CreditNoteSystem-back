@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Models\EmailConfig;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -13,6 +14,8 @@ class UserRegisteredMail extends Mailable
     public string $fullName;
     public string $email;
     public string $password;
+    public bool $isTimkenUser;
+    public string $supportEmail;
     private string $mailLocale;
 
     public function __construct(string $fullName, string $email, string $password, string $locale = 'es')
@@ -21,6 +24,8 @@ class UserRegisteredMail extends Mailable
         $this->email = $email;
         $this->password = $password;
         $this->mailLocale = $this->normalizeLocale($locale);
+        $this->isTimkenUser = str_ends_with(strtolower($email), '@timken.com');
+        $this->supportEmail = (string) (EmailConfig::find(1)?->emailSupport ?? '');
     }
 
     public function build(): self
