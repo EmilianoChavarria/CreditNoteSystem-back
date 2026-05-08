@@ -32,11 +32,15 @@
                                 {{ __('emails.batch_greeting', ['name' => $fullName]) }}
                             </p>
 
+                            @php
+                                $batchTypeFormatted = ucwords(preg_replace('/(?<!^)([A-Z])/', ' $1', $batchType));
+                            @endphp
                             <p style="margin: 0 0 30px; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                                {{ __('emails.batch_intro', ['id' => $batchId]) }}
+                                {{ __('emails.batch_intro', ['id' => $batchId, 'type' => $batchTypeFormatted]) }}
                                 <strong style="color: {{ $status === 'completed' ? '#2d7a2d' : '#c53030' }};">
                                     {{ $status === 'completed' ? __('emails.batch_status_completed') : __('emails.batch_status_errors') }}
                                 </strong>
+                                {{ __('emails.batch_intro_suffix') }}
                             </p>
 
                             <!-- Stats Table -->
@@ -83,9 +87,14 @@
                         <td
                             style="background-color: #ff8200; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
                             <p style="margin: 0; color: #FFFFFF; font-size: 13px; line-height: 1.5;">
-                                {{ __('emails.batch_auto_notice') }}
+                                {{ __('emails.footer_notice_timken') }}
                             </p>
-                            <p style="margin: 8px 0 0; color: #FFFFFF; font-size: 13px;">
+                            @if ($supportEmail)
+                                <p style="margin: 6px 0 0; color: #FFFFFF; font-size: 13px; font-weight: 600;">
+                                    <a href="mailto:{{ $supportEmail }}" style="color: #FFFFFF;">{{ $supportEmail }}</a>
+                                </p>
+                            @endif
+                            <p style="margin: 16px 0 0; color: #FFFFFF; font-size: 13px;">
                                 © {{ now()->year }}
                                 <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> {{ __('emails.footer_rights') }}
                             </p>
