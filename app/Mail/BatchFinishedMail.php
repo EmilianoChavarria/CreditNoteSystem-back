@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Models\EmailConfig;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -18,6 +19,7 @@ class BatchFinishedMail extends Mailable
     public int $errorRecords;
     public int $processingRecords;
     public string $fullName;
+    public string $supportEmail;
     private string $mailLocale;
 
     public function __construct(
@@ -39,6 +41,7 @@ class BatchFinishedMail extends Mailable
         $this->errorRecords = $errorRecords;
         $this->processingRecords = $processingRecords;
         $this->fullName = $fullName;
+        $this->supportEmail = (string) (EmailConfig::find(1)?->emailSupport ?? '');
         $this->mailLocale = in_array(strtolower(trim($locale)), ['en', 'es'], true)
             ? strtolower(trim($locale))
             : 'es';
