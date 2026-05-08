@@ -79,6 +79,14 @@
                                         </a>
                                     </td>
                                 </tr>
+                                <tr>
+                                    <td align="center" style="padding-top: 12px;">
+                                        <p style="margin: 0; color: #718096; font-size: 13px;">
+                                            {{ __('emails.login_url_label') }}
+                                            <a href="https://qa.timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://qa.timken.ittec.mx/</a>
+                                        </p>
+                                    </td>
+                                </tr>
                             </table>
 
                         </td>
