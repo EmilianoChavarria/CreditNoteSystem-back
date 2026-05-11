@@ -29,16 +29,24 @@ class BulkFileParser
      */
     private function parseDelimited(string $absolutePath): array
     {
-        $handle = fopen($absolutePath, 'rb');
+        $handle = fopen($absolutePath, 'r');
         if (!$handle) {
             throw new RuntimeException('No se pudo leer el archivo CSV/TXT.');
+        }
+
+        // Strip UTF-8 BOM if present
+        $bom = fread($handle, 3);
+        if ($bom !== "\xEF\xBB\xBF") {
+            rewind($handle);
         }
 
         $rows = [];
         $headers = null;
         $rowNumber = 1;
 
-        while (($line = fgetcsv($handle, 0, ',')) !== false) {
+        while (($raw = fgets($handle)) !== false) {
+            $raw = mb_convert_encoding(rtrim($raw, "\r\n"), 'UTF-8', 'UTF-8,Windows-1252,ISO-8859-1');
+            $line = str_getcsv($raw, ',');
             if ($headers === null) {
                 $headers = array_map(fn ($header) => $this->normalizeHeader((string) $header), $line);
                 $rowNumber++;
