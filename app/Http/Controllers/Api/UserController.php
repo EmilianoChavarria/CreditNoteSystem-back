@@ -134,6 +134,7 @@ class UserController extends Controller
     {
 
         $users = User::with('role')->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
             ->get();
 
         return response()->json(ApiResponse::success('Usuarios', UserResource::collection($users)));
@@ -146,6 +147,7 @@ class UserController extends Controller
 
         $users = User::with('role')
             ->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($subQuery) use ($search) {
                     $subQuery->where('fullName', 'like', "%{$search}%")

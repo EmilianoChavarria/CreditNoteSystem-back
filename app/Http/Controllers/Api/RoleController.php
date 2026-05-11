@@ -16,6 +16,7 @@ class RoleController extends Controller
     {
         $roles = Role::orderBy('id')
         ->where('isActive', 1)
+        ->where('roleName', '!=', 'SUPERADMIN')
         ->get();
 
         return response()->json(ApiResponse::success('Roles', RoleResource::collection($roles)));
