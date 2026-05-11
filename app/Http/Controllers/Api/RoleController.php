@@ -14,7 +14,9 @@ class RoleController extends Controller
 {
     public function index()
     {
-        $roles = Role::orderBy('id')->get();
+        $roles = Role::orderBy('id')
+        ->where('isActive', 1)
+        ->get();
 
         return response()->json(ApiResponse::success('Roles', RoleResource::collection($roles)));
     }
@@ -72,12 +74,11 @@ class RoleController extends Controller
         }
 
         $role->fill([
-            'roleName' => $request->input('roleName')
+            'roleName' => $request->input('roleName'),
+            'color' => $request->input('color'),
         ]);
 
         $role->save();
-
-        $role->load('role');
 
         return response()->json(ApiResponse::success('Rol actualizado correctamente', RoleResource::make($role), 201), 201);
     }
@@ -88,6 +89,15 @@ class RoleController extends Controller
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
+        }
+
+        $hasRelated = $role->users()->exists()
+            || $role->permissions()->exists()
+            || $role->modulePermissions()->exists()
+            || $role->requestTypePermissions()->exists();
+
+        if ($hasRelated) {
+            return response()->json(ApiResponse::error('No se puede eliminar el rol porque tiene registros relacionados', null, 409), 409);
         }
 
         $now = now();
