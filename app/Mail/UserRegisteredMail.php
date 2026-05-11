@@ -29,12 +29,12 @@ class UserRegisteredMail extends Mailable
     }
 
     public function build(): self
-    {
+    { 
         app()->setLocale($this->mailLocale);
 
         return $this->subject(__('emails.subject'))
             ->view('emails.user_registered');
-    }
+    }   
 
     private function normalizeLocale(string $locale): string
     {
