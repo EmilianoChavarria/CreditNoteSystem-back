@@ -9,8 +9,8 @@ class CustomerQueryService
 {
     public function paginated(?int $perPage, string $search)
     {
-        $clientTable = 'clientes_tme700618rc7';
-        $clientExtTable = 'clientes_tme700618rc7_ext';
+        $clientTable = 'clientes_TME700618RC7';
+        $clientExtTable = 'clientes_TME700618RC7_ext';
 
         $clientColumns = Schema::hasTable($clientTable)
             ? Schema::getColumnListing($clientTable)
@@ -39,7 +39,7 @@ class CustomerQueryService
             $selectColumns[] = 'cle.' . $column . ' as client_ext_' . $column;
         }
 
-        $query = DB::table($clientTable . ' as cl')
+        $query = DB::connection('invoices')->table($clientTable . ' as cl')
             ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->when($search !== '', function ($query) use ($search, $clientColumns) {
                 $query->where(function ($subQuery) use ($search, $clientColumns) {
@@ -74,8 +74,8 @@ class CustomerQueryService
 
     public function findById(int $id): ?array
     {
-        $clientTable = 'clientes_tme700618rc7';
-        $clientExtTable = 'clientes_tme700618rc7_ext';
+        $clientTable = 'clientes_TME700618RC7';
+        $clientExtTable = 'clientes_TME700618RC7_ext';
 
         $clientColumns = Schema::hasTable($clientTable)
             ? Schema::getColumnListing($clientTable)
@@ -104,7 +104,7 @@ class CustomerQueryService
             $selectColumns[] = 'cle.' . $column . ' as client_ext_' . $column;
         }
 
-        $row = DB::table($clientTable . ' as cl')
+        $row = DB::connection('invoices')->table($clientTable . ' as cl')
             ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->where('cl.idCliente', $id)
             ->select($selectColumns)
@@ -119,8 +119,8 @@ class CustomerQueryService
 
     public function searchByName(string $searchTerm): array
     {
-        $clientTable = 'clientes_tme700618rc7';
-        $clientExtTable = 'clientes_tme700618rc7_ext';
+        $clientTable = 'clientes_TME700618RC7';
+        $clientExtTable = 'clientes_TME700618RC7_ext';
 
         $clientColumns = Schema::hasTable($clientTable)
             ? Schema::getColumnListing($clientTable)
@@ -154,7 +154,7 @@ class CustomerQueryService
             $selectColumns[] = 'cle.' . $column . ' as client_ext_' . $column;
         }
 
-        $customers = DB::table($clientTable . ' as cl')
+        $customers = DB::connection('invoices')->table($clientTable . ' as cl')
             ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->where(function ($query) use ($searchTerm, $hasRazonSocialColumn, $hasIdClienteColumn) {
                 if ($hasRazonSocialColumn) {

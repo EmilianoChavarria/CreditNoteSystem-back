@@ -37,7 +37,7 @@ class ReturnOrderService
      */
     public function searchOrders(string $search): array
     {
-        $clientTable = 'clientes_tme700618rc7';
+        $clientTable = 'clientes_TME700618RC7';
         $hasClientTable = Schema::hasTable($clientTable);
 
         $query = ReturnOrder::

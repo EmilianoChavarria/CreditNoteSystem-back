@@ -11,21 +11,21 @@ class InvoiceService
 {
     public function getAll(): Collection
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return collect();
         }
 
-        return DB::table('comprobantes_tme700618rc7')->get();
+        return DB::connection('invoices')->table('comprobantes_TME700618RC7')->get();
     }
 
     public function getInvoicesByClientId(int $clientId): Collection
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return collect();
         }
 
-        $query = DB::table('comprobantes_tme700618rc7');
-        $columns = Schema::getColumnListing('comprobantes_tme700618rc7');
+        $query = DB::connection('invoices')->table('comprobantes_TME700618RC7');
+        $columns = Schema::connection('invoices')->getColumnListing('comprobantes_TME700618RC7');
 
         if (in_array('receptorId', $columns, true)) {
             $query->where('receptorId', $clientId)
@@ -37,11 +37,11 @@ class InvoiceService
 
     public function searchInvoices(int $clientId, array $filters): Collection
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return collect();
         }
 
-        $query = DB::table('comprobantes_tme700618rc7')
+        $query = DB::connection('invoices')->table('comprobantes_TME700618RC7')
             ->where('receptorId', $clientId)
             ->where('serie', '');
 
@@ -78,11 +78,11 @@ class InvoiceService
 
     public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType): Collection
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return collect();
         }
 
-        $query = DB::table('comprobantes_tme700618rc7')
+        $query = DB::connection('invoices')->table('comprobantes_TME700618RC7')
             ->where('receptorId', $clientId)
             ->where('serie', '');
 

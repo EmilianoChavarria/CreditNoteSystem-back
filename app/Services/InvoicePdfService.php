@@ -16,7 +16,7 @@ class InvoicePdfService
 
     public function downloadXml(string $invoiceId): mixed
     {
-        $invoice = DB::table('comprobantes_tme700618rc7')
+        $invoice = DB::connection('invoices')->table('comprobantes_TME700618RC7')
             ->where('id', $invoiceId)
             ->first();
 
@@ -41,7 +41,7 @@ class InvoicePdfService
 
     public function generatePdf(string $invoiceId): mixed
     {
-        $invoice = DB::table('comprobantes_tme700618rc7')
+        $invoice = DB::connection('invoices')->table('comprobantes_TME700618RC7')
             ->where('id', $invoiceId)
             ->first();
 
