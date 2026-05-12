@@ -63,6 +63,21 @@ return [
             ]) : [],
         ],
 
+        'invoices' => [
+            'driver'    => env('INVOICES_DB_DRIVER', 'mysql'),
+            'url'       => env('INVOICES_DB_URL'),
+            'host'      => env('INVOICES_DB_HOST', '127.0.0.1'),
+            'port'      => env('INVOICES_DB_PORT', '3306'),
+            'database'  => env('INVOICES_DB_DATABASE', ''),
+            'username'  => env('INVOICES_DB_USERNAME', 'root'),
+            'password'  => env('INVOICES_DB_PASSWORD', ''),
+            'charset'   => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix'    => '',
+            'strict'    => true,
+            'engine'    => null,
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
