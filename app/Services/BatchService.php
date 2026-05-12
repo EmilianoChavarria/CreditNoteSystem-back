@@ -125,7 +125,7 @@ class BatchService
             }
 
             foreach (array_chunk($insertRows, 500) as $chunk) {
-                DB::table('batchitems')->insertOrIgnore($chunk);
+                BatchItem::insertOrIgnore($chunk);
             }
 
             $totalRecords = BatchItem::where('batchId', $batch->id)->count();
@@ -178,8 +178,7 @@ class BatchService
 
             $item->update(['status' => 'processing']);
 
-            DB::table('batches')
-                ->where('id', $item->batchId)
+            Batch::where('id', $item->batchId)
                 ->update([
                     'processingRecords' => DB::raw('processingRecords + 1'),
                 ]);

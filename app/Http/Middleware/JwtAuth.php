@@ -2,13 +2,15 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\BlockedIp;
+use App\Models\User;
+use App\Models\UserSecurity;
 use App\Services\JwtService;
 use App\Services\LoginAttemptSettingsService;
 use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class JwtAuth
@@ -23,7 +25,7 @@ class JwtAuth
         $token = $this->extractToken($request);
         $isVerifyRoute = $this->isVerifyRoute($request);
         $sessionTimeoutMinutes = (int) $this->loginAttemptSettingsService->getSettings()->sessionTimeoutMinutes;
-        $isIpBlocked = DB::table('blockedips')
+        $isIpBlocked = BlockedIp::query()
             ->where('ipAddress', $request->ip())
             ->where('isBlockedPermanently', true)
             ->exists();
@@ -63,7 +65,7 @@ class JwtAuth
             return response()->json(ApiResponse::error('Token inválido o expirado', null, 401), 401);
         }
 
-        $user = DB::table('users')
+        $user = User::query()
             ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
             ->select('users.*', 'roles.roleName')
             ->where('users.id', (int) $jwt->sub)
@@ -80,7 +82,7 @@ class JwtAuth
             return response()->json(ApiResponse::error('Usuario no autorizado', null, 403), 403);
         }
 
-        $security = DB::table('usersecurity')->where('userId', $user->id)->first();
+        $security = UserSecurity::query()->where('userId', $user->id)->first();
 
         if ($security && $security->lockedUntil && Carbon::parse($security->lockedUntil)->isFuture()) {
             if ($isVerifyRoute) {
@@ -97,7 +99,7 @@ class JwtAuth
             $lastActivityAt = Carbon::parse($security->lastActivityAt);
 
             if ($lastActivityAt->addMinutes($sessionTimeoutMinutes)->isPast()) {
-                DB::table('usersecurity')
+                UserSecurity::query()
                     ->where('userId', $user->id)
                     ->update([
                         'sessionToken' => null,
@@ -126,7 +128,7 @@ class JwtAuth
             return response()->json(ApiResponse::error('Sesión no válida', null, 401), 401);
         }
 
-        DB::table('usersecurity')
+        UserSecurity::query()
             ->where('userId', $user->id)
             ->update([
                 'lastActivityAt' => Carbon::now(),
@@ -161,7 +163,7 @@ class JwtAuth
             }
 
             if ($impersonatedUserId !== (int) $user->id) {
-                $impersonatedUser = DB::table('users')
+                $impersonatedUser = User::query()
                     ->leftJoin('roles', 'users.roleId', '=', 'roles.id')
                     ->select('users.*', 'roles.roleName')
                     ->where('users.id', $impersonatedUserId)

@@ -7,7 +7,6 @@ use App\Http\Resources\ModuleResource;
 use App\Models\Module;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -100,13 +99,13 @@ class ModuleController extends Controller
 
     public function destroy(int $id)
     {
-        $module = DB::table('modules')->where('id', $id)->first();
+        $module = Module::find($id);
 
         if (!$module) {
             return response()->json(ApiResponse::error('Module no encontrado', null, 404), 404);
         }
 
-        DB::table('modules')->where('id', $id)->delete();
+        $module->delete();
 
         return response()->json(ApiResponse::success('Module eliminado'));
     }

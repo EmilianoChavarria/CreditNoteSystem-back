@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
 
 class ChangePasswordController extends Controller
@@ -37,7 +37,7 @@ class ChangePasswordController extends Controller
             return response()->json(ApiResponse::error('Contraseña actual incorrecta', null, 422), 422);
         }
 
-        DB::table('users')->where('id', $user->id)->update([
+        User::where('id', $user->id)->update([
             'passwordHash'       => Hash::make($validated['newPassword']),
             'mustChangePassword' => false,
         ]);
