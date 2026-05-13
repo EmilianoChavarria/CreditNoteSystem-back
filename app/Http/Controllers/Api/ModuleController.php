@@ -14,7 +14,9 @@ class ModuleController extends Controller
 {
     public function index()
     {
-        $modules = Module::orderBy('id')->get();
+        $modules = Module::orderBy('id')
+        ->where('isActive', 1)
+        ->get();
 
         return response()->json(ApiResponse::success('Modules', ModuleResource::collection($modules)));
     }

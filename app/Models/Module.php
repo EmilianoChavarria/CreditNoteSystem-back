@@ -20,6 +20,7 @@ class Module extends Model
         'icon',
         'orderindex',
         'requiredactionid',
+        'isActive',
     ];
 
     protected $casts = [
