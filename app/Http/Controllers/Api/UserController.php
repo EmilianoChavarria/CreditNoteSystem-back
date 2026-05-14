@@ -144,20 +144,28 @@ class UserController extends Controller
     {
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
+        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
         $users = User::with('role')
             ->where('isActive', '1')
             ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
+            ->when($shouldFilterByRole, function ($query) use ($roleName) {
+                $query->whereHas('role', function ($roleQuery) use ($roleName) {
+                    $roleQuery->where('roleName', $roleName);
+                });
+            })
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($subQuery) use ($search) {
                     $subQuery->where('fullName', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%")
                         ->orWhereHas('role', function ($roleQuery) use ($search) {
                             $roleQuery->where('roleName', 'like', "%{$search}%");
-                        });
+                    });
                 });
             })
-            ->paginate($perPage);
+            ->paginate($perPage)
+            ->withQueryString();
 
         $users->setCollection(UserResource::collection($users->getCollection())->collection);
 
