@@ -29,4 +29,11 @@ return [
     'batch_errors'            => 'With errors',
     'batch_processing'        => 'In processing',
     'batch_auto_notice'       => 'This is an automated email, please do not reply.',
+    // Users batch welcome
+    'batch_users_subject'     => 'Users created in batch #:id',
+    'batch_users_title'       => 'Users created',
+    'batch_users_intro'       => ':count users were created in batch #:id. These are their access credentials:',
+    'batch_users_name_label'  => 'Name',
+    'batch_users_role_label'  => 'Role',
+    'batch_users_auto_notice' => 'This email contains credentials for users created by bulk upload. Please do not reply.',
 ];
