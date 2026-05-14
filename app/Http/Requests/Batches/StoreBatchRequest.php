@@ -33,6 +33,10 @@ class StoreBatchRequest extends FormRequest
             'maxRange' => ['nullable', 'integer', 'min:0'],
             'file' => ['required'],
             'file.*' => ['file'],
+            'welcomeEmailMode' => ['nullable', 'string', Rule::in(['none', 'individual', 'single'])],
+            'userWelcomeEmailMode' => ['nullable', 'string', Rule::in(['none', 'individual', 'single'])],
+            'sendWelcomeEmails' => ['nullable', 'boolean'],
+            'welcomeEmailRecipient' => ['nullable', 'email', 'max:150'],
         ];
     }
 
@@ -84,7 +88,38 @@ class StoreBatchRequest extends FormRequest
                     $validator->errors()->add('minRange', 'minRange no puede ser mayor que maxRange.');
                 }
             }
+
+            if ($batchType === 'users' && $this->resolvedWelcomeEmailMode() === 'single' && !$this->filled('welcomeEmailRecipient')) {
+                $validator->errors()->add('welcomeEmailRecipient', 'El campo welcomeEmailRecipient es obligatorio cuando welcomeEmailMode es single.');
+            }
         });
+    }
+
+    public function resolvedWelcomeEmailMode(): string
+    {
+        $mode = (string) ($this->input('welcomeEmailMode') ?? $this->input('userWelcomeEmailMode') ?? 'none');
+        $mode = strtolower(trim($mode));
+
+        if (!in_array($mode, ['none', 'individual', 'single'], true)) {
+            $mode = 'none';
+        }
+
+        if ($mode === 'none' && $this->boolean('sendWelcomeEmails')) {
+            return 'individual';
+        }
+
+        if ($mode === 'none' && $this->filled('welcomeEmailRecipient')) {
+            return 'single';
+        }
+
+        return $mode;
+    }
+
+    public function welcomeEmailRecipient(): ?string
+    {
+        $recipient = trim((string) $this->input('welcomeEmailRecipient', ''));
+
+        return $recipient !== '' ? $recipient : null;
     }
 
     /**
