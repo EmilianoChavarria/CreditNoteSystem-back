@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Http\Requests\Batches\StoreBatchRequest;
 use App\Jobs\ProcessBatchJob;
 use App\Mail\BatchFinishedMail;
+use App\Mail\UserBatchRegisteredMail;
 use App\Models\Batch;
 use App\Models\BatchItem;
+use App\Models\User;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Contracts\BatchTypeHandler;
 use App\Services\Batches\Handlers\CreditsDataBatchHandler;
@@ -75,6 +77,8 @@ class BatchService
             minRange: $request->filled('minRange') ? (int) $request->input('minRange') : null,
             maxRange: $request->filled('maxRange') ? (int) $request->input('maxRange') : null,
             storedFiles: $storedFiles,
+            userWelcomeEmailMode: $batchType === 'users' ? $request->resolvedWelcomeEmailMode() : 'none',
+            userWelcomeEmailRecipient: $batchType === 'users' ? $request->welcomeEmailRecipient() : null,
         );
 
         $handler = $this->resolveHandler($batchType);
@@ -101,6 +105,10 @@ class BatchService
             $insertRows = [];
             $now = Carbon::now();
             foreach ($rows as $row) {
+                if ($batchType === 'users') {
+                    $row = $this->withUserWelcomeEmailOptions($row, $context);
+                }
+
                 // Sanitizar datos antes de JSON encoding
                 $cleanRow = $this->sanitizeRowForJson($row);
                 $jsonEncoded = json_encode($cleanRow, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -237,6 +245,7 @@ class BatchService
 
             if ($finishedBatch) {
                 $this->notifyBatchFinished($finishedBatch);
+                $this->notifyUsersBatchWelcomeEmails($finishedBatch);
             }
         }
     }
@@ -357,6 +366,127 @@ class BatchService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function withUserWelcomeEmailOptions(array $row, BatchInputContext $context): array
+    {
+        $password = $this->rowValue($row, ['password'], config('bulk_upload.users.default_password', 'ChangeMe123!'));
+
+        $row['password'] = (string) $password;
+        $row['__welcomeEmail'] = [
+            'mode' => $context->userWelcomeEmailMode,
+            'recipient' => $context->userWelcomeEmailRecipient,
+        ];
+
+        return $row;
+    }
+
+    private function notifyUsersBatchWelcomeEmails(Batch $batch): void
+    {
+        if ((string) $batch->batchType !== 'users') {
+            return;
+        }
+
+        $firstSuccessfulItem = BatchItem::query()
+            ->where('batchId', (int) $batch->id)
+            ->where('status', 'success')
+            ->orderBy('id')
+            ->first();
+
+        $firstRawData = is_array($firstSuccessfulItem?->rawData)
+            ? $firstSuccessfulItem->rawData
+            : (json_decode((string) ($firstSuccessfulItem?->rawData ?? ''), true) ?: []);
+
+        $options = is_array($firstRawData['__welcomeEmail'] ?? null) ? $firstRawData['__welcomeEmail'] : [];
+        $mode = (string) ($options['mode'] ?? 'none');
+        $recipient = (string) ($options['recipient'] ?? '');
+
+        if ($mode !== 'single' || $recipient === '') {
+            return;
+        }
+
+        $users = [];
+
+        BatchItem::query()
+            ->where('batchId', (int) $batch->id)
+            ->where('status', 'success')
+            ->orderBy('id')
+            ->chunkById(200, function ($items) use (&$users) {
+                foreach ($items as $item) {
+                    $row = is_array($item->rawData)
+                        ? $item->rawData
+                        : (json_decode((string) $item->rawData, true) ?: []);
+
+                    $email = $this->rowValue($row, ['email']);
+                    $fullName = $this->rowValue($row, ['fullname', 'full_name'], (string) $email);
+                    $password = $this->rowValue($row, ['password'], (string) config('bulk_upload.users.default_password', 'ChangeMe123!'));
+                    $locale = $this->rowValue($row, ['preferredlanguage', 'preferred_language'], 'es');
+
+                    if ($email) {
+                        $createdUser = User::query()
+                            ->with('role:id,roleName')
+                            ->where('email', (string) $email)
+                            ->first();
+
+                        $users[] = [
+                            'fullName' => (string) $fullName,
+                            'email' => (string) $email,
+                            'password' => (string) $password,
+                            'roleName' => (string) ($createdUser?->role?->roleName ?? ''),
+                            'locale' => (string) $locale,
+                        ];
+                    }
+                }
+            });
+
+        if (count($users) === 0) {
+            return;
+        }
+
+        usort($users, function (array $first, array $second) {
+            $roleComparison = strcasecmp((string) ($first['roleName'] ?? ''), (string) ($second['roleName'] ?? ''));
+
+            return $roleComparison !== 0
+                ? $roleComparison
+                : strcasecmp((string) ($first['fullName'] ?? ''), (string) ($second['fullName'] ?? ''));
+        });
+
+        try {
+            Mail::to($recipient)->send(new UserBatchRegisteredMail($users, (int) $batch->id));
+        } catch (Throwable $e) {
+            Log::warning('No se pudo enviar correo concentrado de usuarios creados por batch', [
+                'batchId' => (int) $batch->id,
+                'recipient' => $recipient,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<int, string> $aliases
+     */
+    private function rowValue(array $row, array $aliases, mixed $default = null): mixed
+    {
+        $normalized = [];
+
+        foreach ($row as $key => $value) {
+            $normalized[strtolower(str_replace(['_', ' ', '-'], '', (string) $key))] = $value;
+        }
+
+        foreach ($aliases as $alias) {
+            $key = strtolower(str_replace(['_', ' ', '-'], '', $alias));
+
+            if (array_key_exists($key, $normalized)) {
+                return $normalized[$key];
+            }
+        }
+
+        return $default;
     }
 
     private function buildErrorLog(Throwable $e): string
