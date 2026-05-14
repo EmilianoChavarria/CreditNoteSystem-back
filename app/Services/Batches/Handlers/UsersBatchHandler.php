@@ -3,14 +3,18 @@
 namespace App\Services\Batches\Handlers;
 
 use App\Models\Batch;
+use App\Mail\UserRegisteredMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserSecurity;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
 use Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class UsersBatchHandler extends AbstractBatchHandler
 {
@@ -74,7 +78,38 @@ class UsersBatchHandler extends AbstractBatchHandler
             'failedAttempts' => 0,
         ]);
 
+        $this->sendWelcomeEmailIfNeeded($row, $validated);
+
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $validated
+     */
+    private function sendWelcomeEmailIfNeeded(array $row, array $validated): void
+    {
+        $options = is_array($row['__welcomeEmail'] ?? null) ? $row['__welcomeEmail'] : [];
+
+        if (($options['mode'] ?? 'none') !== 'individual') {
+            return;
+        }
+
+        try {
+            Mail::to((string) $validated['email'])->send(
+                new UserRegisteredMail(
+                    fullName: (string) $validated['fullName'],
+                    email: (string) $validated['email'],
+                    password: (string) $validated['password'],
+                    locale: (string) ($validated['preferredLanguage'] ?? 'es')
+                )
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo enviar correo de bienvenida de usuario creado por batch', [
+                'email' => (string) $validated['email'],
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
