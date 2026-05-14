@@ -72,7 +72,7 @@ class DataExportService
         return [
             'filename' => 'users_' . now()->format('Ymd_His') . '.xls',
             'sheetName' => 'Users',
-            'headers' => ['ID', 'Name', 'Email', 'Role', 'Supervisor', 'Language', 'Active', 'Client ID', 'Created At', 'Updated At'],
+            'headers' => ['ID', 'Name', 'Email', 'Role', 'Supervisor', 'Language', 'Customer Number'],
             'rows' => $users->map(fn (User $user) => [
                 $user->id,
                 $user->fullName,
@@ -80,10 +80,7 @@ class DataExportService
                 $user->role?->roleName,
                 $user->supervisor?->fullName,
                 $user->preferredLanguage,
-                $user->isActive,
                 $user->clientId,
-                $user->createdAt,
-                $user->updatedAt,
             ])->values()->all(),
         ];
     }
@@ -219,10 +216,8 @@ class DataExportService
                 'ID',
                 'Request Number',
                 'Request Type',
-                'Customer ID',
-                'Status',
+                'Customer Number',
                 'Creator',
-                'Creator Email',
                 'Assigned User',
                 'Assigned Role',
                 'Reason',
@@ -230,17 +225,13 @@ class DataExportService
                 'Amount',
                 'Total Amount',
                 'Currency',
-                'Created At',
-                'Updated At',
             ],
             'rows' => $requests->map(fn (RequestModel $request) => [
                 $request->id,
                 $request->requestNumber,
                 $request->requestType?->name ?? $request->requestType?->typeName,
                 $request->customerId,
-                $request->status,
                 $request->user?->fullName,
-                $request->user?->email,
                 $request->workflowCurrentStep?->assignedUser?->fullName,
                 $request->workflowCurrentStep?->assignedRole?->roleName,
                 $request->reason?->name,
@@ -248,8 +239,6 @@ class DataExportService
                 $request->amount,
                 $request->totalAmount,
                 $request->currency,
-                $request->createdAt,
-                $request->updatedAt,
             ])->values()->all(),
         ];
     }
