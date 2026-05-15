@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class InvoiceService
 {
@@ -35,10 +36,10 @@ class InvoiceService
         return $query->get();
     }
 
-    public function searchInvoices(int $clientId, array $filters): Collection
+    public function searchInvoices(int $clientId, array $filters, int $perPage = 15, int $page = 1): LengthAwarePaginator
     {
         if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
-            return collect();
+            return new LengthAwarePaginator([], 0, $perPage, $page);
         }
 
         $query = DB::connection('invoices')->table('comprobantes_TME700618RC7')
@@ -73,13 +74,13 @@ class InvoiceService
             $query->where('fechaEmision', '<=', Carbon::parse($filters['fechaFinal'])->endOfDay());
         }
 
-        return $query->get();
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType): Collection
+    public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType, int $perPage = 15, int $page = 1, string $search = ''): LengthAwarePaginator
     {
         if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
-            return collect();
+            return new LengthAwarePaginator([], 0, $perPage, $page);
         }
 
         $query = DB::connection('invoices')->table('comprobantes_TME700618RC7')
@@ -90,6 +91,10 @@ class InvoiceService
             $query->where('fechaEmision', '>=', Carbon::today()->subDays(30)->toDateString());
         }
 
-        return $query->get();
+        if ($search !== '') {
+            $query->where('folio', 'like', "%{$search}%");
+        }
+
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 }
