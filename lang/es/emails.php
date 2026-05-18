@@ -29,4 +29,11 @@ return [
     'batch_errors'            => 'Con error',
     'batch_processing'        => 'En procesamiento',
     'batch_auto_notice'       => 'Este es un correo automático, por favor no responder.',
+    // Users batch welcome
+    'batch_users_subject'     => 'Usuarios creados en batch #:id',
+    'batch_users_title'       => 'Usuarios creados',
+    'batch_users_intro'       => 'Se crearon :count usuarios en el batch #:id. Estas son sus credenciales de acceso:',
+    'batch_users_name_label'  => 'Nombre',
+    'batch_users_role_label'  => 'Rol',
+    'batch_users_auto_notice' => 'Este correo contiene credenciales de usuarios creados por carga masiva. Por favor no responder.',
 ];

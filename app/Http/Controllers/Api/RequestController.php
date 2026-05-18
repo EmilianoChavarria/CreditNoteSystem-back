@@ -217,10 +217,11 @@ class RequestController extends Controller
         $isAdmin = $this->isAdminUser($authUser);
         $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
         $search = trim((string) $request->query('search', ''));
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
         $perPageInput = $request->query('per_page', $request->query('perPage', 15));
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) $request->query('page', 1));
-        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page);
+        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
@@ -242,7 +243,8 @@ class RequestController extends Controller
     {
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search);
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));

@@ -122,7 +122,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'status' => ['nullable', 'string', 'max:50'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
-            'customerId' => ['nullable', 'string', Rule::exists('clientes_tme700618rc7', 'idCliente')],
+            'customerId' => ['nullable', 'string', Rule::exists('invoices.clientes_TME700618RC7', 'idCliente')],
             'area' => ['nullable', 'string', 'max:150'],
             'reasonId' => ['nullable', 'integer', Rule::exists((new RequestReason())->getTable(), 'id')],
             'classificationId' => ['nullable', 'integer', Rule::exists((new RequestClassification())->getTable(), 'id')],
@@ -225,7 +225,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
 
         \Log::error('[resolveCustomer] value', ['value' => $value, 'type' => gettype($value)]);
 
-        $customer = DB::table('clientes_tme700618rc7')
+        $customer = DB::connection('invoices')->table('clientes_TME700618RC7')
             ->where('idCliente', (string) $value)
             ->first();
 

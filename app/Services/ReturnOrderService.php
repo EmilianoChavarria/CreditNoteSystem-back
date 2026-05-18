@@ -12,6 +12,11 @@ use RuntimeException;
 
 class ReturnOrderService
 {
+    /**
+     * @var array<string, array<int, array<string, mixed>>>
+     */
+    private array $invoiceConceptsCache = [];
+
     public function __construct(
         private readonly XmlInvoiceService $xmlInvoiceService,
         private readonly FesaWsService $fesaWsService,
@@ -24,10 +29,7 @@ class ReturnOrderService
      */
     public function getInvoiceProducts(string $invoiceFolio, int $clientId): array
     {
-        $returnedByIndex = $this->getReturnedQuantitiesByIndex($invoiceFolio, $clientId);
-        $xmlContent      = $this->fesaWsService->fetchXmlString($invoiceFolio);
-
-        return $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent, $returnedByIndex);
+        return $this->getConceptosFromFesa($invoiceFolio, $clientId);
     }
 
     /**
@@ -37,7 +39,7 @@ class ReturnOrderService
      */
     public function searchOrders(string $search): array
     {
-        $clientTable = 'clientes_tme700618rc7';
+        $clientTable = 'clientes_TME700618RC7';
         $hasClientTable = Schema::hasTable($clientTable);
 
         $query = ReturnOrder::
@@ -133,7 +135,7 @@ class ReturnOrderService
             ]);
 
             foreach ($items as $itemData) {
-                $concepto = $this->xmlInvoiceService->getConceptoByIndex(
+                $concepto = $this->getConceptoByIndex(
                     $itemData['invoiceFolio'],
                     $itemData['invoiceClientId'],
                     $itemData['conceptoIndex']
@@ -195,7 +197,7 @@ class ReturnOrderService
      */
     public function getProductReturnHistory(string $invoiceFolio, int $clientId, int $conceptoIndex): array
     {
-        $concepto = $this->xmlInvoiceService->getConceptoByIndex($invoiceFolio, $clientId, $conceptoIndex);
+        $concepto = $this->getConceptoByIndex($invoiceFolio, $clientId, $conceptoIndex);
 
         if ($concepto === null) {
             throw new RuntimeException("Concepto índice {$conceptoIndex} no encontrado en la factura {$invoiceFolio}.");
@@ -271,7 +273,7 @@ class ReturnOrderService
             $clientId = (int) $clientId;
             $index    = (int) $index;
 
-            $concepto = $this->xmlInvoiceService->getConceptoByIndex($folio, $clientId, $index);
+            $concepto = $this->getConceptoByIndex($folio, $clientId, $index);
 
             if ($concepto === null) {
                 $errors[] = "Concepto índice {$index} no encontrado en la factura {$folio}.";
@@ -317,5 +319,34 @@ class ReturnOrderService
             ->pluck('total', 'conceptoIndex')
             ->map(fn ($v) => (float) $v)
             ->toArray();
+    }
+
+    /**
+     * Obtiene conceptos desde FESA. Antes se leia storage/app/public/{folio}-{clientId}.xml,
+     * pero el flujo de facturas ya consulta FESA por folio.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function getConceptosFromFesa(string $invoiceFolio, int $clientId): array
+    {
+        $cacheKey = "{$invoiceFolio}|{$clientId}";
+
+        if (!array_key_exists($cacheKey, $this->invoiceConceptsCache)) {
+            $returnedByIndex = $this->getReturnedQuantitiesByIndex($invoiceFolio, $clientId);
+            $xmlContent = $this->fesaWsService->fetchXmlString($invoiceFolio);
+            $this->invoiceConceptsCache[$cacheKey] = $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent, $returnedByIndex);
+        }
+
+        return $this->invoiceConceptsCache[$cacheKey];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function getConceptoByIndex(string $invoiceFolio, int $clientId, int $conceptoIndex): ?array
+    {
+        $conceptos = $this->getConceptosFromFesa($invoiceFolio, $clientId);
+
+        return $conceptos[$conceptoIndex] ?? null;
     }
 }

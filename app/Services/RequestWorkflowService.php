@@ -225,6 +225,20 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'El paso actual del workflow no existe']];
             }
 
+            $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+            $isFinalStep = !$nextStep || (bool) $currentWorkflowStep->isFinalStep;
+
+            if (!$isFinalStep) {
+                $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
+                if ($nextAssignedUserId === null) {
+                    return [
+                        'ok' => false,
+                        'status' => 422,
+                        'payload' => ['message' => 'No se encontró un usuario disponible para el siguiente paso del flujo "' . $nextStep->stepName . '". No se puede avanzar la solicitud.'],
+                    ];
+                }
+            }
+
             $activeRequestStep->update(['status' => 'approved', 'completedAt' => now()]);
 
             WorkflowRequestHistory::create([
@@ -236,9 +250,7 @@ class RequestWorkflowService
                 'comments' => $comments,
             ]);
 
-            $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
-
-            if (!$nextStep || (bool) $currentWorkflowStep->isFinalStep) {
+            if ($isFinalStep) {
                 $currentStep->update(['status' => 'approved']);
                 $requestModel->update(['status' => 'approved']);
 
@@ -252,8 +264,6 @@ class RequestWorkflowService
                     'notifyUserId' => null,
                 ];
             }
-
-            $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
 
             $nextRequestStep = WorkflowRequestStep::create([
                 'requestId' => $requestId,
@@ -811,11 +821,11 @@ class RequestWorkflowService
         }
 
         if (
-            Schema::hasTable('clientes_tme700618rc7_ext')
-            && Schema::hasColumn('clientes_tme700618rc7_ext', 'idCliente')
-            && Schema::hasColumn('clientes_tme700618rc7_ext', 'salesManagerId')
+            Schema::connection('invoices')->hasTable('clientes_TME700618RC7_ext')
+            && Schema::connection('invoices')->hasColumn('clientes_TME700618RC7_ext', 'idCliente')
+            && Schema::connection('invoices')->hasColumn('clientes_TME700618RC7_ext', 'salesManagerId')
         ) {
-            $candidateUserId = DB::table('clientes_tme700618rc7_ext')
+            $candidateUserId = DB::connection('invoices')->table('clientes_TME700618RC7_ext')
                 ->where('idCliente', $customerId)
                 ->value('salesManagerId');
 

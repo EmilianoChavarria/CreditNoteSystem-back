@@ -80,6 +80,7 @@ class PermissionService
             ->with('requiredAction:id,name,slug')
             ->orderBy('orderindex')
             ->orderBy('id')
+            ->where('isActive', 1)
             ->get();
 
         $allowedPermissions = Permission::query()

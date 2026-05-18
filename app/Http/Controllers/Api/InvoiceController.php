@@ -18,6 +18,8 @@ class InvoiceController extends Controller
 
     public function search(Request $request, int $clientId)
     {
+        $perPage = max(1, (int) $request->query('per_page', $request->query('perPage', 15)));
+        $page = max(1, (int) $request->query('page', 1));
         $invoices = $this->invoiceService->searchInvoices($clientId, $request->only([
             'uuid',
             'folio',
@@ -26,7 +28,7 @@ class InvoiceController extends Controller
             'moneda',
             'fechaInicial',
             'fechaFinal',
-        ]));
+        ]), $perPage, $page);
 
         return response()->json(ApiResponse::success('Facturas', $invoices));
     }
@@ -45,9 +47,12 @@ class InvoiceController extends Controller
         return response()->json(ApiResponse::success('Facturas', $invoices));
     }
 
-    public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType)
+    public function getInvoicesByClientIdAndChargeType(Request $request, int $clientId, string $chargeType)
     {
-        $invoices = $this->invoiceService->getInvoicesByClientIdAndChargeType($clientId, $chargeType);
+        $perPage = max(1, (int) $request->query('per_page', $request->query('perPage', 15)));
+        $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
+        $invoices = $this->invoiceService->getInvoicesByClientIdAndChargeType($clientId, $chargeType, $perPage, $page, $search);
 
         return response()->json(ApiResponse::success('Facturas', $invoices));
     }

@@ -248,15 +248,15 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page)
+    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '')
     {
-        return $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search)
+        return $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName)
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search)
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '')
     {
-        return $this->buildByRequestTypeQuery($requestTypeId, $search)
+        return $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName)
             ->paginate($perPage);
     }
 
@@ -285,17 +285,20 @@ class RequestCrudService
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) ($filters['page'] ?? 1));
         $search = trim((string) ($filters['search'] ?? ''));
+        $roleName = trim((string) ($filters['roleName'] ?? $filters['role_name'] ?? ''));
 
         $query = match ($module) {
             'pending_me' => $this->buildMyPendingQuery(
                 $authUser,
                 $isAdmin,
                 isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : null,
-                $search
+                $search,
+                $roleName
             ),
             'request_type' => $this->buildByRequestTypeQuery(
                 isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : 0,
-                $search
+                $search,
+                $roleName
             ),
             'drafts' => $this->buildDraftsQuery((int) ($authUser->id ?? 0)),
             default => throw ValidationException::withMessages([
@@ -316,8 +319,10 @@ class RequestCrudService
         return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
     }
 
-    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search)
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '')
     {
+        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
+
         $query = RequestModel::with([
             'requestType',
             'user',
@@ -328,11 +333,17 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
             'attachments',
         ])
-            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin) {
+            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin, $shouldFilterByRole, $roleName) {
                 $workflowQuery->where('status', 'pending');
 
                 if (!$isAdmin) {
                     $workflowQuery->where('assignedUserId', (int) $authUser->id);
+                }
+
+                if ($shouldFilterByRole) {
+                    $workflowQuery->whereHas('assignedRole', function ($roleQuery) use ($roleName) {
+                        $roleQuery->where('roleName', $roleName);
+                    });
                 }
             })
             ->orderBy('id');
@@ -348,8 +359,10 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search)
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '')
     {
+        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
+
         $query = RequestModel::with([
             'requestType',
             'user',
@@ -360,6 +373,11 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
+            ->when($shouldFilterByRole, function ($query) use ($roleName) {
+                $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
+                    $roleQuery->where('roleName', $roleName);
+                });
+            })
             ->orderBy('id');
 
         if ($search !== '') {
@@ -393,6 +411,10 @@ class RequestCrudService
                 ->orWhere('customerId', 'like', "%{$search}%")
                 ->orWhereHas('user', function ($userQuery) use ($search) {
                     $userQuery->where('fullName', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                })
+                ->orWhereHas('workflowCurrentStep.assignedUser', function ($assignedUserQuery) use ($search) {
+                    $assignedUserQuery->where('fullName', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%");
                 })
                 ->orWhereHas('reason', function ($reasonQuery) use ($search) {
