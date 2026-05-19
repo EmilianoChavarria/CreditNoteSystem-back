@@ -231,11 +231,12 @@ class RequestWorkflowService
             if (!$isFinalStep) {
                 $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
                 if ($nextAssignedUserId === null) {
-                    return [
-                        'ok' => false,
-                        'status' => 422,
-                        'payload' => ['message' => 'No se encontró un usuario disponible para el siguiente paso del flujo "' . $nextStep->stepName . '". No se puede avanzar la solicitud.'],
-                    ];
+                    $nextRoleName = mb_strtoupper((string) optional($nextStep->role)->roleName);
+                    $message = str_contains($nextRoleName, 'CS LEADER')
+                        ? 'No se puede avanzar la solicitud porque el solicitante no tiene un CS Leader asignado.'
+                        : 'No se encontró un usuario disponible para el siguiente paso del flujo "' . $nextStep->stepName . '". No se puede avanzar la solicitud.';
+
+                    return ['ok' => false, 'status' => 422, 'payload' => ['message' => $message]];
                 }
             }
 
@@ -790,17 +791,11 @@ class RequestWorkflowService
         $roleName = mb_strtoupper((string) optional($step->role)->roleName);
 
         if (str_contains($roleName, 'CS LEADER')) {
-            $userId = $this->resolveCsLeaderAssignedUserId($requestModel);
-            if ($userId !== null) {
-                return $userId;
-            }
+            return $this->resolveCsLeaderAssignedUserId($requestModel);
         }
 
         if (str_contains($roleName, 'MANAGER')) {
-            $userId = $this->resolveManagerAssignedUserId($requestModel);
-            if ($userId !== null) {
-                return $userId;
-            }
+            return $this->resolveManagerAssignedUserId($requestModel);
         }
 
         return $this->resolveFirstUserByRoleId((int) $step->roleId);
@@ -813,21 +808,32 @@ class RequestWorkflowService
             return null;
         }
 
+        $classification = RequestClassification::find($requestModel->classificationId);
+        $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
+
+        $managerColumn = match (true) {
+            str_contains($classificationType, 'finance')    => 'financeManagerId',
+            str_contains($classificationType, 'marketing')  => 'marketingManagerId',
+            str_contains($classificationType, 'customer')   => 'salesManagerId',
+            default                                         => 'salesManagerId',
+        };
+
         $customer = Customer::query()->where('idClient', $customerId)->first();
-        $candidateUserId = $customer?->salesManagerId ? (int) $customer->salesManagerId : null;
+        $candidateUserId = $customer?->{$managerColumn} ? (int) $customer->{$managerColumn} : null;
 
         if ($candidateUserId !== null && $this->isActiveUser($candidateUserId)) {
             return $candidateUserId;
         }
 
+        $extTable = 'clientes_TME700618RC7_ext';
         if (
-            Schema::connection('invoices')->hasTable('clientes_TME700618RC7_ext')
-            && Schema::connection('invoices')->hasColumn('clientes_TME700618RC7_ext', 'idCliente')
-            && Schema::connection('invoices')->hasColumn('clientes_TME700618RC7_ext', 'salesManagerId')
+            Schema::connection('invoices')->hasTable($extTable)
+            && Schema::connection('invoices')->hasColumn($extTable, 'idCliente')
+            && Schema::connection('invoices')->hasColumn($extTable, $managerColumn)
         ) {
-            $candidateUserId = DB::connection('invoices')->table('clientes_TME700618RC7_ext')
+            $candidateUserId = DB::connection('invoices')->table($extTable)
                 ->where('idCliente', $customerId)
-                ->value('salesManagerId');
+                ->value($managerColumn);
 
             if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
                 return (int) $candidateUserId;
