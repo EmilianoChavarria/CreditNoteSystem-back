@@ -55,7 +55,7 @@ class ReturnOrderService
                 $clientTable . ' as cl',
                 'cl.idCliente',
                 '=',
-                'returnOrders.clientId'
+                'returnorders.clientId'
             );
 
             $query->where(function ($q) use ($search, $hasRazonSocial, $hasIdCliente) {
@@ -64,12 +64,12 @@ class ReturnOrderService
                 }
 
                 if ($hasIdCliente && is_numeric($search)) {
-                    $q->orWhere('returnOrders.clientId', (int) $search);
+                    $q->orWhere('returnorders.clientId', (int) $search);
                 }
             });
 
             $query->select(
-                'returnOrders.*',
+                'returnorders.*',
                 $hasRazonSocial ? 'cl.razonSocial' : DB::raw('NULL as razonSocial')
             )->where('orderStatus', '0');
             ;
@@ -78,7 +78,7 @@ class ReturnOrderService
                 $query->where('clientId', (int) $search);
             }
 
-            $query->select('returnOrders.*', DB::raw('NULL as razonSocial'));
+            $query->select('returnorders.*', DB::raw('NULL as razonSocial'));
         }
 
         $orders = $query->get();
@@ -206,19 +206,19 @@ class ReturnOrderService
         $totalReturned = $this->getTotalReturnedForProduct($invoiceFolio, $clientId, $conceptoIndex);
         $available     = max(0, $concepto['cantidad'] - $totalReturned);
 
-        $history = ReturnOrderItemHistory::where('returnOrderItemHistory.invoiceFolio', $invoiceFolio)
-            ->where('returnOrderItemHistory.invoiceClientId', $clientId)
-            ->where('returnOrderItemHistory.conceptoIndex', $conceptoIndex)
-            ->join('returnOrderItems', 'returnOrderItems.id', '=', 'returnOrderItemHistory.returnOrderItemId')
-            ->join('returnOrders', 'returnOrders.id', '=', 'returnOrderItems.returnOrderId')
+        $history = ReturnOrderItemHistory::where('returnorderitemhistory.invoiceFolio', $invoiceFolio)
+            ->where('returnorderitemhistory.invoiceClientId', $clientId)
+            ->where('returnorderitemhistory.conceptoIndex', $conceptoIndex)
+            ->join('returnorderitems', 'returnorderitems.id', '=', 'returnorderitemhistory.returnOrderItemId')
+            ->join('returnorders', 'returnorders.id', '=', 'returnorderitems.returnOrderId')
             ->select(
-                'returnOrderItemHistory.createdAt as date',
-                'returnOrders.id as returnOrderId',
-                'returnOrderItemHistory.returnedQuantity as quantity',
-                'returnOrders.status',
-                'returnOrders.notes',
+                'returnorderitemhistory.createdAt as date',
+                'returnorders.id as returnOrderId',
+                'returnorderitemhistory.returnedQuantity as quantity',
+                'returnorders.status',
+                'returnorders.notes',
             )
-            ->orderByDesc('returnOrderItemHistory.createdAt')
+            ->orderByDesc('returnorderitemhistory.createdAt')
             ->get()
             ->map(fn ($row) => [
                 'date'          => $row->date,

@@ -13,6 +13,7 @@ use App\Models\WorkflowRequestCurrentStep;
 use App\Models\WorkflowRequestHistory;
 use App\Models\WorkflowRequestStep;
 use App\Models\WorkflowStep;
+use App\Models\Role;
 use App\Models\WorkflowStepTransition;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -891,7 +892,24 @@ class RequestWorkflowService
             ->orderBy('id')
             ->first();
 
-        return $user ? (int) $user->id : null;
+        if ($user) {
+            return (int) $user->id;
+        }
+
+        $equivalentroleid = Role::query()->where('id', $roleId)->value('equivalentroleid');
+
+        if (!$equivalentroleid) {
+            return null;
+        }
+
+        $fallbackUser = User::query()
+            ->where('roleId', (int) $equivalentroleid)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->orderBy('id')
+            ->first();
+
+        return $fallbackUser ? (int) $fallbackUser->id : null;
     }
 
     private function isActiveUser(int $userId): bool
