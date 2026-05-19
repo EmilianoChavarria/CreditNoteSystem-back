@@ -21,11 +21,11 @@ class RequestTypePermissionController extends Controller
         $items = $request->input('permissions', $request->all());
 
         $validator = Validator::make(['permissions' => $items], [
-            'permissions' => ['required', 'array', 'min:1'],
-            'permissions.*.role_id' => ['required', 'int', 'exists:roles,id'],
-            'permissions.*.request_type_id' => ['required', 'int', 'exists:requesttype,id'],
-            'permissions.*.action_id' => ['required', 'int', 'exists:actions,id'],
-            'permissions.*.is_allowed' => ['required', 'boolean'],
+            'permissions'                     => ['required', 'array', 'min:1'],
+            'permissions.*.role_id'           => ['required', 'integer', 'min:1'],
+            'permissions.*.request_type_id'   => ['required', 'integer', 'min:1'],
+            'permissions.*.action_id'         => ['required', 'integer', 'min:1'],
+            'permissions.*.is_allowed'        => ['required', 'boolean'],
         ]);
 
         if ($validator->fails()) {
@@ -34,7 +34,9 @@ class RequestTypePermissionController extends Controller
 
         $result = $this->requestTypePermissionService->upsertPermissions($items);
 
-        return response()->json(ApiResponse::success('Permisos por tipo de solicitud actualizados correctamente', $result));
+        return response()->json(ApiResponse::success('Permisos por tipo de solicitud actualizados correctamente', [
+            'summary' => $result,
+        ]));
     }
 
     public function getAll()
