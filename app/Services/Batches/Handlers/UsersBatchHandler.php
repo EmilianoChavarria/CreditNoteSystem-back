@@ -10,10 +10,10 @@ use App\Models\User;
 use App\Models\UserSecurity;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
+use App\Services\EmailSenderService;
 use Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -21,8 +21,10 @@ use Throwable;
 
 class UsersBatchHandler extends AbstractBatchHandler
 {
-    public function __construct(private readonly BulkFileParser $fileParser)
-    {
+    public function __construct(
+        private readonly BulkFileParser $fileParser,
+        private readonly EmailSenderService $emailSender,
+    ) {
     }
 
     public function batchType(): string
@@ -209,13 +211,14 @@ class UsersBatchHandler extends AbstractBatchHandler
         }
 
         try {
-            Mail::to((string) $validated['email'])->send(
+            $this->emailSender->send(
                 new UserRegisteredMail(
                     fullName: (string) $validated['fullName'],
                     email: (string) $validated['email'],
                     password: (string) $validated['password'],
                     locale: (string) ($validated['preferredLanguage'] ?? 'es')
-                )
+                ),
+                (string) $validated['email']
             );
         } catch (Throwable $e) {
             Log::warning('No se pudo enviar correo de bienvenida de usuario creado por batch', [

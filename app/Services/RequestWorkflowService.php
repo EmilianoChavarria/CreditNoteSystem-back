@@ -16,6 +16,7 @@ use App\Models\WorkflowStep;
 use App\Models\Role;
 use App\Models\WorkflowStepTransition;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
@@ -791,6 +792,11 @@ class RequestWorkflowService
         $step->loadMissing('role');
         $roleName = mb_strtoupper((string) optional($step->role)->roleName);
 
+        if (str_contains($roleName, 'REQUESTER')) {
+            $creatorId = (int) ($requestModel->userId ?? 0);
+            return $creatorId > 0 ? $creatorId : null;
+        }
+
         if (str_contains($roleName, 'CS LEADER')) {
             return $this->resolveCsLeaderAssignedUserId($requestModel);
         }
@@ -893,10 +899,16 @@ class RequestWorkflowService
             ->first();
 
         if ($user) {
+            Log::info('[resolveFirstUserByRoleId] user found by primary role', ['roleId' => $roleId, 'userId' => $user->id]);
             return (int) $user->id;
         }
 
         $equivalentroleid = Role::query()->where('id', $roleId)->value('equivalentroleid');
+
+        Log::info('[resolveFirstUserByRoleId] no primary user, checking equivalent', [
+            'roleId'          => $roleId,
+            'equivalentroleid' => $equivalentroleid,
+        ]);
 
         if (!$equivalentroleid) {
             return null;
@@ -908,6 +920,11 @@ class RequestWorkflowService
             ->whereNull('deletedAt')
             ->orderBy('id')
             ->first();
+
+        Log::info('[resolveFirstUserByRoleId] fallback result', [
+            'equivalentroleid' => $equivalentroleid,
+            'fallbackUserId'   => $fallbackUser?->id,
+        ]);
 
         return $fallbackUser ? (int) $fallbackUser->id : null;
     }

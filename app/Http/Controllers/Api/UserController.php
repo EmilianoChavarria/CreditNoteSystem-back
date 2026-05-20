@@ -14,11 +14,11 @@ use App\Http\Requests\Users\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Mail\UserRegisteredMail;
 use App\Models\User;
+use App\Services\EmailSenderService;
 use App\Services\UserClientService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -29,6 +29,7 @@ class UserController extends Controller
         private readonly ChangePasswordAction $changePasswordAction,
         private readonly ChangeUserPasswordAction $changeUserPasswordAction,
         private readonly UserClientService $userClientService,
+        private readonly EmailSenderService $emailSender,
     ) {
     }
 
@@ -258,12 +259,15 @@ class UserController extends Controller
             $user->save();
         }
 
-        Mail::to($user->email)->send(new UserRegisteredMail(
-            (string) $user->fullName,
-            (string) $user->email,
-            $tempPassword,
-            $mailLocale
-        ));
+        $this->emailSender->send(
+            new UserRegisteredMail(
+                (string) $user->fullName,
+                (string) $user->email,
+                $tempPassword,
+                $mailLocale
+            ),
+            (string) $user->email
+        );
 
         $message = $isTestOnly
             ? 'Correo de prueba enviado sin actualizar la contraseña del usuario'

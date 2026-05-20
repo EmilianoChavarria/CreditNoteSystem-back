@@ -24,7 +24,9 @@ class EmailConfigController extends Controller
     public function upsert(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'emailSupport' => ['required', 'email', 'max:255'],
+            'emailSupport'  => ['required', 'email', 'max:255'],
+            'emailMode'     => ['sometimes', 'in:normal,override,disabled'],
+            'overrideEmail' => ['nullable', 'email', 'max:255', 'required_if:emailMode,override'],
         ]);
 
         if ($validator->fails()) {
@@ -36,9 +38,11 @@ class EmailConfigController extends Controller
         EmailConfig::updateOrCreate(
             ['id' => 1],
             [
-                'emailSupport' => $request->input('emailSupport'),
-                'createdAt'    => $existing ? $existing->createdAt : now(),
-                'updatedAt'    => now(),
+                'emailSupport'  => $request->input('emailSupport'),
+                'emailMode'     => $request->input('emailMode', $existing?->emailMode ?? 'normal'),
+                'overrideEmail' => $request->input('overrideEmail', $existing?->overrideEmail),
+                'createdAt'     => $existing ? $existing->createdAt : now(),
+                'updatedAt'     => now(),
             ]
         );
 

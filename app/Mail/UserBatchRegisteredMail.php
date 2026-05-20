@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\HasOverrideNotice;
 use App\Models\EmailConfig;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -9,7 +10,7 @@ use Illuminate\Queue\SerializesModels;
 
 class UserBatchRegisteredMail extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable, SerializesModels, HasOverrideNotice;
 
     /**
      * @param array<int, array{fullName: string, email: string, password: string, roleName?: string, locale?: string}> $users

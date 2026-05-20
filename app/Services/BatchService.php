@@ -17,13 +17,13 @@ use App\Services\Batches\Handlers\OrderNumbersBatchHandler;
 use App\Services\Batches\Handlers\SapScreenBatchHandler;
 use App\Services\Batches\Handlers\UploadSupportBatchHandler;
 use App\Services\Batches\Handlers\UsersBatchHandler;
+use App\Services\EmailSenderService;
 use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -44,6 +44,7 @@ class BatchService
         NewRequestBatchHandler $newRequestBatchHandler,
         UsersBatchHandler $usersBatchHandler,
         private readonly NotificationService $notificationService,
+        private readonly EmailSenderService $emailSender,
     ) {
         $allHandlers = [
             $sapScreenBatchHandler,
@@ -344,7 +345,7 @@ class BatchService
         }
 
         try {
-            Mail::to($recipientEmail)->send(
+            $this->emailSender->send(
                 new BatchFinishedMail(
                     batchId: (int) $batch->id,
                     batchType: (string) $batch->batchType,
@@ -355,7 +356,8 @@ class BatchService
                     processingRecords: (int) $batch->processingRecords,
                     fullName: (string) ($batchWithUser?->user?->fullName ?? 'Usuario'),
                     locale: (string) ($batchWithUser?->user?->preferredLanguage ?? 'es')
-                )
+                ),
+                $recipientEmail
             );
         } catch (Throwable $e) {
             // El batch ya finalizo; si el correo falla solo se registra para diagnostico.
@@ -456,7 +458,7 @@ class BatchService
         });
 
         try {
-            Mail::to($recipient)->send(new UserBatchRegisteredMail($users, (int) $batch->id));
+            $this->emailSender->send(new UserBatchRegisteredMail($users, (int) $batch->id), $recipient);
         } catch (Throwable $e) {
             Log::warning('No se pudo enviar correo concentrado de usuarios creados por batch', [
                 'batchId' => (int) $batch->id,
