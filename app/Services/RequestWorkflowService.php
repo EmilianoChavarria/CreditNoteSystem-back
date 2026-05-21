@@ -764,8 +764,13 @@ class RequestWorkflowService
             return true;
         }
 
-        $field    = (string) $transition->conditionField;
-        $left     = data_get($requestModel, $field);
+        $field = (string) $transition->conditionField;
+
+        if ($field === 'totalAmount' && str_starts_with((string) ($requestModel->requestNumber ?? ''), 'DM')) {
+            $field = 'warehouseTotal';
+        }
+
+        $left = data_get($requestModel, $field);
         $operator = (string) ($transition->conditionOperator ?? '==');
         $rightRaw = $transition->conditionValue;
 
@@ -822,7 +827,7 @@ class RequestWorkflowService
             return $this->resolveCsLeaderAssignedUserId($requestModel);
         }
 
-        if (str_contains($roleName, 'MANAGER')) {
+        if (str_contains($roleName, 'MANAGER') && !str_contains($roleName, 'GENERAL MANAGER')) {
             return $this->resolveManagerAssignedUserId($requestModel);
         }
 

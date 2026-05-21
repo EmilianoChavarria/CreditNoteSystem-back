@@ -60,7 +60,7 @@
                                                         Tipo de solicitud
                                                     </p>
                                                     <p style="margin: 8px 0 0; color: #2d3748; font-size: 16px;">
-                                                        {{ $requestType }}
+                                                        {{ Str::title(mb_strtolower($requestType)) }}
                                                     </p>
                                                 </td>
                                             </tr>

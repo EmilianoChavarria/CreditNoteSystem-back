@@ -16,7 +16,7 @@ class Role extends Model
         'roleName',
         'color',
         'isActive',
-        'equivalentroleid',
+        'equivalentRoleId',
         'deletedAt',
     ];
 
@@ -29,7 +29,7 @@ class Role extends Model
 
     public function equivalentRole()
     {
-        return $this->belongsTo(Role::class, 'equivalentroleid');
+        return $this->belongsTo(Role::class, 'equivalentRoleId');
     }
 
     public function users()

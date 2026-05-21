@@ -28,6 +28,7 @@ use App\Services\RequestAttachmentService;
 use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
 use App\Services\RequestNumberService;
+use App\Services\RequestPdfService;
 use App\Services\RequestWorkflowService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -49,8 +50,18 @@ class RequestController extends Controller
         private readonly SendBackRequestAction $sendBackRequestAction,
         private readonly ApproveMassRequestsAction $approveMassRequestsAction,
         private readonly RejectMassRequestsAction $rejectMassRequestsAction,
+        private readonly RequestPdfService $requestPdfService,
     )
     {
+    }
+
+    public function downloadPdf(int $requestId)
+    {
+        try {
+            return $this->requestPdfService->generatePdf($requestId);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 404), 404);
+        }
     }
 
     public function getRequestHistoryById(int $requestId)
