@@ -81,6 +81,26 @@ class RoleController extends Controller
         return response()->json(ApiResponse::success('Rol actualizado correctamente', RoleResource::make($role), 201), 201);
     }
 
+    public function getEquivalentRole(int $id)
+    {
+        $role = Role::find($id);
+
+        if (!$role) {
+            return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
+        }
+
+        if (!$role->equivalentroleid) {
+            return response()->json(ApiResponse::success('El rol no tiene un rol equivalente registrado', null));
+        }
+
+        $role->load('equivalentRole');
+
+        return response()->json(ApiResponse::success('Rol equivalente', [
+            'id' => $role->equivalentRole->id,
+            'roleName' => $role->equivalentRole->roleName,
+        ]));
+    }
+
     public function setEquivalentRole(Request $request, int $id)
     {
         $role = Role::find($id);
