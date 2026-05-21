@@ -109,7 +109,9 @@ class RoleController extends Controller
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        $validator = Validator::make($request->all(), [
+        $equivalentRoleId = $request->input('equivalentRoleId') ?? $request->input('equivalentroleid');
+
+        $validator = Validator::make(['equivalentroleid' => $equivalentRoleId], [
             'equivalentroleid' => ['nullable', 'integer', 'different:' . $id, 'exists:roles,id'],
         ]);
 
@@ -117,7 +119,7 @@ class RoleController extends Controller
             return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
         }
 
-        $role->equivalentroleid = $request->input('equivalentroleid');
+        $role->equivalentroleid = $equivalentRoleId;
         $role->save();
 
         return response()->json(ApiResponse::success('Rol equivalente actualizado correctamente', RoleResource::make($role->load('equivalentRole'))));
