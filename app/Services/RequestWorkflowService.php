@@ -15,6 +15,7 @@ use App\Models\WorkflowRequestStep;
 use App\Models\WorkflowStep;
 use App\Models\Role;
 use App\Models\WorkflowStepTransition;
+use App\Mail\RequestPendingApprovalMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -30,6 +31,7 @@ class RequestWorkflowService
     public function __construct(
         private readonly NotificationService $notificationService,
         private readonly BanxicoService $banxicoService,
+        private readonly EmailSenderService $emailSender,
     ) {
     }
 
@@ -178,7 +180,7 @@ class RequestWorkflowService
         }
 
         $requestModel = RequestModel::query()
-            ->with('requestType')
+            ->with(['requestType', 'classification'])
             ->find($requestId);
 
         if (!$requestModel) {
@@ -186,6 +188,25 @@ class RequestWorkflowService
         }
 
         $this->notificationService->createAssignedRequestNotification($requestModel, (int) $currentStep->assignedUserId);
+
+        $assignedUser = User::query()
+            ->where('id', $currentStep->assignedUserId)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->first();
+
+        if (!$assignedUser || empty($assignedUser->email)) {
+            return;
+        }
+
+        $mail = new RequestPendingApprovalMail(
+            fullName: $assignedUser->fullName,
+            requestNumber: (string) $requestModel->requestNumber,
+            requestType: (string) ($requestModel->requestType?->name ?? ''),
+            classification: (string) ($requestModel->classification?->name ?? ''),
+        );
+
+        $this->emailSender->send($mail, $assignedUser->email);
     }
 
     public function approve(int $requestId, mixed $authUser, bool $isAdmin, ?string $comments): array
