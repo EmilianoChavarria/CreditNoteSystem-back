@@ -910,23 +910,49 @@ class RequestWorkflowService
             'equivalentroleid' => $equivalentroleid,
         ]);
 
-        if (!$equivalentroleid) {
+        if ($equivalentroleid) {
+            $fallbackUser = User::query()
+                ->where('roleId', (int) $equivalentroleid)
+                ->where('isActive', true)
+                ->whereNull('deletedAt')
+                ->orderBy('id')
+                ->first();
+
+            Log::info('[resolveFirstUserByRoleId] fallback result via role equivalentroleid', [
+                'equivalentroleid' => $equivalentroleid,
+                'fallbackUserId'   => $fallbackUser?->id,
+            ]);
+
+            if ($fallbackUser) {
+                return (int) $fallbackUser->id;
+            }
+        }
+
+        $reverseRoleIds = Role::query()
+            ->where('equivalentroleid', $roleId)
+            ->pluck('id');
+
+        Log::info('[resolveFirstUserByRoleId] checking reverse equivalent roles', [
+            'roleId'         => $roleId,
+            'reverseRoleIds' => $reverseRoleIds,
+        ]);
+
+        if ($reverseRoleIds->isEmpty()) {
             return null;
         }
 
-        $fallbackUser = User::query()
-            ->where('roleId', (int) $equivalentroleid)
+        $reverseUser = User::query()
+            ->whereIn('roleId', $reverseRoleIds)
             ->where('isActive', true)
             ->whereNull('deletedAt')
             ->orderBy('id')
             ->first();
 
-        Log::info('[resolveFirstUserByRoleId] fallback result', [
-            'equivalentroleid' => $equivalentroleid,
-            'fallbackUserId'   => $fallbackUser?->id,
+        Log::info('[resolveFirstUserByRoleId] reverse equivalent result', [
+            'reverseUserId' => $reverseUser?->id,
         ]);
 
-        return $fallbackUser ? (int) $fallbackUser->id : null;
+        return $reverseUser ? (int) $reverseUser->id : null;
     }
 
     private function isActiveUser(int $userId): bool
