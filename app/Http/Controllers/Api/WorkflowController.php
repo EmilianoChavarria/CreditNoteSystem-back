@@ -37,7 +37,11 @@ class WorkflowController extends Controller
 
     public function store(StoreWorkflowRequest $request)
     {
-        $workflow = $this->workflowService->create($request->validated());
+        try {
+            $workflow = $this->workflowService->create($request->validated());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
 
         return response()->json(
             ApiResponse::success('Workflow created successfully', WorkflowResource::make($workflow), 201),
