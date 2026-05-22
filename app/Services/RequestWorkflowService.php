@@ -818,6 +818,10 @@ class RequestWorkflowService
         $step->loadMissing('role');
         $roleName = mb_strtoupper((string) optional($step->role)->roleName);
 
+        if (str_contains($roleName, 'REQUESTER') && str_contains($roleName, 'CS LEADER')) {
+            return $this->resolveCsLeaderAssignedUserId($requestModel);
+        }
+
         if (str_contains($roleName, 'REQUESTER')) {
             $creatorId = (int) ($requestModel->userId ?? 0);
             return $creatorId > 0 ? $creatorId : null;
