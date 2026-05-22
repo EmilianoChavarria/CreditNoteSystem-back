@@ -22,6 +22,7 @@ class RequestPdfService
             'reason',
             'classification',
             'workflowSteps.workflowStep.role',
+            'workflowSteps.assignedUser',
             'workflowSteps.history.actionUser',
         ])->find($requestId);
 
@@ -86,6 +87,8 @@ class RequestPdfService
     private const MANAGER_ROLE_ORDER = [
         'MANAGER',
         'GENERAL MANAGER',
+        'FINANCE',
+        'BUSINESS CONTROLLER',
         'BUSINESS CONTROLLERS',
         'VICE PRESIDENT LATIN AMERICA',
         'VICE PRESIDENT & CONTROLLER',
@@ -111,15 +114,15 @@ class RequestPdfService
                 continue;
             }
 
-            $userName = $approvedHistory->actionUser?->fullName ?? '';
-            $date     = $approvedHistory->createdAt?->format('d/m/Y') ?? '';
+            $approverName      = $approvedHistory->actionUser?->fullName ?? '';
+            $assignedUserName  = $requestStep->assignedUser?->fullName ?? $approverName;
+            $date              = $approvedHistory->createdAt?->format('d/m/Y') ?? '';
 
             if (
                 str_contains($roleName, 'AUDITOR')
-                || str_contains($roleName, 'BUSINESS CONTROLLER')
                 || str_contains($stepName, 'AUDIT')
             ) {
-                $auditor = ['name' => $userName, 'date' => $date];
+                $auditor = ['name' => $approverName, 'date' => $date];
                 continue;
             }
 
@@ -128,13 +131,19 @@ class RequestPdfService
                 || str_contains($stepName, 'FINANCE')
                 || str_contains($stepName, 'FINANZ')
             ) {
-                $finance = ['name' => $userName, 'date' => $date];
+                $finance = ['name' => $approverName, 'date' => $date];
+                $managersByRole['FINANCE'] = ['role' => 'FINANCE', 'name' => $assignedUserName, 'date' => $date];
+                continue;
+            }
+
+            if (str_contains($roleName, 'BUSINESS CONTROLLER')) {
+                $managersByRole['BUSINESS CONTROLLER'] = ['role' => 'BUSINESS CONTROLLER', 'name' => $assignedUserName, 'date' => $date];
                 continue;
             }
 
             foreach (self::MANAGER_ROLE_ORDER as $knownRole) {
                 if ($roleName === $knownRole) {
-                    $managersByRole[$knownRole] = ['role' => $knownRole, 'name' => $userName, 'date' => $date];
+                    $managersByRole[$knownRole] = ['role' => $knownRole, 'name' => $assignedUserName, 'date' => $date];
                     break;
                 }
             }
