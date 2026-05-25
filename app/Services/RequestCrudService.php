@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Request as RequestModel;
 use App\Models\WorkflowRequestCurrentStep;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class RequestCrudService
@@ -250,14 +252,20 @@ class RequestCrudService
 
     public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '')
     {
-        return $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName)
+        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName)
             ->paginate($perPage, ['*'], 'page', $page);
+        $this->enrichWithRazonSocial($paginator);
+
+        return $paginator;
     }
 
     public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '')
     {
-        return $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName)
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName)
             ->paginate($perPage);
+        $this->enrichWithRazonSocial($paginator);
+
+        return $paginator;
     }
 
     public function getByCustomerId(string $customerId, int $perPage, int $page)
@@ -346,7 +354,7 @@ class RequestCrudService
                     });
                 }
             })
-            ->orderBy('id');
+            ->orderByDesc('createdAt');
 
         if ($requestTypeId !== null) {
             $query->where('requestTypeId', $requestTypeId);
@@ -378,7 +386,7 @@ class RequestCrudService
                     $roleQuery->where('roleName', $roleName);
                 });
             })
-            ->orderBy('id');
+            ->orderByDesc('createdAt');
 
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
@@ -426,6 +434,37 @@ class RequestCrudService
                         ->orWhere('type', 'like', "%{$search}%");
                 });
         });
+    }
+
+    private function enrichWithRazonSocial(LengthAwarePaginator $paginator): void
+    {
+        try {
+            if (!Schema::connection('invoices')->hasTable('clientes_TME700618RC7')) {
+                return;
+            }
+
+            $customerIds = $paginator->getCollection()
+                ->pluck('customerId')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($customerIds)) {
+                return;
+            }
+
+            $map = DB::connection('invoices')
+                ->table('clientes_TME700618RC7')
+                ->whereIn('idCliente', $customerIds)
+                ->pluck('razonSocial', 'idCliente');
+
+            $paginator->getCollection()->each(function ($request) use ($map) {
+                $request->razonSocial = $map[(string) $request->customerId] ?? null;
+            });
+        } catch (\Throwable) {
+            // invoices DB unavailable — requests still returned without razonSocial
+        }
     }
 
     private function buildEditableRequestData(array $data): array
