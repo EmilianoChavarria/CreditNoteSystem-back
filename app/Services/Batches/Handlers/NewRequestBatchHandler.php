@@ -206,7 +206,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'comments' => $validated['comments'] ?? null,
         ]);
 
-        $this->requestWorkflowService->assignRequestToWorkflow($request, (int) $validated['userId']);
+        $this->requestWorkflowService->assignRequestToWorkflow($request, (int) $validated['userId'], stayAtInitialStep: true);
 
         return (int) $request->id;
     }

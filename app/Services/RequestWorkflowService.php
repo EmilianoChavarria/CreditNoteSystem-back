@@ -35,7 +35,7 @@ class RequestWorkflowService
     ) {
     }
 
-    public function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId): void
+    public function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId, bool $stayAtInitialStep = false): void
     {
         $classification = RequestClassification::find($requestModel->classificationId);
 
@@ -82,7 +82,7 @@ class RequestWorkflowService
 
         $firstOperationalStep = $this->resolveFirstOperationalStep($workflow, (int) $initialStep->id);
 
-        if (!$firstOperationalStep || (int) $firstOperationalStep->id === (int) $initialStep->id) {
+        if (!$firstOperationalStep || (int) $firstOperationalStep->id === (int) $initialStep->id || $stayAtInitialStep) {
             $assignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $initialStep);
 
             $requestStep = WorkflowRequestStep::create([
