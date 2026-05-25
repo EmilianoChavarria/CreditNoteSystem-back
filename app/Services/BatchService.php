@@ -334,6 +334,7 @@ class BatchService
 
         $this->notificationService->createBatchFinishedNotification($batch);
 
+
         $batchWithUser = Batch::query()
             ->with('user:id,fullName,email,preferredLanguage')
             ->find((int) $batch->id);
