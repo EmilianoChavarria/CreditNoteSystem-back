@@ -204,6 +204,7 @@ class RequestWorkflowService
             requestNumber: (string) $requestModel->requestNumber,
             requestType: (string) ($requestModel->requestType?->name ?? ''),
             classification: (string) ($requestModel->classification?->name ?? ''),
+            locale: (string) ($assignedUser->preferredLanguage ?? 'es'),
         );
 
         $this->emailSender->send($mail, $assignedUser->email);

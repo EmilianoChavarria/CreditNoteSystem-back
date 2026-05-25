@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{ app()->getLocale() }}">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Solicitud pendiente de aprobación</title>
+    <title>{{ __('emails.pending_approval_title') }}</title>
 </head>
 
 <body
@@ -31,11 +31,11 @@
                     <tr>
                         <td style="padding: 40px 30px;">
                             <p style="margin: 0 0 20px; color: #2d3748; font-size: 16px; line-height: 1.6;">
-                                Hola, <strong>{{ $fullName }}</strong>
+                                <strong>{{ __('emails.pending_approval_greeting', ['name' => $fullName]) }}</strong>
                             </p>
 
                             <p style="margin: 0 0 30px; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                                Tienes una nueva solicitud pendiente de aprobación. A continuación encontrarás los detalles:
+                                {{ __('emails.pending_approval_intro') }}
                             </p>
 
                             <!-- Request Info Box -->
@@ -47,7 +47,7 @@
                                             <tr>
                                                 <td style="padding-bottom: 16px;">
                                                     <p style="margin: 0; color: #718096; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
-                                                        Número de solicitud
+                                                        {{ __('emails.pending_approval_number_label') }}
                                                     </p>
                                                     <p style="margin: 8px 0 0; color: #2d3748; font-size: 16px; font-weight: 700;">
                                                         {{ $requestNumber }}
@@ -57,7 +57,7 @@
                                             <tr>
                                                 <td style="padding-bottom: 16px;">
                                                     <p style="margin: 0; color: #718096; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
-                                                        Tipo de solicitud
+                                                        {{ __('emails.pending_approval_type_label') }}
                                                     </p>
                                                     <p style="margin: 8px 0 0; color: #2d3748; font-size: 16px;">
                                                         {{ Str::title(mb_strtolower($requestType)) }}
@@ -67,7 +67,7 @@
                                             <tr>
                                                 <td>
                                                     <p style="margin: 0; color: #718096; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
-                                                        Clasificación
+                                                        {{ __('emails.pending_approval_class_label') }}
                                                     </p>
                                                     <p style="margin: 8px 0 0; color: #2d3748; font-size: 16px;">
                                                         {{ $classification }}
@@ -80,7 +80,7 @@
                             </table>
 
                             <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
-                                Por favor ingresa al sistema para revisar y aprobar la solicitud.
+                                {{ __('emails.pending_approval_cta') }}
                             </p>
                         </td>
                     </tr>
@@ -89,16 +89,16 @@
                     <tr>
                         <td style="background-color: #ff8200; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
                             <p style="margin: 0; color: #FFFFFF; font-size: 13px; line-height: 1.5;">
-                                Este es un mensaje automático, por favor no respondas a este correo.
+                                {{ __('emails.pending_approval_footer') }}
                             </p>
                             @if (!empty($isOverride) && !empty($originalRecipient))
                             <p style="margin: 12px 0 0; color: #FFFFFF; font-size: 12px; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.4); padding-top: 12px;">
-                                Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a <strong>{{ $originalRecipient }}</strong>
+                                {{ __('emails.pending_approval_override_notice', ['recipient' => $originalRecipient]) }}
                             </p>
                             @endif
                             <p style="margin: 16px 0 0; color: #FFFFFF; font-size: 13px;">
                                 © {{ now()->year }}
-                                <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> Todos los derechos reservados.
+                                <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> {{ __('emails.footer_rights') }}
                             </p>
                         </td>
                     </tr>
