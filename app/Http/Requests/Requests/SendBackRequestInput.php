@@ -15,7 +15,7 @@ class SendBackRequestInput extends FormRequest
     {
         return [
             'targetWorkflowStepId' => ['required', 'integer', 'min:1'],
-            'comments'             => ['required', 'string', 'max:1000'],
+            'comments'             => ['nullable', 'string', 'max:1000'],
         ];
     }
 }
