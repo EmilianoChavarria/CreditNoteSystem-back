@@ -16,7 +16,7 @@ class ApproveMassRequestInput extends FormRequest
         return [
             'requestIds' => ['required', 'array', 'min:1'],
             'requestIds.*' => ['integer', 'distinct'],
-            'comments' => ['nullable', 'string', 'max:1000'],
+            'comments' => ['nullable', 'string', 'max:7000'],
         ];
     }
 }

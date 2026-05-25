@@ -16,7 +16,7 @@ class RejectMassRequestInput extends FormRequest
         return [
             'requestIds' => ['required', 'array', 'min:1'],
             'requestIds.*' => ['integer', 'distinct'],
-            'comments' => ['required', 'string', 'max:1000'],
+            'comments' => ['required', 'string', 'max:7000'],
         ];
     }
 }
