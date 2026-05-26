@@ -21,9 +21,10 @@ class SapScreenBatchHandler extends AbstractBatchHandler
 
         foreach ($context->storedFiles as $file) {
             $nameWithoutExtension = pathinfo((string) $file['originalName'], PATHINFO_FILENAME);
+            $requestNumber = explode('_', $nameWithoutExtension)[0];
 
             $rows[] = [
-                'requestNumber' => $nameWithoutExtension,
+                'requestNumber' => $requestNumber,
                 'file' => $file,
             ];
         }

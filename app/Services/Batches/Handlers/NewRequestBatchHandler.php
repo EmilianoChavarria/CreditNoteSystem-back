@@ -154,6 +154,8 @@ class NewRequestBatchHandler extends AbstractBatchHandler
 
         $validated = $this->validateRow($payload, $rules);
 
+        $this->checkDuplicate($validated);
+
         $amount = (float) ($validated['amount'] ?? 0);
         $hasIva = (bool) ($validated['hasIva'] ?? true);
         $iva = $hasIva ? round($amount * 0.16, 2) : 0;
@@ -209,6 +211,42 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         $this->requestWorkflowService->assignRequestToWorkflow($request, (int) $validated['userId'], stayAtInitialStep: true);
 
         return (int) $request->id;
+    }
+
+    /**
+     * @param array<string, mixed> $validated
+     */
+    private function checkDuplicate(array $validated): void
+    {
+        $classificationId = isset($validated['classificationId']) ? (int) $validated['classificationId'] : null;
+        $invoiceNumber = isset($validated['invoiceNumber']) && $validated['invoiceNumber'] !== '' ? (string) $validated['invoiceNumber'] : null;
+        $comments = isset($validated['comments']) && $validated['comments'] !== '' ? (string) $validated['comments'] : null;
+
+        $query = RequestModel::query();
+
+        if ($classificationId !== null) {
+            $query->where('classificationId', $classificationId);
+        } else {
+            $query->whereNull('classificationId');
+        }
+
+        if ($invoiceNumber !== null) {
+            $query->where('invoiceNumber', $invoiceNumber);
+        } else {
+            $query->whereNull('invoiceNumber');
+        }
+
+        if ($comments !== null) {
+            $query->where('comments', $comments);
+        } else {
+            $query->whereNull('comments');
+        }
+
+        if ($query->exists()) {
+            throw new RuntimeException(
+                'Esta nota ya ha sido cargada anteriormente.'
+            );
+        }
     }
 
     /**
