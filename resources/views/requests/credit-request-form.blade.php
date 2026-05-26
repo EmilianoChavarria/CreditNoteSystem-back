@@ -130,7 +130,7 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
   <tr>
     <td>
       <div class="label">Comentarios / Comments</div>
-      <div style="margin-top:3px; font-size:8pt;">{!! nl2br(e(wordwrap((string)($r->comments ?? ''), 128, "\n", true))) !!}</div>
+      <div style="margin-top:3px; font-size:8pt;">{!! nl2br(e(wordwrap((string)($r->comments ?? ''), 85, "\n", true))) !!}</div>
     </td>
   </tr>
 </table>
