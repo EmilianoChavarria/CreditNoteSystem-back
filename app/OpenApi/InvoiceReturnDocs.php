@@ -17,6 +17,35 @@ use OpenApi\Attributes as OA;
     ],
     responses: [new OA\Response(response: 200, description: 'Facturas del cliente')]
 )]
+#[OA\Get(path: '/invoices/{clientId}/search', operationId: 'invoicesSearchByClient', tags: ['Invoices'], summary: 'Buscar facturas paginadas de un cliente',
+    security: [['bearerAuth' => []]],
+    parameters: [
+        new OA\Parameter(name: 'clientId',       in: 'path',  required: true, schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'uuid',           in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'folio',          in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'receptorRfc',    in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'receptorNombre', in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'moneda',         in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'fechaInicial',   in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'fechaFinal',     in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'per_page',       in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'perPage',        in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'page',           in: 'query', schema: new OA\Schema(type: 'integer')),
+    ],
+    responses: [new OA\Response(response: 200, description: 'Facturas encontradas')]
+)]
+#[OA\Get(path: '/invoices/{clientId}/charge-type/{chargeType}', operationId: 'invoicesByClientAndChargeType', tags: ['Invoices'], summary: 'Facturas paginadas por cliente y tipo de cargo',
+    security: [['bearerAuth' => []]],
+    parameters: [
+        new OA\Parameter(name: 'clientId',   in: 'path',  required: true, schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'chargeType', in: 'path',  required: true, schema: new OA\Schema(type: 'string', example: 'annual')),
+        new OA\Parameter(name: 'per_page',   in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'perPage',    in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'page',       in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'search',     in: 'query', schema: new OA\Schema(type: 'string'), description: 'Busca por folio de factura.'),
+    ],
+    responses: [new OA\Response(response: 200, description: 'Facturas paginadas del cliente')]
+)]
 #[OA\Get(path: '/invoices/{folio}/products/{clientId}', operationId: 'invoicesProducts', tags: ['Invoices'],
     summary: 'Productos de factura con cantidades disponibles a devolver',
     security: [['bearerAuth' => []]],

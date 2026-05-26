@@ -16,7 +16,6 @@ class UserBlockedHistory extends Model
         'userId',
         'action',
         'reason',
-        'ipAddress',
         'adminUserId',
         'createdAt',
     ];

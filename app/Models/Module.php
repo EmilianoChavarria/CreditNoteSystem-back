@@ -14,11 +14,13 @@ class Module extends Model
 
     protected $fillable = [
         'name',
+        'description',
         'parentid',
         'url',
         'icon',
         'orderindex',
         'requiredactionid',
+        'isActive',
     ];
 
     protected $casts = [

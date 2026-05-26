@@ -14,6 +14,14 @@ use OpenApi\Attributes as OA;
 )]
 #[OA\Get(path: '/requests/pending/me', operationId: 'requestsPendingMe', tags: ['Requests'], summary: 'Solicitudes pendientes del usuario actual',
     security: [['bearerAuth' => []]],
+    parameters: [
+        new OA\Parameter(name: 'requestTypeId', in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'per_page',      in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'perPage',       in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'page',          in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'search',        in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'roleName',      in: 'query', schema: new OA\Schema(type: 'string', example: 'ADMIN'), description: 'Filtra por roleName exacto del rol asignado al paso pendiente actual. Enviar All o omitir para mostrar todos.'),
+    ],
     responses: [new OA\Response(response: 200, description: 'Pendientes propias')]
 )]
 #[OA\Get(path: '/requests/pending/{id}', operationId: 'requestsPendingByRole', tags: ['Requests'], summary: 'Solicitudes pendientes por rol',
@@ -32,7 +40,13 @@ use OpenApi\Attributes as OA;
 )]
 #[OA\Get(path: '/requests/{id}', operationId: 'requestsByType', tags: ['Requests'], summary: 'Solicitudes por tipo',
     security: [['bearerAuth' => []]],
-    parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, description: 'requestTypeId', schema: new OA\Schema(type: 'integer'))],
+    parameters: [
+        new OA\Parameter(name: 'id',       in: 'path', required: true, description: 'requestTypeId', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'page',     in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'search',   in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'roleName', in: 'query', schema: new OA\Schema(type: 'string', example: 'ADMIN'), description: 'Filtra por roleName exacto del rol asignado al paso actual. Enviar All o omitir para mostrar todos.'),
+    ],
     responses: [new OA\Response(response: 200, description: 'Solicitudes del tipo')]
 )]
 #[OA\Get(path: '/requests/{requestId}/history', operationId: 'requestsHistory', tags: ['Requests'], summary: 'Historial de una solicitud',

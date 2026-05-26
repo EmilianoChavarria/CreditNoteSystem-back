@@ -16,6 +16,7 @@ class Role extends Model
         'roleName',
         'color',
         'isActive',
+        'equivalentRoleId',
         'deletedAt',
     ];
 
@@ -25,6 +26,11 @@ class Role extends Model
         'updatedAt' => 'datetime',
         'deletedAt' => 'datetime',
     ];
+
+    public function equivalentRole()
+    {
+        return $this->belongsTo(Role::class, 'equivalentRoleId');
+    }
 
     public function users()
     {

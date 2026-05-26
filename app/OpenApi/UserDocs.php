@@ -13,6 +13,8 @@ use OpenApi\Attributes as OA;
     parameters: [
         new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer')),
         new OA\Parameter(name: 'page',     in: 'query', schema: new OA\Schema(type: 'integer')),
+        new OA\Parameter(name: 'search',   in: 'query', schema: new OA\Schema(type: 'string')),
+        new OA\Parameter(name: 'roleName', in: 'query', schema: new OA\Schema(type: 'string', example: 'ADMIN'), description: 'Filtra por roleName exacto. Enviar All o omitir para mostrar todos.'),
     ],
     responses: [new OA\Response(response: 200, description: 'Usuarios paginados')]
 )]

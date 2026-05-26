@@ -13,8 +13,11 @@ use App\Models\WorkflowRequestCurrentStep;
 use App\Models\WorkflowRequestHistory;
 use App\Models\WorkflowRequestStep;
 use App\Models\WorkflowStep;
+use App\Models\Role;
 use App\Models\WorkflowStepTransition;
+use App\Mail\RequestPendingApprovalMail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
@@ -28,10 +31,11 @@ class RequestWorkflowService
     public function __construct(
         private readonly NotificationService $notificationService,
         private readonly BanxicoService $banxicoService,
+        private readonly EmailSenderService $emailSender,
     ) {
     }
 
-    public function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId): void
+    public function assignRequestToWorkflow(RequestModel $requestModel, int $actionUserId, bool $stayAtInitialStep = false): void
     {
         $classification = RequestClassification::find($requestModel->classificationId);
 
@@ -78,7 +82,7 @@ class RequestWorkflowService
 
         $firstOperationalStep = $this->resolveFirstOperationalStep($workflow, (int) $initialStep->id);
 
-        if (!$firstOperationalStep || (int) $firstOperationalStep->id === (int) $initialStep->id) {
+        if (!$firstOperationalStep || (int) $firstOperationalStep->id === (int) $initialStep->id || $stayAtInitialStep) {
             $assignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $initialStep);
 
             $requestStep = WorkflowRequestStep::create([
@@ -176,7 +180,7 @@ class RequestWorkflowService
         }
 
         $requestModel = RequestModel::query()
-            ->with('requestType')
+            ->with(['requestType', 'classification'])
             ->find($requestId);
 
         if (!$requestModel) {
@@ -184,6 +188,26 @@ class RequestWorkflowService
         }
 
         $this->notificationService->createAssignedRequestNotification($requestModel, (int) $currentStep->assignedUserId);
+
+        $assignedUser = User::query()
+            ->where('id', $currentStep->assignedUserId)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->first();
+
+        if (!$assignedUser || empty($assignedUser->email)) {
+            return;
+        }
+
+        $mail = new RequestPendingApprovalMail(
+            fullName: $assignedUser->fullName,
+            requestNumber: (string) $requestModel->requestNumber,
+            requestType: (string) ($requestModel->requestType?->name ?? ''),
+            classification: (string) ($requestModel->classification?->name ?? ''),
+            locale: (string) ($assignedUser->preferredLanguage ?? 'es'),
+        );
+
+        $this->emailSender->send($mail, $assignedUser->email);
     }
 
     public function approve(int $requestId, mixed $authUser, bool $isAdmin, ?string $comments): array
@@ -225,6 +249,21 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'El paso actual del workflow no existe']];
             }
 
+            $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+            $isFinalStep = !$nextStep || (bool) $currentWorkflowStep->isFinalStep;
+
+            if (!$isFinalStep) {
+                $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
+                if ($nextAssignedUserId === null) {
+                    $nextRoleName = mb_strtoupper((string) optional($nextStep->role)->roleName);
+                    $message = str_contains($nextRoleName, 'CS LEADER')
+                        ? 'No se puede avanzar la solicitud porque el solicitante no tiene un CS Leader asignado.'
+                        : 'No se encontró un usuario disponible para el siguiente paso del flujo "' . $nextStep->stepName . '". No se puede avanzar la solicitud.';
+
+                    return ['ok' => false, 'status' => 422, 'payload' => ['message' => $message]];
+                }
+            }
+
             $activeRequestStep->update(['status' => 'approved', 'completedAt' => now()]);
 
             WorkflowRequestHistory::create([
@@ -236,9 +275,7 @@ class RequestWorkflowService
                 'comments' => $comments,
             ]);
 
-            $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
-
-            if (!$nextStep || (bool) $currentWorkflowStep->isFinalStep) {
+            if ($isFinalStep) {
                 $currentStep->update(['status' => 'approved']);
                 $requestModel->update(['status' => 'approved']);
 
@@ -252,8 +289,6 @@ class RequestWorkflowService
                     'notifyUserId' => null,
                 ];
             }
-
-            $nextAssignedUserId = $this->resolveAssignedUserIdForStep($requestModel, $nextStep);
 
             $nextRequestStep = WorkflowRequestStep::create([
                 'requestId' => $requestId,
@@ -665,6 +700,31 @@ class RequestWorkflowService
         ];
     }
 
+    public function cancelMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
+    {
+        $cancelledIds = [];
+        $failed = [];
+
+        foreach ($requestIds as $requestId) {
+            $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
+
+            if ($result['ok']) {
+                $cancelledIds[] = (int) $requestId;
+                continue;
+            }
+
+            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+        }
+
+        return [
+            'totalReceived' => count($requestIds),
+            'totalCancelled' => count($cancelledIds),
+            'totalFailed' => count($failed),
+            'cancelledRequestIds' => $cancelledIds,
+            'failedRequests' => $failed,
+        ];
+    }
+
     private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?WorkflowStep
     {
         $transitions = WorkflowStepTransition::query()
@@ -730,8 +790,13 @@ class RequestWorkflowService
             return true;
         }
 
-        $field    = (string) $transition->conditionField;
-        $left     = data_get($requestModel, $field);
+        $field = (string) $transition->conditionField;
+
+        if ($field === 'totalAmount' && str_starts_with((string) ($requestModel->requestNumber ?? ''), 'DM')) {
+            $field = 'warehouseTotal';
+        }
+
+        $left = data_get($requestModel, $field);
         $operator = (string) ($transition->conditionOperator ?? '==');
         $rightRaw = $transition->conditionValue;
 
@@ -779,18 +844,21 @@ class RequestWorkflowService
         $step->loadMissing('role');
         $roleName = mb_strtoupper((string) optional($step->role)->roleName);
 
-        if (str_contains($roleName, 'CS LEADER')) {
-            $userId = $this->resolveCsLeaderAssignedUserId($requestModel);
-            if ($userId !== null) {
-                return $userId;
-            }
+        if (str_contains($roleName, 'REQUESTER') && str_contains($roleName, 'CS LEADER')) {
+            return $this->resolveCsLeaderAssignedUserId($requestModel);
         }
 
-        if (str_contains($roleName, 'MANAGER')) {
-            $userId = $this->resolveManagerAssignedUserId($requestModel);
-            if ($userId !== null) {
-                return $userId;
-            }
+        if (str_contains($roleName, 'REQUESTER')) {
+            $creatorId = (int) ($requestModel->userId ?? 0);
+            return $creatorId > 0 ? $creatorId : null;
+        }
+
+        if (str_contains($roleName, 'CS LEADER')) {
+            return $this->resolveCsLeaderAssignedUserId($requestModel);
+        }
+
+        if (str_contains($roleName, 'MANAGER') && !str_contains($roleName, 'GENERAL MANAGER')) {
+            return $this->resolveManagerAssignedUserId($requestModel);
         }
 
         return $this->resolveFirstUserByRoleId((int) $step->roleId);
@@ -803,21 +871,32 @@ class RequestWorkflowService
             return null;
         }
 
+        $classification = RequestClassification::find($requestModel->classificationId);
+        $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
+
+        $managerColumn = match (true) {
+            str_contains($classificationType, 'finance')    => 'financeManagerId',
+            str_contains($classificationType, 'marketing')  => 'marketingManagerId',
+            str_contains($classificationType, 'customer')   => 'salesManagerId',
+            default                                         => 'salesManagerId',
+        };
+
         $customer = Customer::query()->where('idClient', $customerId)->first();
-        $candidateUserId = $customer?->salesManagerId ? (int) $customer->salesManagerId : null;
+        $candidateUserId = $customer?->{$managerColumn} ? (int) $customer->{$managerColumn} : null;
 
         if ($candidateUserId !== null && $this->isActiveUser($candidateUserId)) {
             return $candidateUserId;
         }
 
+        $extTable = 'clientes_TME700618RC7_ext';
         if (
-            Schema::hasTable('clientes_tme700618rc7_ext')
-            && Schema::hasColumn('clientes_tme700618rc7_ext', 'idCliente')
-            && Schema::hasColumn('clientes_tme700618rc7_ext', 'salesManagerId')
+            Schema::connection('invoices')->hasTable($extTable)
+            && Schema::connection('invoices')->hasColumn($extTable, 'idCliente')
+            && Schema::connection('invoices')->hasColumn($extTable, $managerColumn)
         ) {
-            $candidateUserId = DB::table('clientes_tme700618rc7_ext')
+            $candidateUserId = DB::connection('invoices')->table($extTable)
                 ->where('idCliente', $customerId)
-                ->value('salesManagerId');
+                ->value($managerColumn);
 
             if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
                 return (int) $candidateUserId;
@@ -875,7 +954,61 @@ class RequestWorkflowService
             ->orderBy('id')
             ->first();
 
-        return $user ? (int) $user->id : null;
+        if ($user) {
+            Log::info('[resolveFirstUserByRoleId] user found by primary role', ['roleId' => $roleId, 'userId' => $user->id]);
+            return (int) $user->id;
+        }
+
+        $equivalentroleid = Role::query()->where('id', $roleId)->value('equivalentroleid');
+
+        Log::info('[resolveFirstUserByRoleId] no primary user, checking equivalent', [
+            'roleId'          => $roleId,
+            'equivalentroleid' => $equivalentroleid,
+        ]);
+
+        if ($equivalentroleid) {
+            $fallbackUser = User::query()
+                ->where('roleId', (int) $equivalentroleid)
+                ->where('isActive', true)
+                ->whereNull('deletedAt')
+                ->orderBy('id')
+                ->first();
+
+            Log::info('[resolveFirstUserByRoleId] fallback result via role equivalentroleid', [
+                'equivalentroleid' => $equivalentroleid,
+                'fallbackUserId'   => $fallbackUser?->id,
+            ]);
+
+            if ($fallbackUser) {
+                return (int) $fallbackUser->id;
+            }
+        }
+
+        $reverseRoleIds = Role::query()
+            ->where('equivalentroleid', $roleId)
+            ->pluck('id');
+
+        Log::info('[resolveFirstUserByRoleId] checking reverse equivalent roles', [
+            'roleId'         => $roleId,
+            'reverseRoleIds' => $reverseRoleIds,
+        ]);
+
+        if ($reverseRoleIds->isEmpty()) {
+            return null;
+        }
+
+        $reverseUser = User::query()
+            ->whereIn('roleId', $reverseRoleIds)
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->orderBy('id')
+            ->first();
+
+        Log::info('[resolveFirstUserByRoleId] reverse equivalent result', [
+            'reverseUserId' => $reverseUser?->id,
+        ]);
+
+        return $reverseUser ? (int) $reverseUser->id : null;
     }
 
     private function isActiveUser(int $userId): bool

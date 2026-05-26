@@ -26,8 +26,8 @@ class UserClientService
 
     private function findClientById(string $clientId): ?object
     {
-        if (Schema::hasTable('clientes_tme')) {
-            $row = DB::table('clientes_tme')
+        if (Schema::connection('invoices')->hasTable('clientes_tme')) {
+            $row = DB::connection('invoices')->table('clientes_tme')
                 ->select('razonSocial')
                 ->where('idCliente', $clientId)
                 ->first();
@@ -37,8 +37,8 @@ class UserClientService
             }
         }
 
-        if (Schema::hasTable('clientes_tme700618rc7')) {
-            return DB::table('clientes_tme700618rc7')
+        if (Schema::connection('invoices')->hasTable('clientes_TME700618RC7')) {
+            return DB::connection('invoices')->table('clientes_TME700618RC7')
                 ->select('razonSocial')
                 ->where('idCliente', $clientId)
                 ->first();

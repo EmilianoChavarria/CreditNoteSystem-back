@@ -1,8 +1,13 @@
 <?php
 
+use App\Support\ApiResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,5 +24,26 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (QueryException $e, \Illuminate\Http\Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                Log::error('QueryException', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                return response()->json(ApiResponse::error('Error al procesar la solicitud. Intenta de nuevo.', null, 500), 500);
+            }
+        });
+
+        $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
+            if ($e instanceof ValidationException || $e instanceof HttpException) {
+                return null; // dejar que Laravel los maneje normalmente
+            }
+
+            if ($request->expectsJson() || $request->is('api/*')) {
+                Log::error('UnhandledException', [
+                    'class'   => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file'    => $e->getFile(),
+                    'line'    => $e->getLine(),
+                ]);
+                return response()->json(ApiResponse::error('Error inesperado del servidor.', null, 500), 500);
+            }
+        });
     })->create();

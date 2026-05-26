@@ -14,7 +14,7 @@ class RejectRequestInput extends FormRequest
     public function rules(): array
     {
         return [
-            'comments' => ['required', 'string', 'max:1000'],
+            'comments' => ['required', 'string', 'max:7000'],
         ];
     }
 }

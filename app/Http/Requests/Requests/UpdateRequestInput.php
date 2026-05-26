@@ -16,7 +16,7 @@ class UpdateRequestInput extends FormRequest
         return [
             'requestNumber' => ['sometimes', 'nullable', 'string', 'max:50'],
             'requestTypeId' => ['sometimes', 'integer', 'exists:requesttype,id'],
-            'customerId' => ['sometimes', 'nullable', 'integer'],
+            'customerId' => ['sometimes', 'nullable', 'string'],
             'requestDate' => ['sometimes', 'nullable', 'date'],
             'currency' => ['sometimes', 'nullable', 'string', 'max:10'],
             'area' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -30,7 +30,7 @@ class UpdateRequestInput extends FormRequest
             'hasIva' => ['sometimes', 'nullable', 'boolean'],
             'iva' => ['sometimes', 'nullable'],
             'totalAmount' => ['sometimes', 'nullable', 'numeric'],
-            'comments' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'comments' => ['sometimes', 'nullable', 'string', 'max:7000'],
             'orderNumber' => ['sometimes', 'nullable', 'string', 'max:255'],
             'creditNumber' => ['sometimes', 'nullable', 'string', 'max:255'],
             'creditDebitRefId' => ['sometimes', 'nullable', 'string', 'max:255'],

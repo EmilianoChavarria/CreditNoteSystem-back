@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Request as RequestModel;
 use App\Models\WorkflowRequestCurrentStep;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class RequestCrudService
@@ -248,16 +250,22 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page)
+    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '')
     {
-        return $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search)
+        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName)
             ->paginate($perPage, ['*'], 'page', $page);
+        $this->enrichWithRazonSocial($paginator);
+
+        return $paginator;
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search)
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '')
     {
-        return $this->buildByRequestTypeQuery($requestTypeId, $search)
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName)
             ->paginate($perPage);
+        $this->enrichWithRazonSocial($paginator);
+
+        return $paginator;
     }
 
     public function getByCustomerId(string $customerId, int $perPage, int $page)
@@ -285,17 +293,20 @@ class RequestCrudService
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) ($filters['page'] ?? 1));
         $search = trim((string) ($filters['search'] ?? ''));
+        $roleName = trim((string) ($filters['roleName'] ?? $filters['role_name'] ?? ''));
 
         $query = match ($module) {
             'pending_me' => $this->buildMyPendingQuery(
                 $authUser,
                 $isAdmin,
                 isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : null,
-                $search
+                $search,
+                $roleName
             ),
             'request_type' => $this->buildByRequestTypeQuery(
                 isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : 0,
-                $search
+                $search,
+                $roleName
             ),
             'drafts' => $this->buildDraftsQuery((int) ($authUser->id ?? 0)),
             default => throw ValidationException::withMessages([
@@ -316,8 +327,10 @@ class RequestCrudService
         return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
     }
 
-    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search)
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '')
     {
+        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
+
         $query = RequestModel::with([
             'requestType',
             'user',
@@ -328,14 +341,20 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
             'attachments',
         ])
-            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin) {
+            ->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin, $shouldFilterByRole, $roleName) {
                 $workflowQuery->where('status', 'pending');
 
                 if (!$isAdmin) {
                     $workflowQuery->where('assignedUserId', (int) $authUser->id);
                 }
+
+                if ($shouldFilterByRole) {
+                    $workflowQuery->whereHas('assignedRole', function ($roleQuery) use ($roleName) {
+                        $roleQuery->where('roleName', $roleName);
+                    });
+                }
             })
-            ->orderBy('id');
+            ->orderByDesc('createdAt');
 
         if ($requestTypeId !== null) {
             $query->where('requestTypeId', $requestTypeId);
@@ -348,8 +367,10 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search)
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '')
     {
+        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
+
         $query = RequestModel::with([
             'requestType',
             'user',
@@ -360,7 +381,12 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
-            ->orderBy('id');
+            ->when($shouldFilterByRole, function ($query) use ($roleName) {
+                $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
+                    $roleQuery->where('roleName', $roleName);
+                });
+            })
+            ->orderByDesc('createdAt');
 
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
@@ -395,6 +421,10 @@ class RequestCrudService
                     $userQuery->where('fullName', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%");
                 })
+                ->orWhereHas('workflowCurrentStep.assignedUser', function ($assignedUserQuery) use ($search) {
+                    $assignedUserQuery->where('fullName', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                })
                 ->orWhereHas('reason', function ($reasonQuery) use ($search) {
                     $reasonQuery->where('name', 'like', "%{$search}%");
                 })
@@ -404,6 +434,37 @@ class RequestCrudService
                         ->orWhere('type', 'like', "%{$search}%");
                 });
         });
+    }
+
+    private function enrichWithRazonSocial(LengthAwarePaginator $paginator): void
+    {
+        try {
+            if (!Schema::connection('invoices')->hasTable('clientes_TME700618RC7')) {
+                return;
+            }
+
+            $customerIds = $paginator->getCollection()
+                ->pluck('customerId')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($customerIds)) {
+                return;
+            }
+
+            $map = DB::connection('invoices')
+                ->table('clientes_TME700618RC7')
+                ->whereIn('idCliente', $customerIds)
+                ->pluck('razonSocial', 'idCliente');
+
+            $paginator->getCollection()->each(function ($request) use ($map) {
+                $request->razonSocial = $map[(string) $request->customerId] ?? null;
+            });
+        } catch (\Throwable) {
+            // invoices DB unavailable — requests still returned without razonSocial
+        }
     }
 
     private function buildEditableRequestData(array $data): array

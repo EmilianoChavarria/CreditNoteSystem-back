@@ -12,6 +12,11 @@ use RuntimeException;
 
 class ReturnOrderService
 {
+    /**
+     * @var array<string, array<int, array<string, mixed>>>
+     */
+    private array $invoiceConceptsCache = [];
+
     public function __construct(
         private readonly XmlInvoiceService $xmlInvoiceService,
         private readonly FesaWsService $fesaWsService,
@@ -24,10 +29,7 @@ class ReturnOrderService
      */
     public function getInvoiceProducts(string $invoiceFolio, int $clientId): array
     {
-        $returnedByIndex = $this->getReturnedQuantitiesByIndex($invoiceFolio, $clientId);
-        $xmlContent      = $this->fesaWsService->fetchXmlString($invoiceFolio);
-
-        return $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent, $returnedByIndex);
+        return $this->getConceptosFromFesa($invoiceFolio, $clientId);
     }
 
     /**
@@ -37,7 +39,7 @@ class ReturnOrderService
      */
     public function searchOrders(string $search): array
     {
-        $clientTable = 'clientes_tme700618rc7';
+        $clientTable = 'clientes_TME700618RC7';
         $hasClientTable = Schema::hasTable($clientTable);
 
         $query = ReturnOrder::
@@ -53,7 +55,7 @@ class ReturnOrderService
                 $clientTable . ' as cl',
                 'cl.idCliente',
                 '=',
-                'returnOrders.clientId'
+                'returnorders.clientId'
             );
 
             $query->where(function ($q) use ($search, $hasRazonSocial, $hasIdCliente) {
@@ -62,12 +64,12 @@ class ReturnOrderService
                 }
 
                 if ($hasIdCliente && is_numeric($search)) {
-                    $q->orWhere('returnOrders.clientId', (int) $search);
+                    $q->orWhere('returnorders.clientId', (int) $search);
                 }
             });
 
             $query->select(
-                'returnOrders.*',
+                'returnorders.*',
                 $hasRazonSocial ? 'cl.razonSocial' : DB::raw('NULL as razonSocial')
             )->where('orderStatus', '0');
             ;
@@ -76,7 +78,7 @@ class ReturnOrderService
                 $query->where('clientId', (int) $search);
             }
 
-            $query->select('returnOrders.*', DB::raw('NULL as razonSocial'));
+            $query->select('returnorders.*', DB::raw('NULL as razonSocial'));
         }
 
         $orders = $query->get();
@@ -133,7 +135,7 @@ class ReturnOrderService
             ]);
 
             foreach ($items as $itemData) {
-                $concepto = $this->xmlInvoiceService->getConceptoByIndex(
+                $concepto = $this->getConceptoByIndex(
                     $itemData['invoiceFolio'],
                     $itemData['invoiceClientId'],
                     $itemData['conceptoIndex']
@@ -195,7 +197,7 @@ class ReturnOrderService
      */
     public function getProductReturnHistory(string $invoiceFolio, int $clientId, int $conceptoIndex): array
     {
-        $concepto = $this->xmlInvoiceService->getConceptoByIndex($invoiceFolio, $clientId, $conceptoIndex);
+        $concepto = $this->getConceptoByIndex($invoiceFolio, $clientId, $conceptoIndex);
 
         if ($concepto === null) {
             throw new RuntimeException("Concepto índice {$conceptoIndex} no encontrado en la factura {$invoiceFolio}.");
@@ -204,19 +206,19 @@ class ReturnOrderService
         $totalReturned = $this->getTotalReturnedForProduct($invoiceFolio, $clientId, $conceptoIndex);
         $available     = max(0, $concepto['cantidad'] - $totalReturned);
 
-        $history = ReturnOrderItemHistory::where('returnOrderItemHistory.invoiceFolio', $invoiceFolio)
-            ->where('returnOrderItemHistory.invoiceClientId', $clientId)
-            ->where('returnOrderItemHistory.conceptoIndex', $conceptoIndex)
-            ->join('returnOrderItems', 'returnOrderItems.id', '=', 'returnOrderItemHistory.returnOrderItemId')
-            ->join('returnOrders', 'returnOrders.id', '=', 'returnOrderItems.returnOrderId')
+        $history = ReturnOrderItemHistory::where('returnorderitemhistory.invoiceFolio', $invoiceFolio)
+            ->where('returnorderitemhistory.invoiceClientId', $clientId)
+            ->where('returnorderitemhistory.conceptoIndex', $conceptoIndex)
+            ->join('returnorderitems', 'returnorderitems.id', '=', 'returnorderitemhistory.returnOrderItemId')
+            ->join('returnorders', 'returnorders.id', '=', 'returnorderitems.returnOrderId')
             ->select(
-                'returnOrderItemHistory.createdAt as date',
-                'returnOrders.id as returnOrderId',
-                'returnOrderItemHistory.returnedQuantity as quantity',
-                'returnOrders.status',
-                'returnOrders.notes',
+                'returnorderitemhistory.createdAt as date',
+                'returnorders.id as returnOrderId',
+                'returnorderitemhistory.returnedQuantity as quantity',
+                'returnorders.status',
+                'returnorders.notes',
             )
-            ->orderByDesc('returnOrderItemHistory.createdAt')
+            ->orderByDesc('returnorderitemhistory.createdAt')
             ->get()
             ->map(fn ($row) => [
                 'date'          => $row->date,
@@ -271,7 +273,7 @@ class ReturnOrderService
             $clientId = (int) $clientId;
             $index    = (int) $index;
 
-            $concepto = $this->xmlInvoiceService->getConceptoByIndex($folio, $clientId, $index);
+            $concepto = $this->getConceptoByIndex($folio, $clientId, $index);
 
             if ($concepto === null) {
                 $errors[] = "Concepto índice {$index} no encontrado en la factura {$folio}.";
@@ -317,5 +319,34 @@ class ReturnOrderService
             ->pluck('total', 'conceptoIndex')
             ->map(fn ($v) => (float) $v)
             ->toArray();
+    }
+
+    /**
+     * Obtiene conceptos desde FESA. Antes se leia storage/app/public/{folio}-{clientId}.xml,
+     * pero el flujo de facturas ya consulta FESA por folio.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function getConceptosFromFesa(string $invoiceFolio, int $clientId): array
+    {
+        $cacheKey = "{$invoiceFolio}|{$clientId}";
+
+        if (!array_key_exists($cacheKey, $this->invoiceConceptsCache)) {
+            $returnedByIndex = $this->getReturnedQuantitiesByIndex($invoiceFolio, $clientId);
+            $xmlContent = $this->fesaWsService->fetchXmlString($invoiceFolio);
+            $this->invoiceConceptsCache[$cacheKey] = $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent, $returnedByIndex);
+        }
+
+        return $this->invoiceConceptsCache[$cacheKey];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function getConceptoByIndex(string $invoiceFolio, int $clientId, int $conceptoIndex): ?array
+    {
+        $conceptos = $this->getConceptosFromFesa($invoiceFolio, $clientId);
+
+        return $conceptos[$conceptoIndex] ?? null;
     }
 }

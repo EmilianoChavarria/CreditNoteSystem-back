@@ -14,6 +14,8 @@ class BatchInputContext
         public readonly ?int $minRange,
         public readonly ?int $maxRange,
         public readonly array $storedFiles,
+        public readonly string $userWelcomeEmailMode = 'none',
+        public readonly ?string $userWelcomeEmailRecipient = null,
     ) {
     }
 }

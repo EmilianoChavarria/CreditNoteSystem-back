@@ -14,7 +14,7 @@ class ApproveRequestInput extends FormRequest
     public function rules(): array
     {
         return [
-            'comments' => ['nullable', 'string', 'max:1000'],
+            'comments' => ['nullable', 'string', 'max:7000'],
         ];
     }
 }

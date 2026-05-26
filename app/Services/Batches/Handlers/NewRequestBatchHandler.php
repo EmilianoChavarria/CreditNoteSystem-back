@@ -122,7 +122,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'status' => ['nullable', 'string', 'max:50'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
-            'customerId' => ['nullable', 'string', Rule::exists('clientes_tme700618rc7', 'idCliente')],
+            'customerId' => ['nullable', 'string', Rule::exists('invoices.clientes_TME700618RC7', 'idCliente')],
             'area' => ['nullable', 'string', 'max:150'],
             'reasonId' => ['nullable', 'integer', Rule::exists((new RequestReason())->getTable(), 'id')],
             'classificationId' => ['nullable', 'integer', Rule::exists((new RequestClassification())->getTable(), 'id')],
@@ -143,7 +143,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'hasWarehouseIva' => ['nullable', 'boolean'],
             'sapReturnOrder' => ['nullable', 'string', 'max:255'],
             'hasRga' => ['nullable', 'boolean'],
-            'comments' => ['nullable', 'string', 'max:1000'],
+            'comments' => ['nullable', 'string', 'max:7000'],
         ];
 
         foreach ($requiredFields as $field) {
@@ -153,6 +153,8 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         }
 
         $validated = $this->validateRow($payload, $rules);
+
+        $this->checkDuplicate($validated);
 
         $amount = (float) ($validated['amount'] ?? 0);
         $hasIva = (bool) ($validated['hasIva'] ?? true);
@@ -206,9 +208,45 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'comments' => $validated['comments'] ?? null,
         ]);
 
-        $this->requestWorkflowService->assignRequestToWorkflow($request, (int) $validated['userId']);
+        $this->requestWorkflowService->assignRequestToWorkflow($request, (int) $validated['userId'], stayAtInitialStep: true);
 
         return (int) $request->id;
+    }
+
+    /**
+     * @param array<string, mixed> $validated
+     */
+    private function checkDuplicate(array $validated): void
+    {
+        $classificationId = isset($validated['classificationId']) ? (int) $validated['classificationId'] : null;
+        $invoiceNumber = isset($validated['invoiceNumber']) && $validated['invoiceNumber'] !== '' ? (string) $validated['invoiceNumber'] : null;
+        $comments = isset($validated['comments']) && $validated['comments'] !== '' ? (string) $validated['comments'] : null;
+
+        $query = RequestModel::query();
+
+        if ($classificationId !== null) {
+            $query->where('classificationId', $classificationId);
+        } else {
+            $query->whereNull('classificationId');
+        }
+
+        if ($invoiceNumber !== null) {
+            $query->where('invoiceNumber', $invoiceNumber);
+        } else {
+            $query->whereNull('invoiceNumber');
+        }
+
+        if ($comments !== null) {
+            $query->where('comments', $comments);
+        } else {
+            $query->whereNull('comments');
+        }
+
+        if ($query->exists()) {
+            throw new RuntimeException(
+                'Esta nota ya ha sido cargada anteriormente.'
+            );
+        }
     }
 
     /**
@@ -225,7 +263,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
 
         \Log::error('[resolveCustomer] value', ['value' => $value, 'type' => gettype($value)]);
 
-        $customer = DB::table('clientes_tme700618rc7')
+        $customer = DB::connection('invoices')->table('clientes_TME700618RC7')
             ->where('idCliente', (string) $value)
             ->first();
 

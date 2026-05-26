@@ -6,16 +6,17 @@ use App\Mail\UserRegisteredMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserSecurity;
+use App\Services\EmailSenderService;
 use App\Services\PasswordValidationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class RegisterUserAction
 {
     public function __construct(
-        private readonly PasswordValidationService $passwordService
+        private readonly PasswordValidationService $passwordService,
+        private readonly EmailSenderService $emailSender,
     ) {
     }
 
@@ -86,12 +87,15 @@ class RegisterUserAction
                     'lastLoginAt' => null,
                 ]);
 
-                Mail::to($data['email'])->send(new UserRegisteredMail(
-                    (string) $data['fullName'],
-                    (string) $data['email'],
-                    $password,
-                    (string) ($data['preferredLanguage'] ?? 'es')
-                ));
+                $this->emailSender->send(
+                    new UserRegisteredMail(
+                        (string) $data['fullName'],
+                        (string) $data['email'],
+                        $password,
+                        (string) ($data['preferredLanguage'] ?? 'es')
+                    ),
+                    (string) $data['email']
+                );
             }
 
             return [

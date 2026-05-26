@@ -16,7 +16,7 @@ class SaveDraftRequestInput extends FormRequest
         return [
             'id' => ['nullable', 'integer', 'exists:requests,id'],
             'requestTypeId' => ['required', 'integer', 'exists:requesttype,id'],
-            'customerId' => ['nullable', 'integer'],
+            'customerId' => ['nullable', 'string'],
             'requestNumber' => ['nullable', 'string', 'max:50'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
@@ -30,7 +30,7 @@ class SaveDraftRequestInput extends FormRequest
             'amount' => ['nullable', 'numeric'],
             'hasIva' => ['nullable', 'boolean'],
             'totalAmount' => ['nullable', 'numeric'],
-            'comments' => ['nullable', 'string', 'max:1000'],
+            'comments' => ['nullable', 'string', 'max:7000'],
             'creditNumber' => ['nullable', 'string', 'max:50'],
             'creditDebitRefId' => ['nullable', 'string', 'max:255'],
             'newInvoice' => ['nullable', 'string', 'max:255'],

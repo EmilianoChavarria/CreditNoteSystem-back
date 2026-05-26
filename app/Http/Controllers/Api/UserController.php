@@ -14,11 +14,11 @@ use App\Http\Requests\Users\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Mail\UserRegisteredMail;
 use App\Models\User;
+use App\Services\EmailSenderService;
 use App\Services\UserClientService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -29,6 +29,7 @@ class UserController extends Controller
         private readonly ChangePasswordAction $changePasswordAction,
         private readonly ChangeUserPasswordAction $changeUserPasswordAction,
         private readonly UserClientService $userClientService,
+        private readonly EmailSenderService $emailSender,
     ) {
     }
 
@@ -134,6 +135,7 @@ class UserController extends Controller
     {
 
         $users = User::with('role')->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
             ->get();
 
         return response()->json(ApiResponse::success('Usuarios', UserResource::collection($users)));
@@ -143,19 +145,28 @@ class UserController extends Controller
     {
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
+        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
         $users = User::with('role')
             ->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
+            ->when($shouldFilterByRole, function ($query) use ($roleName) {
+                $query->whereHas('role', function ($roleQuery) use ($roleName) {
+                    $roleQuery->where('roleName', $roleName);
+                });
+            })
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($subQuery) use ($search) {
                     $subQuery->where('fullName', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%")
                         ->orWhereHas('role', function ($roleQuery) use ($search) {
                             $roleQuery->where('roleName', 'like', "%{$search}%");
-                        });
+                    });
                 });
             })
-            ->paginate($perPage);
+            ->paginate($perPage)
+            ->withQueryString();
 
         $users->setCollection(UserResource::collection($users->getCollection())->collection);
 
@@ -248,12 +259,15 @@ class UserController extends Controller
             $user->save();
         }
 
-        Mail::to($user->email)->send(new UserRegisteredMail(
-            (string) $user->fullName,
-            (string) $user->email,
-            $tempPassword,
-            $mailLocale
-        ));
+        $this->emailSender->send(
+            new UserRegisteredMail(
+                (string) $user->fullName,
+                (string) $user->email,
+                $tempPassword,
+                $mailLocale
+            ),
+            (string) $user->email
+        );
 
         $message = $isTestOnly
             ? 'Correo de prueba enviado sin actualizar la contraseña del usuario'

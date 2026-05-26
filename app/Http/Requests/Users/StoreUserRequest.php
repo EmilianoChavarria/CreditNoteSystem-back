@@ -14,7 +14,7 @@ class StoreUserRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ((int) $this->input('supervisorId') === 0) {
+        if ($this->shouldClearSupervisorId($this->input('supervisorId'))) {
             $this->merge(['supervisorId' => null]);
         }
     }
@@ -30,5 +30,20 @@ class StoreUserRequest extends FormRequest
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
             'isActive' => ['nullable', 'boolean'],
         ];
+    }
+
+    private function shouldClearSupervisorId(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+
+            return in_array($normalized, ['', '0', 'null', 'undefined'], true);
+        }
+
+        return (int) $value === 0;
     }
 }

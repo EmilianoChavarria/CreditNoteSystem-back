@@ -16,6 +16,7 @@ class RoleController extends Controller
     {
         $roles = Role::orderBy('id')
         ->where('isActive', 1)
+        ->where('roleName', '!=', 'SUPERADMIN')
         ->get();
 
         return response()->json(ApiResponse::success('Roles', RoleResource::collection($roles)));
@@ -53,34 +54,75 @@ class RoleController extends Controller
 
     public function update(Request $request, int $id)
     {
-        $validator = Validator::make($request->all(), [
-            'roleName' => [
-                'required',
-                'string',
-                'max:150',
-                'unique:roles,roleName'
-            ],
-            'color' => ['required', 'string', 'max:10',],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
-        }
-
         $role = Role::find($id);
 
         if (!$role) {
             return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
         }
 
-        $role->fill([
-            'roleName' => $request->input('roleName'),
-            'color' => $request->input('color'),
+        $validator = Validator::make($request->all(), [
+            'roleName' => [
+                'sometimes',
+                'string',
+                'max:150',
+                Rule::unique('roles', 'roleName')->ignore($id)
+            ],
+            'color' => ['sometimes', 'string', 'max:10',],
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+        }
+
+        $role->fill($validator->validated());
 
         $role->save();
 
         return response()->json(ApiResponse::success('Rol actualizado correctamente', RoleResource::make($role), 201), 201);
+    }
+
+    public function getEquivalentRole(int $id)
+    {
+        $role = Role::find($id);
+
+        if (!$role) {
+            return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
+        }
+
+        if (!$role->equivalentRoleId) {
+            return response()->json(ApiResponse::success('El rol no tiene un rol equivalente registrado', null));
+        }
+
+        $role->load('equivalentRole');
+
+        return response()->json(ApiResponse::success('Rol equivalente', [
+            'id' => $role->equivalentRole->id,
+            'roleName' => $role->equivalentRole->roleName,
+        ]));
+    }
+
+    public function setEquivalentRole(Request $request, int $id)
+    {
+        $role = Role::find($id);
+
+        if (!$role) {
+            return response()->json(ApiResponse::error('Rol no encontrado', null, 404), 404);
+        }
+
+        $equivalentRoleId = $request->input('equivalentRoleId') ?? $request->input('equivalentroleid');
+
+        $validator = Validator::make(['equivalentroleid' => $equivalentRoleId], [
+            'equivalentroleid' => ['nullable', 'integer', 'different:' . $id, 'exists:roles,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+        }
+
+        $role->equivalentRoleId = $equivalentRoleId;
+        $role->save();
+
+        return response()->json(ApiResponse::success('Rol equivalente actualizado correctamente', RoleResource::make($role->load('equivalentRole'))));
     }
 
     public function destroy(int $id)

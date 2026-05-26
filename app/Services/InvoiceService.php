@@ -6,26 +6,27 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class InvoiceService
 {
     public function getAll(): Collection
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return collect();
         }
 
-        return DB::table('comprobantes_tme700618rc7')->get();
+        return DB::connection('invoices')->table('comprobantes_TME700618RC7')->get();
     }
 
     public function getInvoicesByClientId(int $clientId): Collection
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return collect();
         }
 
-        $query = DB::table('comprobantes_tme700618rc7');
-        $columns = Schema::getColumnListing('comprobantes_tme700618rc7');
+        $query = DB::connection('invoices')->table('comprobantes_TME700618RC7');
+        $columns = Schema::connection('invoices')->getColumnListing('comprobantes_TME700618RC7');
 
         if (in_array('receptorId', $columns, true)) {
             $query->where('receptorId', $clientId)
@@ -35,13 +36,13 @@ class InvoiceService
         return $query->get();
     }
 
-    public function searchInvoices(int $clientId, array $filters): Collection
+    public function searchInvoices(int $clientId, array $filters, int $perPage = 15, int $page = 1): LengthAwarePaginator
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
-            return collect();
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
+            return new LengthAwarePaginator([], 0, $perPage, $page);
         }
 
-        $query = DB::table('comprobantes_tme700618rc7')
+        $query = DB::connection('invoices')->table('comprobantes_TME700618RC7')
             ->where('receptorId', $clientId)
             ->where('serie', '');
 
@@ -73,16 +74,16 @@ class InvoiceService
             $query->where('fechaEmision', '<=', Carbon::parse($filters['fechaFinal'])->endOfDay());
         }
 
-        return $query->get();
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType): Collection
+    public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType, int $perPage = 15, int $page = 1, string $search = ''): LengthAwarePaginator
     {
-        if (!Schema::hasTable('comprobantes_tme700618rc7')) {
-            return collect();
+        if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
+            return new LengthAwarePaginator([], 0, $perPage, $page);
         }
 
-        $query = DB::table('comprobantes_tme700618rc7')
+        $query = DB::connection('invoices')->table('comprobantes_TME700618RC7')
             ->where('receptorId', $clientId)
             ->where('serie', '');
 
@@ -90,6 +91,10 @@ class InvoiceService
             $query->where('fechaEmision', '>=', Carbon::today()->subDays(30)->toDateString());
         }
 
-        return $query->get();
+        if ($search !== '') {
+            $query->where('folio', 'like', "%{$search}%");
+        }
+
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 }

@@ -85,14 +85,14 @@ class User extends Authenticatable
 
     public function assignedUsers()
     {
-        return $this->belongsToMany(User::class, 'userAssignments', 'leaderUserId', 'assignedUserId')
+        return $this->belongsToMany(User::class, 'userassignments', 'leaderUserId', 'assignedUserId')
             ->withPivot(['id', 'isActive', 'createdAt', 'updatedAt'])
             ->withTimestamps('createdAt', 'updatedAt');
     }
 
     public function leaders()
     {
-        return $this->belongsToMany(User::class, 'userAssignments', 'assignedUserId', 'leaderUserId')
+        return $this->belongsToMany(User::class, 'userassignments', 'assignedUserId', 'leaderUserId')
             ->withPivot(['id', 'isActive', 'createdAt', 'updatedAt'])
             ->withTimestamps('createdAt', 'updatedAt');
     }
