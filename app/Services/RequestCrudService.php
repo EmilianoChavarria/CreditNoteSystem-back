@@ -250,18 +250,18 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '')
+    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null)
     {
-        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName)
+        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId)
             ->paginate($perPage, ['*'], 'page', $page);
         $this->enrichWithRazonSocial($paginator);
 
         return $paginator;
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '')
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null)
     {
-        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName)
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId)
             ->paginate($perPage);
         $this->enrichWithRazonSocial($paginator);
 
@@ -327,7 +327,7 @@ class RequestCrudService
         return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
     }
 
-    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '')
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -360,6 +360,10 @@ class RequestCrudService
             $query->where('requestTypeId', $requestTypeId);
         }
 
+        if ($requesterId !== null) {
+            $query->where('userId', $requesterId);
+        }
+
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
         }
@@ -367,7 +371,7 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '')
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -386,6 +390,7 @@ class RequestCrudService
                     $roleQuery->where('roleName', $roleName);
                 });
             })
+            ->when($requesterId !== null, fn ($q) => $q->where('userId', $requesterId))
             ->orderByDesc('createdAt');
 
         if ($search !== '') {

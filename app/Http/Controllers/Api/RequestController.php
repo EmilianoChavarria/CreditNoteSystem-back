@@ -23,9 +23,11 @@ use App\Http\Requests\Requests\UpdateRequestInput;
 use App\Http\Resources\RequestAttachmentResource;
 use App\Http\Resources\RequestReasonResource;
 use App\Http\Resources\RequestResource;
+use App\Http\Resources\UserResource;
 use App\Models\Request as RequestModel;
 use App\Models\RequestReason;
 use App\Models\RequestType;
+use App\Models\User;
 use App\Services\RequestAttachmentService;
 use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
@@ -235,7 +237,8 @@ class RequestController extends Controller
         $perPageInput = $request->query('per_page', $request->query('perPage', 15));
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) $request->query('page', 1));
-        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName);
+        $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
+        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName, $requesterId);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
@@ -258,7 +261,8 @@ class RequestController extends Controller
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName);
+        $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));
@@ -445,6 +449,20 @@ class RequestController extends Controller
             'failedRequests' => $result['failedRequests'],
             'commentApplied' => $result['commentApplied'],
         ]));
+    }
+
+    public function getRequesters(Request $request)
+    {
+        $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
+
+        $userIds = RequestModel::query()
+            ->when($requestTypeId, fn ($q) => $q->where('requestTypeId', $requestTypeId))
+            ->distinct()
+            ->pluck('userId');
+
+        $users = User::whereIn('id', $userIds)->orderBy('fullName')->get();
+
+        return response()->json(ApiResponse::success('Usuarios solicitantes', UserResource::collection($users)));
     }
 
     public function cancelMass(CancelMassRequestInput $request)
