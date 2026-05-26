@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "autocommit": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\Users\\ITTMORE5\\Desktop\\Prueba\\mcp-autocommit\\server.js"]
+    }
+  }
+}
