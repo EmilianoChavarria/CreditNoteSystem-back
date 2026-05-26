@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Actions\Requests\ApproveMassRequestsAction;
 use App\Actions\Requests\ApproveRequestAction;
+use App\Actions\Requests\CancelMassRequestsAction;
 use App\Actions\Requests\CancelRequestAction;
 use App\Actions\Requests\RejectMassRequestsAction;
 use App\Actions\Requests\RejectRequestAction;
@@ -11,6 +12,7 @@ use App\Actions\Requests\SendBackRequestAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Requests\ApproveMassRequestInput;
 use App\Http\Requests\Requests\ApproveRequestInput;
+use App\Http\Requests\Requests\CancelMassRequestInput;
 use App\Http\Requests\Requests\CancelRequestInput;
 use App\Http\Requests\Requests\CreateRequestInput;
 use App\Http\Requests\Requests\SendBackRequestInput;
@@ -50,6 +52,7 @@ class RequestController extends Controller
         private readonly SendBackRequestAction $sendBackRequestAction,
         private readonly ApproveMassRequestsAction $approveMassRequestsAction,
         private readonly RejectMassRequestsAction $rejectMassRequestsAction,
+        private readonly CancelMassRequestsAction $cancelMassRequestsAction,
         private readonly RequestPdfService $requestPdfService,
     )
     {
@@ -441,6 +444,23 @@ class RequestController extends Controller
             'rejectedRequestIds' => $result['rejectedRequestIds'],
             'failedRequests' => $result['failedRequests'],
             'commentApplied' => $result['commentApplied'],
+        ]));
+    }
+
+    public function cancelMass(CancelMassRequestInput $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $comments = $request->filled('comments') ? (string) $request->input('comments') : null;
+        $result = $this->cancelMassRequestsAction->execute($requestIds, $authUser, $isAdmin, $comments);
+
+        return response()->json(ApiResponse::success('Cancelación masiva procesada', [
+            'totalReceived' => $result['totalReceived'],
+            'totalCancelled' => $result['totalCancelled'],
+            'totalFailed' => $result['totalFailed'],
+            'cancelledRequestIds' => $result['cancelledRequestIds'],
+            'failedRequests' => $result['failedRequests'],
         ]));
     }
 

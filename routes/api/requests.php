@@ -24,6 +24,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::put('requests/{requestId}', [RequestController::class, 'updateRequest']);
     Route::post('requests/approve-mass', [RequestController::class, 'approveMass']);
     Route::post('requests/reject-mass', [RequestController::class, 'rejectMass']);
+    Route::post('requests/cancel-mass', [RequestController::class, 'cancelMass']);
     Route::post('requests/{requestId}/approve', [RequestController::class, 'approve']);
     Route::post('requests/{requestId}/reject', [RequestController::class, 'reject']);
     Route::post('requests/{requestId}/cancel', [RequestController::class, 'cancel']);

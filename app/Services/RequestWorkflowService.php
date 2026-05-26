@@ -700,6 +700,31 @@ class RequestWorkflowService
         ];
     }
 
+    public function cancelMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
+    {
+        $cancelledIds = [];
+        $failed = [];
+
+        foreach ($requestIds as $requestId) {
+            $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
+
+            if ($result['ok']) {
+                $cancelledIds[] = (int) $requestId;
+                continue;
+            }
+
+            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+        }
+
+        return [
+            'totalReceived' => count($requestIds),
+            'totalCancelled' => count($cancelledIds),
+            'totalFailed' => count($failed),
+            'cancelledRequestIds' => $cancelledIds,
+            'failedRequests' => $failed,
+        ];
+    }
+
     private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?WorkflowStep
     {
         $transitions = WorkflowStepTransition::query()
