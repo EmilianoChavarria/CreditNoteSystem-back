@@ -16,7 +16,7 @@ class CreateRequestInput extends FormRequest
         return [
             'requestNumber' => ['nullable', 'string', 'max:50'],
             'requestTypeId' => ['required', 'integer', 'exists:requesttype,id'],
-            'customerId' => ['nullable', 'integer'],
+            'customerId' => ['nullable', 'string'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],
             'area' => ['nullable', 'string', 'max:255'],

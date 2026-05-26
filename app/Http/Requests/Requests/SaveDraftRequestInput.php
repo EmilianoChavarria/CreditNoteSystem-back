@@ -16,7 +16,7 @@ class SaveDraftRequestInput extends FormRequest
         return [
             'id' => ['nullable', 'integer', 'exists:requests,id'],
             'requestTypeId' => ['required', 'integer', 'exists:requesttype,id'],
-            'customerId' => ['nullable', 'integer'],
+            'customerId' => ['nullable', 'string'],
             'requestNumber' => ['nullable', 'string', 'max:50'],
             'requestDate' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'max:10'],

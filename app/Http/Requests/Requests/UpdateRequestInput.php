@@ -16,7 +16,7 @@ class UpdateRequestInput extends FormRequest
         return [
             'requestNumber' => ['sometimes', 'nullable', 'string', 'max:50'],
             'requestTypeId' => ['sometimes', 'integer', 'exists:requesttype,id'],
-            'customerId' => ['sometimes', 'nullable', 'integer'],
+            'customerId' => ['sometimes', 'nullable', 'string'],
             'requestDate' => ['sometimes', 'nullable', 'date'],
             'currency' => ['sometimes', 'nullable', 'string', 'max:10'],
             'area' => ['sometimes', 'nullable', 'string', 'max:255'],
