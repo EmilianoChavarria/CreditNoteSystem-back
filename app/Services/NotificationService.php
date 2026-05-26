@@ -64,9 +64,37 @@ class NotificationService
         }
     }
 
+    public function createBatchRequestsNeedAttachmentsNotification(Batch $batch): ?NotificationModel
+    {
+        $isCompleted = (string) $batch->status === 'completed';
+
+        return $this->createAndBroadcast(
+            userId: (int) $batch->userId,
+            type: 'batch_needs_attachments',
+            relatedId: (int) $batch->id,
+            title: $isCompleted
+                ? 'Tu carga masiva ha finalizado'
+                : 'Tu carga masiva finalizó con errores',
+            message: $isCompleted
+                ? "El batch #{$batch->id} fue procesado correctamente. Es necesario agregar los adjuntos correspondientes a las solicitudes creadas antes de continuar con el flujo de aprobación."
+                : "El batch #{$batch->id} finalizó con errores y requiere revisión. Verifica los registros e intenta de nuevo."
+        );
+    }
+
     public function createBatchFinishedNotification(Batch $batch): ?NotificationModel
     {
         $isCompleted = (string) $batch->status === 'completed';
+        $isNewRequest = (string) $batch->batchType === 'newRequest';
+
+        if ($isNewRequest) {
+            $message = $isCompleted
+                ? "El batch #{$batch->id} fue procesado correctamente. Es necesario agregar los adjuntos correspondientes a las solicitudes creadas antes de continuar con el flujo de aprobación."
+                : "El batch #{$batch->id} finalizó con errores y requiere revisión. Verifica los registros e intenta de nuevo.";
+        } else {
+            $message = $isCompleted
+                ? "El batch #{$batch->id} ya fue procesado correctamente."
+                : "El batch #{$batch->id} finalizó con errores y requiere revisión.";
+        }
 
         $notification = $this->createAndBroadcast(
             userId: (int) $batch->userId,
@@ -75,9 +103,7 @@ class NotificationService
             title: $isCompleted
                 ? 'Tu carga masiva ha finalizado'
                 : 'Tu carga masiva finalizó con errores',
-            message: $isCompleted
-                ? "El batch #{$batch->id} ya fue procesado correctamente."
-                : "El batch #{$batch->id} finalizó con errores y requiere revisión."
+            message: $message
         );
 
         // Emitir evento específico de batch finalizado para que Angular lo detecte y refresque

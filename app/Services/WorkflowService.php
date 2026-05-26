@@ -8,6 +8,16 @@ class WorkflowService
 {
     public function create(array $data): Workflow
     {
+        $exists = Workflow::where('requestTypeId', $data['requestTypeId'])
+            ->where('classificationType', $data['classificationType'] ?? null)
+            ->exists();
+
+        if ($exists) {
+            throw new \InvalidArgumentException(
+                'Ya existe un flujo con el mismo tipo de solicitud y clasificación.'
+            );
+        }
+
         $workflow = Workflow::create([
             'isActive' => $data['isActive'] ?? true,
             'requestTypeId' => $data['requestTypeId'],

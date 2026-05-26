@@ -29,7 +29,21 @@ use OpenApi\Attributes as OA;
     security: [['bearerAuth' => []]],
     parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
     requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
-        properties: [new OA\Property(property: 'roleName', type: 'string')]
+        properties: [
+            new OA\Property(property: 'roleName', type: 'string'),
+            new OA\Property(property: 'color', type: 'string'),
+        ]
+    )),
+    responses: [new OA\Response(response: 200, description: 'Rol actualizado')]
+)]
+#[OA\Patch(path: '/roles/{id}', operationId: 'rolesPatch', tags: ['Roles'], summary: 'Actualizar parcialmente un rol',
+    security: [['bearerAuth' => []]],
+    parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+    requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+        properties: [
+            new OA\Property(property: 'roleName', type: 'string'),
+            new OA\Property(property: 'color', type: 'string'),
+        ]
     )),
     responses: [new OA\Response(response: 200, description: 'Rol actualizado')]
 )]

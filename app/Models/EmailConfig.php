@@ -12,6 +12,8 @@ class EmailConfig extends Model
 
     protected $fillable = [
         'emailSupport',
+        'emailMode',
+        'overrideEmail',
         'createdAt',
         'updatedAt',
     ];

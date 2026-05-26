@@ -12,6 +12,13 @@ class UpdateUserRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->shouldClearSupervisorId($this->input('supervisorId'))) {
+            $this->merge(['supervisorId' => null]);
+        }
+    }
+
     public function rules(): array
     {
         $userId = (int) $this->route('id');
@@ -25,5 +32,20 @@ class UpdateUserRequest extends FormRequest
             'preferredLanguage' => ['nullable', Rule::in(['en', 'es'])],
             'isActive' => ['nullable', 'boolean'],
         ];
+    }
+
+    private function shouldClearSupervisorId(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+
+            return in_array($normalized, ['', '0', 'null', 'undefined'], true);
+        }
+
+        return (int) $value === 0;
     }
 }

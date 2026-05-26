@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="{{ app()->getLocale() }}">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ __('emails.batch_users_title') }}</title>
+</head>
+
+<body
+    style="margin: 0; padding: 0; background-color: #f4f4f7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f7; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table width="720" cellpadding="0" cellspacing="0"
+                    style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <tr>
+                        <td style="padding: 40px 30px; text-align: center;">
+                            <img src="{{ $message->embed(public_path('images/LTM.png')) }}" alt="logo_timken" style="max-width: 220px; height: auto; display: block; margin: 0 auto;">
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="border-top: 2px solid #ff8200; font-size: 0; line-height: 0; height: 0;">&nbsp;</td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 20px; color: #2d3748; font-size: 16px; line-height: 1.6;">
+                                {{ __('emails.batch_users_intro', ['count' => count($users), 'id' => $batchId]) }}
+                            </p>
+
+                            <table width="100%" cellpadding="0" cellspacing="0"
+                                style="border-collapse: collapse; margin: 0 0 30px; border: 1px solid #e2e8f0;">
+                                <thead>
+                                    <tr>
+                                        <th align="left" style="padding: 12px; background-color: #EDEDED; color: #4a5568; font-size: 13px;">
+                                            {{ __('emails.batch_users_name_label') }}
+                                        </th>
+                                        <th align="left" style="padding: 12px; background-color: #EDEDED; color: #4a5568; font-size: 13px;">
+                                            {{ __('emails.email_label') }}
+                                        </th>
+                                        <th align="left" style="padding: 12px; background-color: #EDEDED; color: #4a5568; font-size: 13px;">
+                                            {{ __('emails.batch_users_role_label') }}
+                                        </th>
+                                        <th align="left" style="padding: 12px; background-color: #EDEDED; color: #4a5568; font-size: 13px;">
+                                            {{ __('emails.password_label') }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($users as $user)
+                                        <tr>
+                                            <td style="padding: 12px; border-top: 1px solid #e2e8f0; color: #2d3748; font-size: 14px;">
+                                                {{ $user['fullName'] }}
+                                            </td>
+                                            <td style="padding: 12px; border-top: 1px solid #e2e8f0; color: #2d3748; font-size: 14px;">
+                                                {{ $user['email'] }}
+                                            </td>
+                                            <td style="padding: 12px; border-top: 1px solid #e2e8f0; color: #2d3748; font-size: 14px;">
+                                                {{ $user['roleName'] ?? '' }}
+                                            </td>
+                                            <td style="padding: 12px; border-top: 1px solid #e2e8f0; color: #2d3748; font-size: 14px;">
+                                                {{ $user['password'] }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 10px;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="https://qa.timken.ittec.mx/"
+                                            style="display: inline-block; background-color: #ff8200; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600; padding: 14px 40px; border-radius: 6px;">
+                                            {{ __('emails.login_button') }}
+                                        </a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center" style="padding-top: 12px;">
+                                        <p style="margin: 0; color: #718096; font-size: 13px;">
+                                            {{ __('emails.login_url_label') }}
+                                            <a href="https://qa.timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://qa.timken.ittec.mx/</a>
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td
+                            style="background-color: #ff8200; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0; color: #FFFFFF; font-size: 13px; line-height: 1.5;">
+                                {{ __('emails.batch_users_auto_notice') }}
+                            </p>
+                            @if ($supportEmail)
+                                <p style="margin: 6px 0 0; color: #FFFFFF; font-size: 13px; font-weight: 600;">
+                                    <a href="mailto:{{ $supportEmail }}" style="color: #FFFFFF;">{{ $supportEmail }}</a>
+                                </p>
+                            @endif
+                            @if (!empty($isOverride) && !empty($originalRecipient))
+                            <p style="margin: 12px 0 0; color: #FFFFFF; font-size: 12px; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.4); padding-top: 12px;">
+                                Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a <strong>{{ $originalRecipient }}</strong>
+                            </p>
+                            @endif
+                            <p style="margin: 16px 0 0; color: #FFFFFF; font-size: 13px;">
+                                {{ now()->year }} ITTEC. {{ __('emails.footer_rights') }}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>

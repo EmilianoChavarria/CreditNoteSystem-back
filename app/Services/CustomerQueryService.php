@@ -2,22 +2,28 @@
 
 namespace App\Services;
 
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class CustomerQueryService
 {
+    private const CONNECTION = 'invoices';
+    private const CLIENT_TABLE = 'clientes_TME700618RC7';
+    private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
+    private const MANAGER_COLUMNS = [
+        'salesEngineerId',
+        'salesManagerId',
+        'financeManagerId',
+        'marketingManagerId',
+        'customerServiceManagerId',
+    ];
+
+    private array $userCache = [];
+
     public function paginated(?int $perPage, string $search)
     {
-        $clientTable = 'clientes_tme700618rc7';
-        $clientExtTable = 'clientes_tme700618rc7_ext';
-
-        $clientColumns = Schema::hasTable($clientTable)
-            ? Schema::getColumnListing($clientTable)
-            : [];
-        $clientExtColumns = Schema::hasTable($clientExtTable)
-            ? Schema::getColumnListing($clientExtTable)
-            : [];
+        [$clientColumns, $clientExtColumns] = $this->getClientColumns();
 
         $canReadClients = in_array('idCliente', $clientColumns, true);
 
@@ -39,8 +45,10 @@ class CustomerQueryService
             $selectColumns[] = 'cle.' . $column . ' as client_ext_' . $column;
         }
 
-        $query = DB::table($clientTable . ' as cl')
-            ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
+        $query = DB::connection(self::CONNECTION)->table(self::CLIENT_TABLE . ' as cl')
+            ->when($this->canJoinClientExt($clientExtColumns), function ($query) {
+                $query->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente');
+            })
             ->when($search !== '', function ($query) use ($search, $clientColumns) {
                 $query->where(function ($subQuery) use ($search, $clientColumns) {
                     if (in_array('razonSocial', $clientColumns, true)) {
@@ -74,15 +82,7 @@ class CustomerQueryService
 
     public function findById(int $id): ?array
     {
-        $clientTable = 'clientes_tme700618rc7';
-        $clientExtTable = 'clientes_tme700618rc7_ext';
-
-        $clientColumns = Schema::hasTable($clientTable)
-            ? Schema::getColumnListing($clientTable)
-            : [];
-        $clientExtColumns = Schema::hasTable($clientExtTable)
-            ? Schema::getColumnListing($clientExtTable)
-            : [];
+        [$clientColumns, $clientExtColumns] = $this->getClientColumns();
 
         $hasIdClienteColumn = in_array('idCliente', $clientColumns, true);
 
@@ -104,8 +104,10 @@ class CustomerQueryService
             $selectColumns[] = 'cle.' . $column . ' as client_ext_' . $column;
         }
 
-        $row = DB::table($clientTable . ' as cl')
-            ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
+        $row = DB::connection(self::CONNECTION)->table(self::CLIENT_TABLE . ' as cl')
+            ->when($this->canJoinClientExt($clientExtColumns), function ($query) {
+                $query->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente');
+            })
             ->where('cl.idCliente', $id)
             ->select($selectColumns)
             ->first();
@@ -119,15 +121,7 @@ class CustomerQueryService
 
     public function searchByName(string $searchTerm): array
     {
-        $clientTable = 'clientes_tme700618rc7';
-        $clientExtTable = 'clientes_tme700618rc7_ext';
-
-        $clientColumns = Schema::hasTable($clientTable)
-            ? Schema::getColumnListing($clientTable)
-            : [];
-        $clientExtColumns = Schema::hasTable($clientExtTable)
-            ? Schema::getColumnListing($clientExtTable)
-            : [];
+        [$clientColumns, $clientExtColumns] = $this->getClientColumns();
 
         $hasIdClienteColumn = in_array('idCliente', $clientColumns, true);
         $hasRazonSocialColumn = in_array('razonSocial', $clientColumns, true);
@@ -154,8 +148,10 @@ class CustomerQueryService
             $selectColumns[] = 'cle.' . $column . ' as client_ext_' . $column;
         }
 
-        $customers = DB::table($clientTable . ' as cl')
-            ->leftJoin($clientExtTable . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
+        $customers = DB::connection(self::CONNECTION)->table(self::CLIENT_TABLE . ' as cl')
+            ->when($this->canJoinClientExt($clientExtColumns), function ($query) {
+                $query->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente');
+            })
             ->where(function ($query) use ($searchTerm, $hasRazonSocialColumn, $hasIdClienteColumn) {
                 if ($hasRazonSocialColumn) {
                     $query->where('cl.razonSocial', 'LIKE', '%' . $searchTerm . '%');
@@ -180,6 +176,30 @@ class CustomerQueryService
         ];
     }
 
+    private function getClientColumns(): array
+    {
+        $schema = Schema::connection(self::CONNECTION);
+
+        $clientColumns = $schema->hasTable(self::CLIENT_TABLE)
+            ? $schema->getColumnListing(self::CLIENT_TABLE)
+            : [];
+
+        $clientExtColumns = $schema->hasTable(self::CLIENT_EXT_TABLE)
+            ? $schema->getColumnListing(self::CLIENT_EXT_TABLE)
+            : [];
+
+        if (!$this->canJoinClientExt($clientExtColumns)) {
+            $clientExtColumns = [];
+        }
+
+        return [$clientColumns, $clientExtColumns];
+    }
+
+    private function canJoinClientExt(array $clientExtColumns): bool
+    {
+        return in_array('idCliente', $clientExtColumns, true);
+    }
+
     private function mapClientRow(object $row, array $clientColumns, array $clientExtColumns): array
     {
         $clientData = [];
@@ -197,6 +217,51 @@ class CustomerQueryService
             $clientExtData[$column] = $row->{'client_ext_' . $column} ?? null;
         }
 
+        $managerIds = [];
+        foreach (self::MANAGER_COLUMNS as $col) {
+            $id = $clientExtData[$col] ?? null;
+            if ($id !== null) {
+                $managerIds[] = (int) $id;
+            }
+        }
+
+        $usersMap = $this->fetchUsersWithRole(array_unique($managerIds));
+
+        foreach (self::MANAGER_COLUMNS as $col) {
+            $id = $clientExtData[$col] ?? null;
+            $clientExtData[$col] = $id !== null ? ($usersMap[(int) $id] ?? null) : null;
+        }
+
         return array_merge($clientData, ['clienteExt' => $clientExtData]);
+    }
+
+    private function fetchUsersWithRole(array $ids): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        $uncached = array_values(array_filter($ids, fn($id) => !isset($this->userCache[$id])));
+
+        if (!empty($uncached)) {
+            $users = User::with('role')->whereIn('id', $uncached)->get();
+            foreach ($users as $user) {
+                $this->userCache[(int) $user->id] = [
+                    'id'       => (int) $user->id,
+                    'fullName' => $user->fullName,
+                    'role'     => $user->role ? ['roleName' => $user->role->roleName] : null,
+                ];
+            }
+            foreach ($uncached as $id) {
+                $this->userCache[$id] ??= null;
+            }
+        }
+
+        $result = [];
+        foreach ($ids as $id) {
+            $result[$id] = $this->userCache[$id] ?? null;
+        }
+
+        return $result;
     }
 }

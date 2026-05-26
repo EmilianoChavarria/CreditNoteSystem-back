@@ -14,7 +14,7 @@ class UpdateReturnOrderChargeInput extends FormRequest
     public function rules(): array
     {
         return [
-            'chargeTypeId' => ['nullable', 'integer', 'exists:chargeTypes,id'],
+            'chargeTypeId' => ['nullable', 'integer', 'exists:chargetypes,id'],
             'customRate'   => ['nullable', 'numeric', 'min:0'],
         ];
     }

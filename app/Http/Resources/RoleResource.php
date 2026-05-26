@@ -14,6 +14,11 @@ class RoleResource extends JsonResource
             'roleName' => $this->roleName,
             'color' => $this->color,
             'isActive' => $this->isActive,
+            'equivalentroleid' => $this->equivalentroleid,
+            'equivalentRole' => $this->whenLoaded('equivalentRole', fn() => [
+                'id' => $this->equivalentRole->id,
+                'roleName' => $this->equivalentRole->roleName,
+            ]),
             'createdAt' => $this->createdAt,
             'updatedAt' => $this->updatedAt,
             'deletedAt' => $this->deletedAt,

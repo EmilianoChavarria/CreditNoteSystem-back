@@ -388,6 +388,37 @@ curl -X POST "http://localhost:8000/api/batches" \
   -F "file=@C:/files/users.xlsx"
 ```
 
+### Opciones de correo de bienvenida para users
+
+Por defecto no se envian correos de bienvenida en la carga masiva de usuarios.
+
+- `welcomeEmailMode=none`: no envia correos.
+- `welcomeEmailMode=individual`: envia un correo de bienvenida a cada usuario creado.
+- `welcomeEmailMode=single`: envia un solo correo con todos los usuarios creados a `welcomeEmailRecipient`.
+- `sendWelcomeEmails=true`: atajo equivalente a `welcomeEmailMode=individual`.
+- `welcomeEmailRecipient`: correo requerido cuando `welcomeEmailMode=single`.
+
+Ejemplo enviando a cada usuario:
+
+```bash
+curl -X POST "http://localhost:8000/api/batches" \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -F "batchType=users" \
+  -F "welcomeEmailMode=individual" \
+  -F "file=@C:/files/users.xlsx"
+```
+
+Ejemplo enviando un solo correo concentrado:
+
+```bash
+curl -X POST "http://localhost:8000/api/batches" \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -F "batchType=users" \
+  -F "welcomeEmailMode=single" \
+  -F "welcomeEmailRecipient=aldrick@ittec.mx" \
+  -F "file=@C:/files/users.xlsx"
+```
+
 **Contenido del Excel (users.xlsx):**
 
 | fullName     | email              | roleId    | supervisorId    | isActive |

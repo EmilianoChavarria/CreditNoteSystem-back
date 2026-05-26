@@ -29,4 +29,23 @@ return [
     'batch_errors'            => 'Con error',
     'batch_processing'        => 'En procesamiento',
     'batch_auto_notice'       => 'Este es un correo automático, por favor no responder.',
+    // Users batch welcome
+    'batch_users_subject'     => 'Usuarios creados en batch #:id',
+    'batch_users_title'       => 'Usuarios creados',
+    'batch_users_intro'       => 'Se crearon :count usuarios en el batch #:id. Estas son sus credenciales de acceso:',
+    'batch_users_name_label'  => 'Nombre',
+    'batch_users_role_label'  => 'Rol',
+    'batch_users_auto_notice' => 'Este correo contiene credenciales de usuarios creados por carga masiva. Por favor no responder.',
+
+    // Request pending approval
+    'pending_approval_subject'        => 'Tienes una solicitud pendiente de aprobación',
+    'pending_approval_title'          => 'Solicitud pendiente de aprobación',
+    'pending_approval_greeting'       => 'Hola, :name',
+    'pending_approval_intro'          => 'Tienes una nueva solicitud pendiente de aprobación. A continuación encontrarás los detalles:',
+    'pending_approval_number_label'   => 'Número de solicitud',
+    'pending_approval_type_label'     => 'Tipo de solicitud',
+    'pending_approval_class_label'    => 'Clasificación',
+    'pending_approval_cta'            => 'Por favor ingresa al sistema para revisar y aprobar la solicitud.',
+    'pending_approval_footer'         => 'Este es un mensaje automático, por favor no respondas a este correo.',
+    'pending_approval_override_notice'=> 'Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a :recipient',
 ];

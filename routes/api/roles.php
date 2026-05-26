@@ -9,5 +9,8 @@ Route::middleware(['jwt'])->group(function () {
     Route::post('roles', [RoleController::class, 'store']);
     Route::get('roles/{id}', [RoleController::class, 'show']);
     Route::put('roles/{id}', [RoleController::class, 'update']);
+    Route::patch('roles/{id}', [RoleController::class, 'update']);
+    Route::get('roles/{id}/equivalent-role', [RoleController::class, 'getEquivalentRole']);
+    Route::patch('roles/{id}/equivalent-role', [RoleController::class, 'setEquivalentRole']);
     Route::delete('roles/{id}', [RoleController::class, 'destroy']);
 });

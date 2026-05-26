@@ -14,7 +14,7 @@ class LinkReturnOrderToRequestInput extends FormRequest
     public function rules(): array
     {
         return [
-            'returnOrderId'       => ['required', 'integer', 'exists:returnOrders,id'],
+            'returnOrderId'       => ['required', 'integer', 'exists:returnorders,id'],
             'requestId'           => ['required', 'integer', 'exists:requests,id'],
             'returnChargePercent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ];

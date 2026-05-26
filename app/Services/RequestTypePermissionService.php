@@ -4,54 +4,27 @@ namespace App\Services;
 
 use App\Models\Action;
 use App\Models\RequestTypePermission;
-use Illuminate\Support\Facades\DB;
 
 class RequestTypePermissionService
 {
     public function upsertPermissions(array $items): array
     {
-        $created = 0;
-        $updated = 0;
-        $permissionIds = [];
+        $rows = array_map(fn($item) => [
+            'role_id'         => (int) $item['role_id'],
+            'request_type_id' => (int) $item['request_type_id'],
+            'action_id'       => (int) $item['action_id'],
+            'is_allowed'      => (bool) $item['is_allowed'],
+        ], $items);
 
-        DB::transaction(function () use ($items, &$created, &$updated, &$permissionIds) {
-            foreach ($items as $item) {
-                $permission = RequestTypePermission::query()
-                    ->where('role_id', $item['role_id'])
-                    ->where('request_type_id', $item['request_type_id'])
-                    ->where('action_id', $item['action_id'])
-                    ->first();
-
-                if ($permission) {
-                    $permission->update(['is_allowed' => (bool) $item['is_allowed']]);
-                    $updated++;
-                } else {
-                    $permission = RequestTypePermission::create([
-                        'role_id' => $item['role_id'],
-                        'request_type_id' => $item['request_type_id'],
-                        'action_id' => $item['action_id'],
-                        'is_allowed' => (bool) $item['is_allowed'],
-                    ]);
-                    $created++;
-                }
-
-                $permissionIds[] = $permission->id;
-            }
-        });
-
-        $permissions = RequestTypePermission::query()
-            ->with(['role', 'requestType', 'action'])
-            ->whereIn('id', array_unique($permissionIds))
-            ->orderBy('id')
-            ->get();
+        // Single INSERT ... ON DUPLICATE KEY UPDATE — replaces N*2 individual queries
+        RequestTypePermission::upsert(
+            $rows,
+            ['role_id', 'request_type_id', 'action_id'],
+            ['is_allowed']
+        );
 
         return [
-            'summary' => [
-                'total' => count($items),
-                'created' => $created,
-                'updated' => $updated,
-            ],
-            'permissions' => $permissions,
+            'total' => count($items),
         ];
     }
 

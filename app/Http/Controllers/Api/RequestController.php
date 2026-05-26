@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Actions\Requests\ApproveMassRequestsAction;
 use App\Actions\Requests\ApproveRequestAction;
+use App\Actions\Requests\CancelMassRequestsAction;
 use App\Actions\Requests\CancelRequestAction;
 use App\Actions\Requests\RejectMassRequestsAction;
 use App\Actions\Requests\RejectRequestAction;
@@ -11,6 +12,7 @@ use App\Actions\Requests\SendBackRequestAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Requests\ApproveMassRequestInput;
 use App\Http\Requests\Requests\ApproveRequestInput;
+use App\Http\Requests\Requests\CancelMassRequestInput;
 use App\Http\Requests\Requests\CancelRequestInput;
 use App\Http\Requests\Requests\CreateRequestInput;
 use App\Http\Requests\Requests\SendBackRequestInput;
@@ -28,6 +30,7 @@ use App\Services\RequestAttachmentService;
 use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
 use App\Services\RequestNumberService;
+use App\Services\RequestPdfService;
 use App\Services\RequestWorkflowService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -49,8 +52,19 @@ class RequestController extends Controller
         private readonly SendBackRequestAction $sendBackRequestAction,
         private readonly ApproveMassRequestsAction $approveMassRequestsAction,
         private readonly RejectMassRequestsAction $rejectMassRequestsAction,
+        private readonly CancelMassRequestsAction $cancelMassRequestsAction,
+        private readonly RequestPdfService $requestPdfService,
     )
     {
+    }
+
+    public function downloadPdf(int $requestId)
+    {
+        try {
+            return $this->requestPdfService->generatePdf($requestId);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 404), 404);
+        }
     }
 
     public function getRequestHistoryById(int $requestId)
@@ -217,10 +231,11 @@ class RequestController extends Controller
         $isAdmin = $this->isAdminUser($authUser);
         $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
         $search = trim((string) $request->query('search', ''));
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
         $perPageInput = $request->query('per_page', $request->query('perPage', 15));
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) $request->query('page', 1));
-        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page);
+        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
@@ -242,7 +257,8 @@ class RequestController extends Controller
     {
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search);
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));
@@ -428,6 +444,23 @@ class RequestController extends Controller
             'rejectedRequestIds' => $result['rejectedRequestIds'],
             'failedRequests' => $result['failedRequests'],
             'commentApplied' => $result['commentApplied'],
+        ]));
+    }
+
+    public function cancelMass(CancelMassRequestInput $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $comments = $request->filled('comments') ? (string) $request->input('comments') : null;
+        $result = $this->cancelMassRequestsAction->execute($requestIds, $authUser, $isAdmin, $comments);
+
+        return response()->json(ApiResponse::success('Cancelación masiva procesada', [
+            'totalReceived' => $result['totalReceived'],
+            'totalCancelled' => $result['totalCancelled'],
+            'totalFailed' => $result['totalFailed'],
+            'cancelledRequestIds' => $result['cancelledRequestIds'],
+            'failedRequests' => $result['failedRequests'],
         ]));
     }
 
