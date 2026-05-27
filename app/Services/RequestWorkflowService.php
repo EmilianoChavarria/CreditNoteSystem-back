@@ -632,21 +632,21 @@ class RequestWorkflowService
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
 
             if ($result['ok']) {
-                $approvedIds[] = (int) $requestId;
+                $approvedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
                     $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
                 }
 
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         foreach ($notificationsByUser as $userId => $requestNumbers) {
@@ -669,21 +669,21 @@ class RequestWorkflowService
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
 
             if ($result['ok']) {
-                $rejectedIds[] = (int) $requestId;
+                $rejectedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
                     $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
                 }
 
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         foreach ($notificationsByUser as $userId => $requestNumbers) {
@@ -706,14 +706,15 @@ class RequestWorkflowService
         $failed = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
 
             if ($result['ok']) {
-                $cancelledIds[] = (int) $requestId;
+                $cancelledIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         return [
@@ -732,21 +733,21 @@ class RequestWorkflowService
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
 
             if ($result['ok']) {
-                $sentBackIds[] = (int) $requestId;
+                $sentBackIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
                     $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
                 }
 
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         foreach ($notificationsByUser as $userId => $requestNumbers) {
