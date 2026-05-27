@@ -8,6 +8,7 @@ use App\Actions\Requests\CancelMassRequestsAction;
 use App\Actions\Requests\CancelRequestAction;
 use App\Actions\Requests\RejectMassRequestsAction;
 use App\Actions\Requests\RejectRequestAction;
+use App\Actions\Requests\SendBackMassRequestsAction;
 use App\Actions\Requests\SendBackRequestAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Requests\ApproveMassRequestInput;
@@ -15,6 +16,7 @@ use App\Http\Requests\Requests\ApproveRequestInput;
 use App\Http\Requests\Requests\CancelMassRequestInput;
 use App\Http\Requests\Requests\CancelRequestInput;
 use App\Http\Requests\Requests\CreateRequestInput;
+use App\Http\Requests\Requests\SendBackMassRequestInput;
 use App\Http\Requests\Requests\SendBackRequestInput;
 use App\Http\Requests\Requests\RejectMassRequestInput;
 use App\Http\Requests\Requests\RejectRequestInput;
@@ -55,6 +57,7 @@ class RequestController extends Controller
         private readonly ApproveMassRequestsAction $approveMassRequestsAction,
         private readonly RejectMassRequestsAction $rejectMassRequestsAction,
         private readonly CancelMassRequestsAction $cancelMassRequestsAction,
+        private readonly SendBackMassRequestsAction $sendBackMassRequestsAction,
         private readonly RequestPdfService $requestPdfService,
     )
     {
@@ -238,7 +241,8 @@ class RequestController extends Controller
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) $request->query('page', 1));
         $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
-        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName, $requesterId);
+        $classificationType = $request->filled('classificationType') ? trim((string) $request->input('classificationType')) : null;
+        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName, $requesterId, $classificationType);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
@@ -479,6 +483,24 @@ class RequestController extends Controller
             'totalFailed' => $result['totalFailed'],
             'cancelledRequestIds' => $result['cancelledRequestIds'],
             'failedRequests' => $result['failedRequests'],
+        ]));
+    }
+
+    public function sendBackMass(SendBackMassRequestInput $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $targetWorkflowStepId = (int) $request->input('targetWorkflowStepId');
+        $comments = $request->filled('comments') ? (string) $request->input('comments') : null;
+        $result = $this->sendBackMassRequestsAction->execute($requestIds, $targetWorkflowStepId, $authUser, $isAdmin, $comments);
+
+        return response()->json(ApiResponse::success('Regreso masivo procesado', [
+            'totalReceived'      => $result['totalReceived'],
+            'totalSentBack'      => $result['totalSentBack'],
+            'totalFailed'        => $result['totalFailed'],
+            'sentBackRequestIds' => $result['sentBackRequestIds'],
+            'failedRequests'     => $result['failedRequests'],
         ]));
     }
 

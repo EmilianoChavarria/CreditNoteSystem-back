@@ -725,6 +725,43 @@ class RequestWorkflowService
         ];
     }
 
+    public function sendBackMass(array $requestIds, int $targetWorkflowStepId, mixed $authUser, bool $isAdmin, ?string $comments): array
+    {
+        $sentBackIds = [];
+        $failed = [];
+        $notificationsByUser = [];
+
+        foreach ($requestIds as $requestId) {
+            $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
+
+            if ($result['ok']) {
+                $sentBackIds[] = (int) $requestId;
+
+                $notifyUserId = $result['notifyUserId'] ?? null;
+                if (!empty($notifyUserId)) {
+                    $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
+                    $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
+                }
+
+                continue;
+            }
+
+            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+        }
+
+        foreach ($notificationsByUser as $userId => $requestNumbers) {
+            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
+        }
+
+        return [
+            'totalReceived'    => count($requestIds),
+            'totalSentBack'    => count($sentBackIds),
+            'totalFailed'      => count($failed),
+            'sentBackRequestIds' => $sentBackIds,
+            'failedRequests'   => $failed,
+        ];
+    }
+
     private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?WorkflowStep
     {
         $transitions = WorkflowStepTransition::query()
