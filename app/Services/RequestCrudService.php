@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Request as RequestModel;
+use App\Models\RequestClassification;
 use App\Models\WorkflowRequestCurrentStep;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -250,13 +251,27 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null)
+    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
     {
-        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId)
+        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType)
             ->paginate($perPage, ['*'], 'page', $page);
         $this->enrichWithRazonSocial($paginator);
 
         return $paginator;
+    }
+
+    public function getClassificationsForMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId): Collection
+    {
+        $classificationIds = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, '')
+            ->whereNotNull('classificationId')
+            ->reorder()
+            ->distinct()
+            ->pluck('classificationId');
+
+        return RequestClassification::whereIn('id', $classificationIds)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get();
     }
 
     public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null)
@@ -327,7 +342,7 @@ class RequestCrudService
         return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
     }
 
-    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null)
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -362,6 +377,12 @@ class RequestCrudService
 
         if ($requesterId !== null) {
             $query->where('userId', $requesterId);
+        }
+
+        if ($classificationType !== null && $classificationType !== '') {
+            $query->whereHas('classification', function ($q) use ($classificationType) {
+                $q->where('type', $classificationType);
+            });
         }
 
         if ($search !== '') {

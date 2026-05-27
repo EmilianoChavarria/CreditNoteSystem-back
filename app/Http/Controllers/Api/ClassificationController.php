@@ -6,12 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\RequestClassificationResource;
 use App\Models\RequestClassification;
 use App\Models\RequestType;
+use App\Services\RequestCrudService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class ClassificationController extends Controller
 {
+    public function __construct(
+        private readonly RequestCrudService $requestCrudService
+    ) {
+    }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -59,5 +65,16 @@ class ClassificationController extends Controller
         }
 
         return response()->json(ApiResponse::success('Clasificaciones', RequestClassificationResource::collection($classifications)));
+    }
+
+    public function getUsedInMyPending(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = str_contains(mb_strtoupper(trim((string) ($authUser->roleName ?? ''))), 'ADMIN');
+        $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
+
+        $classifications = $this->requestCrudService->getClassificationsForMyPending($authUser, $isAdmin, $requestTypeId);
+
+        return response()->json(ApiResponse::success('Clasificaciones de mis pendientes', RequestClassificationResource::collection($classifications)));
     }
 }
