@@ -50,8 +50,26 @@ class OrderNumbersBatchHandler extends AbstractBatchHandler
             throw new RuntimeException('Request no encontrada para requestNumber=' . $requestNumber);
         }
 
+        $orderNumber = trim((string) $data['orderNumber']);
+
+        if (!empty($request->orderNumber)) {
+            throw new RuntimeException(
+                'El Número de Orden SAP ya ha sido asignado a esta solicitud (requestNumber=' . $requestNumber . ').'
+            );
+        }
+
+        $conflict = RequestModel::where('orderNumber', $orderNumber)
+            ->where('id', '!=', $request->id)
+            ->first();
+
+        if ($conflict) {
+            throw new RuntimeException(
+                'El Número de Orden SAP ' . $orderNumber . ' ya ha sido asignado a otra solicitud (requestNumber=' . $conflict->requestNumber . ').'
+            );
+        }
+
         $request->update([
-            'orderNumber' => (string) $data['orderNumber'],
+            'orderNumber' => $orderNumber,
         ]);
 
         return (int) $request->id;
