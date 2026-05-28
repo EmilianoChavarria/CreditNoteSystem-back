@@ -46,11 +46,15 @@ class DataExportService
     {
         $search = trim((string) ($filters['search'] ?? ''));
         $roleName = trim((string) ($filters['roleName'] ?? $filters['role_name'] ?? ''));
+        $dateFrom = trim((string) ($filters['dateFrom'] ?? $filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['dateTo'] ?? $filters['date_to'] ?? ''));
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
         $users = User::query()
             ->with(['role:id,roleName', 'supervisor:id,fullName,email'])
             ->whereHas('role', fn ($query) => $query->where('roleName', '!=', 'SUPERADMIN'))
+            ->when($dateFrom !== '', fn ($query) => $query->whereDate('createdAt', '>=', $dateFrom))
+            ->when($dateTo !== '', fn ($query) => $query->whereDate('createdAt', '<=', $dateTo))
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('role', fn ($roleQuery) => $roleQuery->where('roleName', $roleName));
             })
