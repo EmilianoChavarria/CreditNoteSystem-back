@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\RequestReasonResource;
 
 class RequestClassificationResource extends JsonResource
 {
@@ -17,6 +18,7 @@ class RequestClassificationResource extends JsonResource
             'createdAt' => $this->createdAt,
             'updatedAt' => $this->updatedAt,
             'requestTypes' => RequestTypeResource::collection($this->whenLoaded('requestTypes')),
+            'reasons' => RequestReasonResource::collection($this->whenLoaded('reasons')),
         ];
     }
 }

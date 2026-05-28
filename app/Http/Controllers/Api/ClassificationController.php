@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\RequestClassificationResource;
 use App\Models\RequestClassification;
+use App\Models\RequestReason;
 use App\Models\RequestType;
 use App\Services\RequestCrudService;
 use App\Support\ApiResponse;
@@ -65,6 +66,31 @@ class ClassificationController extends Controller
         }
 
         return response()->json(ApiResponse::success('Clasificaciones', RequestClassificationResource::collection($classifications)));
+    }
+
+    public function syncReasons(Request $request, int $id)
+    {
+        $classification = RequestClassification::find($id);
+
+        if (!$classification) {
+            return response()->json(ApiResponse::error('Clasificación no encontrada', null, 404), 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'reasons'   => ['required', 'array'],
+            'reasons.*' => ['required', 'int', 'exists:requestreasons,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(ApiResponse::error('Datos inválidos', $validator->errors(), 422), 422);
+        }
+
+        $classification->reasons()->sync($request->input('reasons'));
+
+        return response()->json(ApiResponse::success(
+            'Razones asociadas exitosamente',
+            RequestClassificationResource::make($classification->load('reasons'))
+        ));
     }
 
     public function getUsedInMyPending(Request $request)
