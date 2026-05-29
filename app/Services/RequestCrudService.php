@@ -94,7 +94,15 @@ class RequestCrudService
             return ['status' => 404, 'message' => 'Request no encontrada', 'data' => null];
         }
 
-        if (!$isAdmin && (int) $requestModel->userId !== (int) $authUser->id) {
+        $isCreator = (int) $requestModel->userId === (int) $authUser->id;
+        $isRoleAssigned = WorkflowRequestCurrentStep::query()
+            ->where('requestId', $requestId)
+            ->where('status', 'pending')
+            ->where('assignedRoleId', (int) $authUser->roleId)
+            ->whereHas('assignedRole', fn ($q) => $q->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE']))
+            ->exists();
+
+        if (!$isAdmin && !$isCreator && !$isRoleAssigned) {
             return ['status' => 403, 'message' => 'No tienes permisos para editar esta solicitud', 'data' => null];
         }
 
@@ -360,7 +368,15 @@ class RequestCrudService
                 $workflowQuery->where('status', 'pending');
 
                 if (!$isAdmin) {
-                    $workflowQuery->where('assignedUserId', (int) $authUser->id);
+                    $workflowQuery->where(function ($q) use ($authUser) {
+                        $q->where('assignedUserId', (int) $authUser->id)
+                            ->orWhere(function ($roleQ) use ($authUser) {
+                                $roleQ->where('assignedRoleId', (int) $authUser->roleId)
+                                    ->whereHas('assignedRole', function ($r) {
+                                        $r->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE']);
+                                    });
+                            });
+                    });
                 }
 
                 if ($shouldFilterByRole) {
