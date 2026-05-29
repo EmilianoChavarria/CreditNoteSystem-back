@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Mail;
 
 class EmailSenderService
 {
-    public function send(Mailable $mailable, string $recipientEmail): void
+    public function send(Mailable $mailable, string $recipientEmail, ?string $ccEmail = null): void
     {
         $config = EmailConfig::find(1);
         $mode = (string) ($config?->emailMode ?? 'normal');
@@ -28,11 +28,16 @@ class EmailSenderService
             if ($hasMethod) {
                 $mailable->applyOverrideNotice($recipientEmail);
             }
-            $to = (string) $config->overrideEmail;
-        } else {
-            $to = $recipientEmail;
+            Mail::to((string) $config->overrideEmail)->send($mailable);
+            return;
         }
 
-        Mail::to($to)->send($mailable);
+        $mailer = Mail::to($recipientEmail);
+
+        if ($ccEmail !== null && $ccEmail !== $recipientEmail) {
+            $mailer->cc($ccEmail);
+        }
+
+        $mailer->send($mailable);
     }
 }
