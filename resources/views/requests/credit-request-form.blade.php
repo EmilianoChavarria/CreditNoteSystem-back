@@ -218,17 +218,25 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
     </tr>
   </thead>
   <tbody>
-    @php $items = $request->returnOrderRequest?->returnOrder?->items ?? collect(); @endphp
+    @php $items = $request->returnOrderRequest?->items ?? collect(); @endphp
     @forelse($items as $item)
+    @php
+    var_dump($item);
+      $roItem = $item->returnOrderItem;
+      $qty    = $roItem?->requestedQuantity;
+      $price  = $roItem?->valorUnitario;
+      $total  = ($qty !== null && $price !== null) ? $qty * $price : null;
+      $rejection = $item->warehouseReasonForRejection ?? $item->replenishmentReasonForRejection ?? '';
+    @endphp
     <tr>
-      <td class="center">{{ $item->quantity ?? '' }}</td>
-      <td></td>
-      <td></td>
-      <td>{{ $item->partNumber ?? '' }}</td>
+      <td class="center">{{ $qty !== null ? number_format((float)$qty, 2) : '' }}</td>
+      <td class="center">{{ $item->warehouseReceived !== null ? number_format((float)$item->warehouseReceived, 2) : '' }}</td>
+      <td class="center">{{ $item->warehouseAccepted !== null ? number_format((float)$item->warehouseAccepted, 2) : '' }}</td>
+      <td>{{ $item->descripcion ?? '' }}</td>
       <td>{{ $item->sapId ?? '' }}</td>
-      <td class="right">{{ isset($item->unitPrice) ? number_format((float)$item->unitPrice, 2) : '' }}</td>
-      <td class="right">{{ isset($item->total) ? number_format((float)$item->total, 2) : '' }}</td>
-      <td></td>
+      <td class="right">{{ $price !== null ? number_format((float)$price, 2) : '' }}</td>
+      <td class="right">{{ $total !== null ? number_format($total, 2) : '' }}</td>
+      <td class="small">{{ $rejection }}</td>
     </tr>
     @empty
     <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
