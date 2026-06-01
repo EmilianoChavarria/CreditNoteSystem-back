@@ -21,6 +21,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/customer/{customerId}', [RequestController::class, 'getByCustomerId']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);
     Route::post('requests/draft', [RequestController::class, 'saveDraft']);
+    Route::delete('requests/drafts/{id}', [RequestController::class, 'deleteDraft']);
     Route::post('requests/newRequest', [RequestController::class, 'createRequest']);
     Route::put('requests/{requestId}', [RequestController::class, 'updateRequest']);
     Route::post('requests/approve-mass', [RequestController::class, 'approveMass']);

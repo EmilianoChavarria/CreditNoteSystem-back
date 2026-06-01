@@ -253,10 +253,36 @@ class RequestCrudService
         ];
     }
 
-    public function getDrafts(int $userId, int $perPage, int $page)
+    public function getDrafts(int $userId, string $search, int $perPage, int $page)
     {
-        return $this->buildDraftsQuery($userId)
+        return $this->buildDraftsQuery($userId, $search)
             ->paginate($perPage, ['*'], 'page', $page);
+    }
+
+    public function deleteDraft(int $draftId, mixed $authUser): array
+    {
+        $draft = RequestModel::query()
+            ->whereNull('deletedAt')
+            ->find($draftId);
+
+        if (!$draft) {
+            return ['status' => 404, 'message' => 'Borrador no encontrado'];
+        }
+
+        if ((string) $draft->status !== 'draft') {
+            return ['status' => 422, 'message' => 'Solo se pueden eliminar solicitudes en estado borrador'];
+        }
+
+        if ((int) $draft->userId !== (int) $authUser->id) {
+            return ['status' => 403, 'message' => 'No tienes permisos para eliminar este borrador'];
+        }
+
+        $draft->update([
+            'deletedAt' => now(),
+            'deletedBy' => (int) $authUser->id,
+        ]);
+
+        return ['status' => 200, 'message' => 'Borrador eliminado'];
     }
 
     public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
@@ -422,6 +448,7 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
+            ->where('status', '!=', 'draft')
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
                     $roleQuery->where('roleName', $roleName);
@@ -437,9 +464,9 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildDraftsQuery(int $userId)
+    private function buildDraftsQuery(int $userId, string $search = '')
     {
-        return RequestModel::with([
+        $query = RequestModel::with([
             'requestType',
             'user',
             'reason',
@@ -450,7 +477,14 @@ class RequestCrudService
         ])
             ->where('userId', $userId)
             ->where('status', 'draft')
+            ->whereNull('deletedAt')
             ->orderByDesc('updatedAt');
+
+        if ($search !== '') {
+            $this->applySearchFilter($query, $search);
+        }
+
+        return $query;
     }
 
     private function applySearchFilter($query, string $search): void

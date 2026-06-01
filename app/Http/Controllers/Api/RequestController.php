@@ -285,8 +285,14 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success("Reasons", RequestReasonResource::collection($reasons)));
     }
 
-    public function getNextRequestNumber(int $requestTypeId)
+    public function getNextRequestNumber(Request $request, int $requestTypeId)
     {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
         if ($requestTypeId <= 0) {
             return response()->json(
                 ApiResponse::error('requestTypeId inválido', ['requestTypeId' => ['Debe ser un número entero positivo']], 422),
@@ -294,12 +300,13 @@ class RequestController extends Controller
             );
         }
 
-        $requestNumber = $this->requestNumberService->generateRequestNumber($requestTypeId);
+        $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
 
         return response()->json(ApiResponse::success('Next request number', [
             'requestTypeId' => $requestTypeId,
-            'requestNumber' => $requestNumber,
-            'prefix' => $this->requestNumberService->getPrefixForType($requestTypeId),
+            'requestNumber' => $reserved['requestNumber'],
+            'draftId'       => $reserved['draftId'],
+            'prefix'        => $this->requestNumberService->getPrefixForType($requestTypeId),
         ], 201), 201);
     }
 
@@ -535,6 +542,19 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success($result['message'], RequestResource::make($result['data']), $result['status']), $result['status']);
     }
 
+    public function deleteDraft(Request $request, int $id)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        $result = $this->requestCrudService->deleteDraft($id, $authUser);
+
+        if ($result['status'] >= 400) {
+            return response()->json(ApiResponse::error($result['message'], null, $result['status']), $result['status']);
+        }
+
+        return response()->json(ApiResponse::success($result['message'], null, $result['status']), $result['status']);
+    }
+
     public function getDrafts(Request $request)
     {
         $authUser = $request->attributes->get('authUser');
@@ -543,17 +563,14 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
         }
 
-        $perPage = $request->query('perPage', 15);
-        $page = $request->query('page', 1);
+        $perPage = max(1, (int) $request->query('per_page', $request->query('perPage', 15)));
+        $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
 
-        try {
-            $drafts = $this->requestCrudService->getDrafts((int) $authUser->id, (int) $perPage, (int) $page);
-            $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
+        $drafts = $this->requestCrudService->getDrafts((int) $authUser->id, $search, $perPage, $page);
+        $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
 
-            return response()->json(ApiResponse::success('Borradores', $drafts));
-        } catch (\Exception $e) {
-            return response()->json(ApiResponse::error('Error al obtener borradores', ['error' => $e->getMessage()], 500), 500);
-        }
+        return response()->json(ApiResponse::success('Borradores', $drafts));
     }
 
 }
