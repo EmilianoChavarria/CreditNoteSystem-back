@@ -38,4 +38,14 @@ class RequestClassification extends Model
             'typeRequestId'
         );
     }
+
+    public function reasons()
+    {
+        return $this->belongsToMany(
+            RequestReason::class,
+            'classificationreasons',
+            'classificationId',
+            'reasonId'
+        );
+    }
 }

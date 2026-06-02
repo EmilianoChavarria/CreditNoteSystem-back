@@ -46,11 +46,15 @@ class DataExportService
     {
         $search = trim((string) ($filters['search'] ?? ''));
         $roleName = trim((string) ($filters['roleName'] ?? $filters['role_name'] ?? ''));
+        $dateFrom = trim((string) ($filters['dateFrom'] ?? $filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['dateTo'] ?? $filters['date_to'] ?? ''));
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
         $users = User::query()
             ->with(['role:id,roleName', 'supervisor:id,fullName,email'])
             ->whereHas('role', fn ($query) => $query->where('roleName', '!=', 'SUPERADMIN'))
+            ->when($dateFrom !== '', fn ($query) => $query->whereDate('createdAt', '>=', $dateFrom))
+            ->when($dateTo !== '', fn ($query) => $query->whereDate('createdAt', '<=', $dateTo))
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('role', fn ($roleQuery) => $roleQuery->where('roleName', $roleName));
             })
@@ -172,6 +176,8 @@ class DataExportService
         $requestTypeId = isset($filters['requestTypeId']) && is_numeric($filters['requestTypeId'])
             ? (int) $filters['requestTypeId']
             : null;
+        $dateFrom = trim((string) ($filters['dateFrom'] ?? $filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['dateTo'] ?? $filters['date_to'] ?? ''));
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
         $isAdmin = str_contains(mb_strtoupper((string) ($authUser->roleName ?? '')), 'ADMIN');
 
@@ -186,6 +192,8 @@ class DataExportService
                 'workflowCurrentStep.assignedUser',
             ])
             ->when($requestTypeId !== null, fn ($query) => $query->where('requestTypeId', $requestTypeId))
+            ->when($dateFrom !== '', fn ($query) => $query->whereDate('requestDate', '>=', $dateFrom))
+            ->when($dateTo !== '', fn ($query) => $query->whereDate('requestDate', '<=', $dateTo))
             ->when($onlyMyApprovals, function ($query) use ($authUser, $isAdmin, $shouldFilterByRole, $roleName) {
                 $query->whereHas('workflowCurrentStep', function ($workflowQuery) use ($authUser, $isAdmin, $shouldFilterByRole, $roleName) {
                     $workflowQuery->where('status', 'pending');
@@ -209,6 +217,8 @@ class DataExportService
 
         $requests = $query->orderBy('id')->get();
 
+        $customerNames = $this->resolveCustomerNames($requests->pluck('customerId')->filter()->unique()->values()->all());
+
         return [
             'filename' => ($onlyMyApprovals ? 'my_approvals_' : 'requests_') . now()->format('Ymd_His') . '.xls',
             'sheetName' => $onlyMyApprovals ? 'My Approvals' : 'Requests',
@@ -217,30 +227,59 @@ class DataExportService
                 'Request Number',
                 'Request Type',
                 'Customer Number',
+                'Customer Name',
                 'Creator',
                 'Assigned User',
                 'Assigned Role',
                 'Reason',
                 'Classification',
+                'Invoice Number',
                 'Amount',
                 'Total Amount',
                 'Currency',
+                'Status',
+                'Comments',
             ],
             'rows' => $requests->map(fn (RequestModel $request) => [
                 $request->id,
                 $request->requestNumber,
                 $request->requestType?->name ?? $request->requestType?->typeName,
                 $request->customerId,
+                $customerNames[(string) $request->customerId] ?? null,
                 $request->user?->fullName,
                 $request->workflowCurrentStep?->assignedUser?->fullName,
                 $request->workflowCurrentStep?->assignedRole?->roleName,
                 $request->reason?->name,
                 $request->classification?->name,
+                $request->invoiceNumber,
                 $request->amount,
                 $request->totalAmount,
                 $request->currency,
+                $request->status,
+                $request->comments,
             ])->values()->all(),
         ];
+    }
+
+    /**
+     * @param array<int, mixed> $customerIds
+     * @return array<string, string>
+     */
+    private function resolveCustomerNames(array $customerIds): array
+    {
+        if (empty($customerIds)) {
+            return [];
+        }
+
+        try {
+            return DB::connection('invoices')
+                ->table('clientes_TME700618RC7')
+                ->whereIn('idCliente', $customerIds)
+                ->pluck('razonSocial', 'idCliente')
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function applyRequestSearchFilter($query, string $search): void

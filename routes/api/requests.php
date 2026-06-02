@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['jwt'])->group(function () {
     Route::get('requests', [RequestController::class, 'getAll']);
+    Route::get('requests/requesters', [RequestController::class, 'getRequesters']);
     Route::get('requests/drafts', [RequestController::class, 'getDrafts']);
     Route::get('requests/pending/me', [RequestController::class, 'getMyPending']);
     Route::get('requests/pending/{id}', [RequestController::class, 'getPendingByRole']);
@@ -20,11 +21,13 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('requests/customer/{customerId}', [RequestController::class, 'getByCustomerId']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);
     Route::post('requests/draft', [RequestController::class, 'saveDraft']);
+    Route::delete('requests/drafts/{id}', [RequestController::class, 'deleteDraft']);
     Route::post('requests/newRequest', [RequestController::class, 'createRequest']);
     Route::put('requests/{requestId}', [RequestController::class, 'updateRequest']);
     Route::post('requests/approve-mass', [RequestController::class, 'approveMass']);
     Route::post('requests/reject-mass', [RequestController::class, 'rejectMass']);
     Route::post('requests/cancel-mass', [RequestController::class, 'cancelMass']);
+    Route::post('requests/send-back-mass', [RequestController::class, 'sendBackMass']);
     Route::post('requests/{requestId}/approve', [RequestController::class, 'approve']);
     Route::post('requests/{requestId}/reject', [RequestController::class, 'reject']);
     Route::post('requests/{requestId}/cancel', [RequestController::class, 'cancel']);

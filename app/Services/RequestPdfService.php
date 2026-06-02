@@ -24,6 +24,7 @@ class RequestPdfService
             'workflowSteps.workflowStep.role',
             'workflowSteps.assignedUser',
             'workflowSteps.history.actionUser',
+            'returnOrderRequest.items.returnOrderItem',
         ])->find($requestId);
 
         if (!$request) {

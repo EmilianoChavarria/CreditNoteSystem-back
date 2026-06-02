@@ -143,7 +143,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             'hasWarehouseIva' => ['nullable', 'boolean'],
             'sapReturnOrder' => ['nullable', 'string', 'max:255'],
             'hasRga' => ['nullable', 'boolean'],
-            'comments' => ['nullable', 'string', 'max:7000'],
+            'comments' => ['nullable', 'string', 'max:65535'],
         ];
 
         foreach ($requiredFields as $field) {

@@ -171,11 +171,12 @@ class RequestWorkflowService
     public function notifyAssignedUser(int $requestId): void
     {
         $currentStep = WorkflowRequestCurrentStep::query()
+            ->with('assignedRole')
             ->where('requestId', $requestId)
             ->where('status', 'pending')
             ->first();
 
-        if (!$currentStep || $currentStep->assignedUserId === null) {
+        if (!$currentStep) {
             return;
         }
 
@@ -184,6 +185,56 @@ class RequestWorkflowService
             ->find($requestId);
 
         if (!$requestModel) {
+            return;
+        }
+
+        $creatorId = (int) ($requestModel->userId ?? 0);
+        $creatorEmail = null;
+        if ($creatorId > 0) {
+            $creator = User::query()
+                ->where('id', $creatorId)
+                ->where('isActive', true)
+                ->whereNull('deletedAt')
+                ->first();
+            if ($creator && !empty($creator->email)) {
+                $creatorEmail = $creator->email;
+            }
+        }
+
+        $roleName = mb_strtoupper((string) ($currentStep->assignedRole?->roleName ?? ''));
+        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE'], true);
+
+        if ($isBroadcastRole && $currentStep->assignedRoleId) {
+            $users = User::query()
+                ->where('roleId', (int) $currentStep->assignedRoleId)
+                ->where('isActive', true)
+                ->whereNull('deletedAt')
+                ->get();
+
+            foreach ($users as $user) {
+                $this->notificationService->createAssignedRequestNotification($requestModel, (int) $user->id);
+
+                if (empty($user->email)) {
+                    continue;
+                }
+
+                $ccEmail = ($creatorId > 0 && $creatorId !== (int) $user->id) ? $creatorEmail : null;
+
+                $mail = new RequestPendingApprovalMail(
+                    fullName: $user->fullName,
+                    requestNumber: (string) $requestModel->requestNumber,
+                    requestType: (string) ($requestModel->requestType?->name ?? ''),
+                    classification: (string) ($requestModel->classification?->name ?? ''),
+                    locale: (string) ($user->preferredLanguage ?? 'es'),
+                );
+
+                $this->emailSender->send($mail, $user->email, $ccEmail);
+            }
+
+            return;
+        }
+
+        if ($currentStep->assignedUserId === null) {
             return;
         }
 
@@ -199,6 +250,8 @@ class RequestWorkflowService
             return;
         }
 
+        $ccEmail = ($creatorId > 0 && $creatorId !== (int) $currentStep->assignedUserId) ? $creatorEmail : null;
+
         $mail = new RequestPendingApprovalMail(
             fullName: $assignedUser->fullName,
             requestNumber: (string) $requestModel->requestNumber,
@@ -207,7 +260,7 @@ class RequestWorkflowService
             locale: (string) ($assignedUser->preferredLanguage ?? 'es'),
         );
 
-        $this->emailSender->send($mail, $assignedUser->email);
+        $this->emailSender->send($mail, $assignedUser->email, $ccEmail);
     }
 
     public function approve(int $requestId, mixed $authUser, bool $isAdmin, ?string $comments): array
@@ -228,7 +281,14 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'La solicitud no tiene un paso actual asignado']];
             }
 
-            if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
+            $isAssignedUser = $currentStep->assignedUserId !== null && (int) $currentStep->assignedUserId === (int) $authUser->id;
+            $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
+                && Role::query()
+                    ->where('id', (int) $currentStep->assignedRoleId)
+                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE'])
+                    ->exists();
+
+            if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
                 return ['ok' => false, 'status' => 403, 'payload' => ['message' => 'No tienes permisos para aprobar esta solicitud en el paso actual (asignación por usuario)']];
             }
 
@@ -350,7 +410,14 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'La solicitud no tiene un paso actual asignado']];
             }
 
-            if (!$isAdmin && ($currentStep->assignedUserId === null || (int) $currentStep->assignedUserId !== (int) $authUser->id)) {
+            $isAssignedUser = $currentStep->assignedUserId !== null && (int) $currentStep->assignedUserId === (int) $authUser->id;
+            $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
+                && Role::query()
+                    ->where('id', (int) $currentStep->assignedRoleId)
+                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE'])
+                    ->exists();
+
+            if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
                 return ['ok' => false, 'status' => 403, 'payload' => ['message' => 'No tienes permisos para rechazar esta solicitud en el paso actual (asignación por usuario)']];
             }
 
@@ -632,21 +699,21 @@ class RequestWorkflowService
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
 
             if ($result['ok']) {
-                $approvedIds[] = (int) $requestId;
+                $approvedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
                     $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
                 }
 
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         foreach ($notificationsByUser as $userId => $requestNumbers) {
@@ -669,21 +736,21 @@ class RequestWorkflowService
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
 
             if ($result['ok']) {
-                $rejectedIds[] = (int) $requestId;
+                $rejectedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
                     $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
                 }
 
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         foreach ($notificationsByUser as $userId => $requestNumbers) {
@@ -706,14 +773,15 @@ class RequestWorkflowService
         $failed = [];
 
         foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
             $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
 
             if ($result['ok']) {
-                $cancelledIds[] = (int) $requestId;
+                $cancelledIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
                 continue;
             }
 
-            $failed[] = ['requestId' => (int) $requestId, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
         return [
@@ -722,6 +790,43 @@ class RequestWorkflowService
             'totalFailed' => count($failed),
             'cancelledRequestIds' => $cancelledIds,
             'failedRequests' => $failed,
+        ];
+    }
+
+    public function sendBackMass(array $requestIds, int $targetWorkflowStepId, mixed $authUser, bool $isAdmin, ?string $comments): array
+    {
+        $sentBackIds = [];
+        $failed = [];
+        $notificationsByUser = [];
+
+        foreach ($requestIds as $requestId) {
+            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
+            $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
+
+            if ($result['ok']) {
+                $sentBackIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
+
+                $notifyUserId = $result['notifyUserId'] ?? null;
+                if (!empty($notifyUserId)) {
+                    $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
+                }
+
+                continue;
+            }
+
+            $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
+        }
+
+        foreach ($notificationsByUser as $userId => $requestNumbers) {
+            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
+        }
+
+        return [
+            'totalReceived'    => count($requestIds),
+            'totalSentBack'    => count($sentBackIds),
+            'totalFailed'      => count($failed),
+            'sentBackRequestIds' => $sentBackIds,
+            'failedRequests'   => $failed,
         ];
     }
 
