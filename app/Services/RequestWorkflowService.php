@@ -202,7 +202,7 @@ class RequestWorkflowService
         }
 
         $roleName = mb_strtoupper((string) ($currentStep->assignedRole?->roleName ?? ''));
-        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE'], true);
+        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true);
 
         if ($isBroadcastRole && $currentStep->assignedRoleId) {
             $users = User::query()
@@ -285,7 +285,7 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE'])
+                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
@@ -414,7 +414,7 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE'])
+                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {

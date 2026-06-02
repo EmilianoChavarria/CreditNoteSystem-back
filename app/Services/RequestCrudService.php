@@ -99,7 +99,7 @@ class RequestCrudService
             ->where('requestId', $requestId)
             ->where('status', 'pending')
             ->where('assignedRoleId', (int) $authUser->roleId)
-            ->whereHas('assignedRole', fn ($q) => $q->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE']))
+            ->whereHas('assignedRole', fn ($q) => $q->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT']))
             ->exists();
 
         if (!$isAdmin && !$isCreator && !$isRoleAssigned) {
@@ -399,7 +399,7 @@ class RequestCrudService
                             ->orWhere(function ($roleQ) use ($authUser) {
                                 $roleQ->where('assignedRoleId', (int) $authUser->roleId)
                                     ->whereHas('assignedRole', function ($r) {
-                                        $r->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE']);
+                                        $r->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT']);
                                     });
                             });
                     });
