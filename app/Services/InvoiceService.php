@@ -77,7 +77,7 @@ class InvoiceService
         return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getInvoicesByClientIdAndChargeType(int $clientId, string $chargeType, int $perPage = 15, int $page = 1, string $search = ''): LengthAwarePaginator
+    public function getInvoicesByClientIdAndChargeType(string $clientId, string $chargeType, int $perPage = 15, int $page = 1, string $search = '', string $moneda = ''): LengthAwarePaginator
     {
         if (!Schema::connection('invoices')->hasTable('comprobantes_TME700618RC7')) {
             return new LengthAwarePaginator([], 0, $perPage, $page);
@@ -93,6 +93,10 @@ class InvoiceService
 
         if ($search !== '') {
             $query->where('folio', 'like', "%{$search}%");
+        }
+
+        if ($moneda !== '') {
+            $query->where('moneda', $moneda);
         }
 
         return $query->paginate($perPage, ['*'], 'page', $page);

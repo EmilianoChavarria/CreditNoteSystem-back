@@ -8,6 +8,7 @@ use App\Actions\Requests\CancelMassRequestsAction;
 use App\Actions\Requests\CancelRequestAction;
 use App\Actions\Requests\RejectMassRequestsAction;
 use App\Actions\Requests\RejectRequestAction;
+use App\Actions\Requests\SendBackMassRequestsAction;
 use App\Actions\Requests\SendBackRequestAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Requests\ApproveMassRequestInput;
@@ -15,6 +16,7 @@ use App\Http\Requests\Requests\ApproveRequestInput;
 use App\Http\Requests\Requests\CancelMassRequestInput;
 use App\Http\Requests\Requests\CancelRequestInput;
 use App\Http\Requests\Requests\CreateRequestInput;
+use App\Http\Requests\Requests\SendBackMassRequestInput;
 use App\Http\Requests\Requests\SendBackRequestInput;
 use App\Http\Requests\Requests\RejectMassRequestInput;
 use App\Http\Requests\Requests\RejectRequestInput;
@@ -23,9 +25,11 @@ use App\Http\Requests\Requests\UpdateRequestInput;
 use App\Http\Resources\RequestAttachmentResource;
 use App\Http\Resources\RequestReasonResource;
 use App\Http\Resources\RequestResource;
+use App\Http\Resources\UserResource;
 use App\Models\Request as RequestModel;
 use App\Models\RequestReason;
 use App\Models\RequestType;
+use App\Models\User;
 use App\Services\RequestAttachmentService;
 use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
@@ -53,6 +57,7 @@ class RequestController extends Controller
         private readonly ApproveMassRequestsAction $approveMassRequestsAction,
         private readonly RejectMassRequestsAction $rejectMassRequestsAction,
         private readonly CancelMassRequestsAction $cancelMassRequestsAction,
+        private readonly SendBackMassRequestsAction $sendBackMassRequestsAction,
         private readonly RequestPdfService $requestPdfService,
     )
     {
@@ -235,7 +240,9 @@ class RequestController extends Controller
         $perPageInput = $request->query('per_page', $request->query('perPage', 15));
         $perPage = max(1, (int) $perPageInput);
         $page = max(1, (int) $request->query('page', 1));
-        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName);
+        $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
+        $classificationType = $request->filled('classificationType') ? trim((string) $request->input('classificationType')) : null;
+        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName, $requesterId, $classificationType);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
@@ -258,7 +265,8 @@ class RequestController extends Controller
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName);
+        $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));
@@ -277,8 +285,14 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success("Reasons", RequestReasonResource::collection($reasons)));
     }
 
-    public function getNextRequestNumber(int $requestTypeId)
+    public function getNextRequestNumber(Request $request, int $requestTypeId)
     {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
         if ($requestTypeId <= 0) {
             return response()->json(
                 ApiResponse::error('requestTypeId inválido', ['requestTypeId' => ['Debe ser un número entero positivo']], 422),
@@ -286,12 +300,13 @@ class RequestController extends Controller
             );
         }
 
-        $requestNumber = $this->requestNumberService->generateRequestNumber($requestTypeId);
+        $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
 
         return response()->json(ApiResponse::success('Next request number', [
             'requestTypeId' => $requestTypeId,
-            'requestNumber' => $requestNumber,
-            'prefix' => $this->requestNumberService->getPrefixForType($requestTypeId),
+            'requestNumber' => $reserved['requestNumber'],
+            'draftId'       => $reserved['draftId'],
+            'prefix'        => $this->requestNumberService->getPrefixForType($requestTypeId),
         ], 201), 201);
     }
 
@@ -447,6 +462,20 @@ class RequestController extends Controller
         ]));
     }
 
+    public function getRequesters(Request $request)
+    {
+        $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
+
+        $userIds = RequestModel::query()
+            ->when($requestTypeId, fn ($q) => $q->where('requestTypeId', $requestTypeId))
+            ->distinct()
+            ->pluck('userId');
+
+        $users = User::whereIn('id', $userIds)->orderBy('fullName')->get();
+
+        return response()->json(ApiResponse::success('Usuarios solicitantes', UserResource::collection($users)));
+    }
+
     public function cancelMass(CancelMassRequestInput $request)
     {
         $authUser = $request->attributes->get('authUser');
@@ -461,6 +490,24 @@ class RequestController extends Controller
             'totalFailed' => $result['totalFailed'],
             'cancelledRequestIds' => $result['cancelledRequestIds'],
             'failedRequests' => $result['failedRequests'],
+        ]));
+    }
+
+    public function sendBackMass(SendBackMassRequestInput $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $targetWorkflowStepId = (int) $request->input('targetWorkflowStepId');
+        $comments = $request->filled('comments') ? (string) $request->input('comments') : null;
+        $result = $this->sendBackMassRequestsAction->execute($requestIds, $targetWorkflowStepId, $authUser, $isAdmin, $comments);
+
+        return response()->json(ApiResponse::success('Regreso masivo procesado', [
+            'totalReceived'      => $result['totalReceived'],
+            'totalSentBack'      => $result['totalSentBack'],
+            'totalFailed'        => $result['totalFailed'],
+            'sentBackRequestIds' => $result['sentBackRequestIds'],
+            'failedRequests'     => $result['failedRequests'],
         ]));
     }
 
@@ -495,6 +542,19 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success($result['message'], RequestResource::make($result['data']), $result['status']), $result['status']);
     }
 
+    public function deleteDraft(Request $request, int $id)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        $result = $this->requestCrudService->deleteDraft($id, $authUser);
+
+        if ($result['status'] >= 400) {
+            return response()->json(ApiResponse::error($result['message'], null, $result['status']), $result['status']);
+        }
+
+        return response()->json(ApiResponse::success($result['message'], null, $result['status']), $result['status']);
+    }
+
     public function getDrafts(Request $request)
     {
         $authUser = $request->attributes->get('authUser');
@@ -503,17 +563,14 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
         }
 
-        $perPage = $request->query('perPage', 15);
-        $page = $request->query('page', 1);
+        $perPage = max(1, (int) $request->query('per_page', $request->query('perPage', 15)));
+        $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
 
-        try {
-            $drafts = $this->requestCrudService->getDrafts((int) $authUser->id, (int) $perPage, (int) $page);
-            $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
+        $drafts = $this->requestCrudService->getDrafts((int) $authUser->id, $search, $perPage, $page);
+        $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
 
-            return response()->json(ApiResponse::success('Borradores', $drafts));
-        } catch (\Exception $e) {
-            return response()->json(ApiResponse::error('Error al obtener borradores', ['error' => $e->getMessage()], 500), 500);
-        }
+        return response()->json(ApiResponse::success('Borradores', $drafts));
     }
 
 }

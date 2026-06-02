@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Request as RequestModel;
+use App\Models\RequestClassification;
 use App\Models\WorkflowRequestCurrentStep;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -93,7 +94,15 @@ class RequestCrudService
             return ['status' => 404, 'message' => 'Request no encontrada', 'data' => null];
         }
 
-        if (!$isAdmin && (int) $requestModel->userId !== (int) $authUser->id) {
+        $isCreator = (int) $requestModel->userId === (int) $authUser->id;
+        $isRoleAssigned = WorkflowRequestCurrentStep::query()
+            ->where('requestId', $requestId)
+            ->where('status', 'pending')
+            ->where('assignedRoleId', (int) $authUser->roleId)
+            ->whereHas('assignedRole', fn ($q) => $q->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE']))
+            ->exists();
+
+        if (!$isAdmin && !$isCreator && !$isRoleAssigned) {
             return ['status' => 403, 'message' => 'No tienes permisos para editar esta solicitud', 'data' => null];
         }
 
@@ -244,24 +253,64 @@ class RequestCrudService
         ];
     }
 
-    public function getDrafts(int $userId, int $perPage, int $page)
+    public function getDrafts(int $userId, string $search, int $perPage, int $page)
     {
-        return $this->buildDraftsQuery($userId)
+        return $this->buildDraftsQuery($userId, $search)
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '')
+    public function deleteDraft(int $draftId, mixed $authUser): array
     {
-        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName)
+        $draft = RequestModel::query()
+            ->whereNull('deletedAt')
+            ->find($draftId);
+
+        if (!$draft) {
+            return ['status' => 404, 'message' => 'Borrador no encontrado'];
+        }
+
+        if ((string) $draft->status !== 'draft') {
+            return ['status' => 422, 'message' => 'Solo se pueden eliminar solicitudes en estado borrador'];
+        }
+
+        if ((int) $draft->userId !== (int) $authUser->id) {
+            return ['status' => 403, 'message' => 'No tienes permisos para eliminar este borrador'];
+        }
+
+        $draft->update([
+            'deletedAt' => now(),
+            'deletedBy' => (int) $authUser->id,
+        ]);
+
+        return ['status' => 200, 'message' => 'Borrador eliminado'];
+    }
+
+    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
+    {
+        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType)
             ->paginate($perPage, ['*'], 'page', $page);
         $this->enrichWithRazonSocial($paginator);
 
         return $paginator;
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '')
+    public function getClassificationsForMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId): Collection
     {
-        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName)
+        $classificationIds = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, '')
+            ->whereNotNull('classificationId')
+            ->reorder()
+            ->distinct()
+            ->pluck('classificationId');
+
+        return RequestClassification::whereIn('id', $classificationIds)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null)
+    {
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId)
             ->paginate($perPage);
         $this->enrichWithRazonSocial($paginator);
 
@@ -327,7 +376,7 @@ class RequestCrudService
         return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
     }
 
-    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '')
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -345,7 +394,15 @@ class RequestCrudService
                 $workflowQuery->where('status', 'pending');
 
                 if (!$isAdmin) {
-                    $workflowQuery->where('assignedUserId', (int) $authUser->id);
+                    $workflowQuery->where(function ($q) use ($authUser) {
+                        $q->where('assignedUserId', (int) $authUser->id)
+                            ->orWhere(function ($roleQ) use ($authUser) {
+                                $roleQ->where('assignedRoleId', (int) $authUser->roleId)
+                                    ->whereHas('assignedRole', function ($r) {
+                                        $r->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE']);
+                                    });
+                            });
+                    });
                 }
 
                 if ($shouldFilterByRole) {
@@ -360,6 +417,16 @@ class RequestCrudService
             $query->where('requestTypeId', $requestTypeId);
         }
 
+        if ($requesterId !== null) {
+            $query->where('userId', $requesterId);
+        }
+
+        if ($classificationType !== null && $classificationType !== '') {
+            $query->whereHas('classification', function ($q) use ($classificationType) {
+                $q->where('type', $classificationType);
+            });
+        }
+
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
         }
@@ -367,7 +434,7 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '')
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -381,11 +448,13 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
+            ->where('status', '!=', 'draft')
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
                     $roleQuery->where('roleName', $roleName);
                 });
             })
+            ->when($requesterId !== null, fn ($q) => $q->where('userId', $requesterId))
             ->orderByDesc('createdAt');
 
         if ($search !== '') {
@@ -395,9 +464,9 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildDraftsQuery(int $userId)
+    private function buildDraftsQuery(int $userId, string $search = '')
     {
-        return RequestModel::with([
+        $query = RequestModel::with([
             'requestType',
             'user',
             'reason',
@@ -408,7 +477,14 @@ class RequestCrudService
         ])
             ->where('userId', $userId)
             ->where('status', 'draft')
+            ->whereNull('deletedAt')
             ->orderByDesc('updatedAt');
+
+        if ($search !== '') {
+            $this->applySearchFilter($query, $search);
+        }
+
+        return $query;
     }
 
     private function applySearchFilter($query, string $search): void

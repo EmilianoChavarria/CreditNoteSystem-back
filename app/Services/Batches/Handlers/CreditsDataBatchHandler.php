@@ -53,10 +53,28 @@ class CreditsDataBatchHandler extends AbstractBatchHandler
             throw new RuntimeException('Request no encontrada para requestNumber=' . $requestNumber);
         }
 
+        $creditNumber = trim((string) $data['creditNumber']);
+
+        if (!empty($request->creditNumber)) {
+            throw new RuntimeException(
+                'El Número de Crédito ya ha sido asignado a esta solicitud (requestNumber=' . $requestNumber . ').'
+            );
+        }
+
+        $conflict = RequestModel::where('creditNumber', $creditNumber)
+            ->where('id', '!=', $request->id)
+            ->first();
+
+        if ($conflict) {
+            throw new RuntimeException(
+                'El Número de Crédito ' . $creditNumber . ' ya ha sido asignado a otra solicitud (requestNumber=' . $conflict->requestNumber . ').'
+            );
+        }
+
         $request->loadMissing('requestType');
 
         $updateData = [
-            'creditNumber' => (string) $data['creditNumber'],
+            'creditNumber' => $creditNumber,
         ];
 
         if ($this->isReInvoicingRequest($request)) {

@@ -30,4 +30,14 @@ class RequestReason extends Model
             'requestTypeId'
         );
     }
+
+    public function classifications()
+    {
+        return $this->belongsToMany(
+            RequestClassification::class,
+            'classificationreasons',
+            'reasonId',
+            'classificationId'
+        );
+    }
 }

@@ -33,7 +33,7 @@ class CreateRequestInput extends FormRequest
             'hasIva' => ['nullable', 'boolean'],
             'iva' => ['nullable'],
             'totalAmount' => ['nullable', 'numeric'],
-            'comments' => ['nullable', 'string', 'max:7000'],
+            'comments' => ['nullable', 'string', 'max:65535'],
             'replenishmentAmount' => ['sometimes', 'nullable', 'numeric'],
             'hasReplenishmentIva' => ['sometimes', 'nullable', 'boolean'],
             'replenishmentTotal' => ['sometimes', 'nullable', 'numeric'],

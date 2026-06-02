@@ -45,6 +45,8 @@ class Request extends Model
         'warehouseAmount',
         'hasWarehouseIva',
         'warehouseTotal',
+        'deletedAt',
+        'deletedBy',
     ];
 
     protected $casts = [
@@ -57,6 +59,7 @@ class Request extends Model
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
         'deletedAt' => 'datetime',
+        'deletedBy' => 'integer',
     ];
 
     public function requestType()
