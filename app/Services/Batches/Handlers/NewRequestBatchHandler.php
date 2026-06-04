@@ -79,6 +79,8 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             if ($fieldName === 'customerId' || $fieldName === 'idCustomer') {
                 $resolvedCustomer = $this->resolveCustomer($row, $aliases);
                 $payload['customerId'] = (string) $resolvedCustomer->idCliente;
+            } elseif ($fieldName === 'area') {
+                // area resolved from clientes_ext, not from template
             } elseif ($fieldName === 'reasonId') {
                 $payload['reasonId'] = $this->resolveReasonId($row, $aliases);
             } elseif ($fieldName === 'classificationId') {
@@ -88,9 +90,16 @@ class NewRequestBatchHandler extends AbstractBatchHandler
             }
 
             if (($fieldConfig['required'] ?? false) === true) {
-                $requiredFields[] = $fieldName === 'idCustomer' ? 'customerId' : $fieldName;
+                $fieldForRequired = $fieldName === 'idCustomer' ? 'customerId' : $fieldName;
+                if ($fieldForRequired !== 'area') {
+                    $requiredFields[] = $fieldForRequired;
+                }
             }
         }
+
+        $payload['area'] = isset($payload['customerId']) && $payload['customerId'] !== null
+            ? $this->resolveAreaByCustomer((string) $payload['customerId'])
+            : null;
 
         $payload['hasIva'] = $this->boolFromMixed($payload['hasIva'] ?? null, true);
         $payload['hasRga'] = $this->boolFromMixed($payload['hasRga'] ?? null, false);
@@ -273,6 +282,16 @@ class NewRequestBatchHandler extends AbstractBatchHandler
 
         \Log::error('[resolveCustomer] no encontrado', ['value' => $value, 'query_result' => $customer]);
         throw new RuntimeException("Cliente no encontrado: '{$value}'");
+    }
+
+    private function resolveAreaByCustomer(string $customerId): ?string
+    {
+        $area = DB::connection('invoices')
+            ->table('clientes_TME700618RC7_ext')
+            ->where('idCliente', $customerId)
+            ->value('area');
+
+        return $area !== null ? (string) $area : null;
     }
 
     /**
