@@ -14,6 +14,8 @@ use App\Models\WorkflowRequestHistory;
 use App\Models\WorkflowRequestStep;
 use App\Models\WorkflowStep;
 use App\Models\Role;
+use App\Models\ReturnOrder;
+use App\Models\ReturnOrderRequest;
 use App\Models\WorkflowStepTransition;
 use App\Mail\RequestPendingApprovalMail;
 use Illuminate\Support\Facades\DB;
@@ -339,6 +341,9 @@ class RequestWorkflowService
                 $currentStep->update(['status' => 'approved']);
                 $requestModel->update(['status' => 'approved']);
 
+                ReturnOrder::whereIn('id', ReturnOrderRequest::where('requestId', $requestModel->id)->pluck('returnOrderId'))
+                    ->update(['status' => 'released']);
+
                 return [
                     'ok' => true,
                     'status' => 200,
@@ -569,6 +574,9 @@ class RequestWorkflowService
             }
 
             $requestModel->update(['status' => 'cancelled']);
+
+            ReturnOrder::whereIn('id', ReturnOrderRequest::where('requestId', $requestModel->id)->pluck('returnOrderId'))
+                ->update(['status' => 'cancelled']);
 
             return [
                 'ok' => true,
