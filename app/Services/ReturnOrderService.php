@@ -128,7 +128,7 @@ class ReturnOrderService
             $returnOrder = ReturnOrder::create([
                 'clientId'     => $clientId,
                 'userId'       => $userId,
-                'status'       => 'pending',
+                'status'       => 'in process',
                 'notes'        => $notes,
                 'chargeTypeId' => $chargeTypeId,
                 'customRate'   => $customRate,

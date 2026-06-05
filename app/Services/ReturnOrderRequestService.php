@@ -43,7 +43,7 @@ class ReturnOrderRequestService
                 ]);
             }
 
-            $returnOrder->update(['orderStatus' => 1]);
+            $returnOrder->update(['orderStatus' => 1, 'status' => 'in process']);
 
             return $returnOrderRequest->load(['returnOrder', 'items.returnOrderItem']);
         });
