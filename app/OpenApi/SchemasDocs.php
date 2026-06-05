@@ -190,7 +190,7 @@ class SchemasDocs
         new OA\Property(property: 'id',           type: 'integer', example: 10),
         new OA\Property(property: 'clientId',     type: 'integer', example: 121693),
         new OA\Property(property: 'userId',       type: 'integer', nullable: true, example: 12),
-        new OA\Property(property: 'status',       type: 'string',  enum: ['pending', 'approved', 'rejected'], example: 'pending'),
+        new OA\Property(property: 'status',       type: 'string',  enum: ['in process', 'cancelled', 'released'], example: 'in process'),
         new OA\Property(property: 'currency',     type: 'string',  enum: ['MXN', 'USD'], example: 'MXN'),
         new OA\Property(property: 'chargeTypeId', type: 'integer', nullable: true, example: 1),
         new OA\Property(property: 'customRate',   type: 'number',  nullable: true, example: 12.5,
