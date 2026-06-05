@@ -954,6 +954,11 @@ class RequestWorkflowService
         }
 
         if (str_contains($roleName, 'REQUESTER')) {
+            $classification = RequestClassification::find($requestModel->classificationId);
+            $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
+            if (str_contains($classificationType, 'marketing')) {
+                return $this->resolveProcessorAssignedUserId($requestModel);
+            }
             $creatorId = (int) ($requestModel->userId ?? 0);
             return $creatorId > 0 ? $creatorId : null;
         }
@@ -964,6 +969,14 @@ class RequestWorkflowService
 
         if (str_contains($roleName, 'MANAGER') && !str_contains($roleName, 'GENERAL MANAGER')) {
             return $this->resolveManagerAssignedUserId($requestModel);
+        }
+
+        if (str_contains($roleName, 'PROCESSOR')) {
+            $classification = RequestClassification::find($requestModel->classificationId);
+            $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
+            if (str_contains($classificationType, 'marketing')) {
+                return $this->resolveProcessorAssignedUserId($requestModel);
+            }
         }
 
         return $this->resolveFirstUserByRoleId((int) $step->roleId);
@@ -1002,6 +1015,31 @@ class RequestWorkflowService
             $candidateUserId = DB::connection('invoices')->table($extTable)
                 ->where('idCliente', $customerId)
                 ->value($managerColumn);
+
+            if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
+                return (int) $candidateUserId;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveProcessorAssignedUserId(RequestModel $requestModel): ?int
+    {
+        $customerId = (int) ($requestModel->customerId ?? 0);
+        if ($customerId <= 0) {
+            return null;
+        }
+
+        $extTable = 'clientes_TME700618RC7_ext';
+        if (
+            Schema::connection('invoices')->hasTable($extTable)
+            && Schema::connection('invoices')->hasColumn($extTable, 'idCliente')
+            && Schema::connection('invoices')->hasColumn($extTable, 'processorId')
+        ) {
+            $candidateUserId = DB::connection('invoices')->table($extTable)
+                ->where('idCliente', $customerId)
+                ->value('processorId');
 
             if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
                 return (int) $candidateUserId;
