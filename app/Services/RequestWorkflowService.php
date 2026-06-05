@@ -992,6 +992,10 @@ class RequestWorkflowService
 
     private function resolveManagerAssignedUserId(RequestModel $requestModel): ?int
     {
+        if ((int) $requestModel->requestTypeId === 6) {
+            return 14;
+        }
+
         $customerId = (int) ($requestModel->customerId ?? 0);
         if ($customerId <= 0) {
             return null;

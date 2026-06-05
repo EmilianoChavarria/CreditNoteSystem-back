@@ -17,6 +17,7 @@ class ReturnOrderResource extends JsonResource
             'notes'        => $this->notes,
             'chargeTypeId' => $this->chargeTypeId,
             'customRate'   => $this->customRate,
+            'currency'     => $this->currency,
             'chargeType'   => $this->whenLoaded('chargeType'),
             'createdAt'    => $this->createdAt,
             'updatedAt'    => $this->updatedAt,
