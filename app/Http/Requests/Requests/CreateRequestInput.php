@@ -3,6 +3,9 @@
 namespace App\Http\Requests\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Validation\Validator;
+use Illuminate\Support\Facades\DB;
 
 class CreateRequestInput extends FormRequest
 {
@@ -45,5 +48,48 @@ class CreateRequestInput extends FormRequest
             'sapScreen'       => ['nullable', 'array'],
             'sapScreen.*'     => ['file'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function () {
+            $comments = $this->input('comments');
+
+            if (!$comments || !str_contains($comments, ':')) {
+                return;
+            }
+
+            $parts      = explode(':', $comments);
+            $foliosPart = trim(end($parts));
+
+            if (empty($foliosPart)) {
+                return;
+            }
+
+            $folios = array_values(array_filter(array_map('trim', explode(',', $foliosPart))));
+
+            if (empty($folios)) {
+                return;
+            }
+
+            $valid = DB::connection('invoices')
+                ->table('pfaccfdi_cfdipr.comprobantes_TME700618RC7')
+                ->whereIn('folio', $folios)
+                ->where('status', 'Emitido')
+                ->pluck('folio')
+                ->map(fn ($f) => (string) $f)
+                ->toArray();
+
+            $invalid = array_values(array_filter($folios, fn ($f) => !\in_array($f, $valid)));
+
+            if (!empty($invalid)) {
+                throw new HttpResponseException(
+                    response()->json([
+                        'message' => 'Facturas inválidas o sin status "Emitido"',
+                        'errors'  => ['comments' => $invalid],
+                    ], 422)
+                );
+            }
+        });
     }
 }

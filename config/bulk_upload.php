@@ -20,7 +20,7 @@ return [
                 'fields' => [
                     ['name' => 'requestDate', 'aliases' => ['requestdate', 'date'], 'required' => false],
                     ['name' => 'customerId', 'aliases' => ['customerid', 'customernumber'], 'required' => true],
-                    ['name' => 'area', 'aliases' => ['area'], 'required' => true],
+                    ['name' => 'area', 'aliases' => ['area'], 'required' => false],
                     ['name' => 'reasonId', 'aliases' => ['reasonid', 'reasonwhy', 'reason', 'requestreason'], 'required' => true],
                     ['name' => 'classificationId', 'aliases' => ['classificationid', 'classification', 'requestclassification'], 'required' => true],
                     ['name' => 'orderNumber', 'aliases' => ['ordernumber'], 'required' => false],
@@ -39,7 +39,7 @@ return [
                 'fields' => [
                     ['name' => 'requestDate', 'aliases' => ['requestdate', 'date'], 'required' => false],
                     ['name' => 'customerId', 'aliases' => ['customerid', 'customernumber'], 'required' => true],
-                    ['name' => 'area', 'aliases' => ['area'], 'required' => true],
+                    ['name' => 'area', 'aliases' => ['area'], 'required' => false],
                     ['name' => 'reasonId', 'aliases' => ['reasonid', 'reasonwhy', 'reason', 'requestreason'], 'required' => true],
                     ['name' => 'classificationId', 'aliases' => ['classificationid', 'classification', 'requestclassification'], 'required' => true],
                     ['name' => 'orderNumber', 'aliases' => ['ordernumber'], 'required' => false],
@@ -58,7 +58,7 @@ return [
                 'fields' => [
                     ['name' => 'requestDate', 'aliases' => ['requestdate', 'date'], 'required' => false],
                     ['name' => 'customerId', 'aliases' => ['customerid', 'customernumber'], 'required' => true],
-                    ['name' => 'area', 'aliases' => ['area'], 'required' => true],
+                    ['name' => 'area', 'aliases' => ['area'], 'required' => false],
                     ['name' => 'reasonId', 'aliases' => ['reasonid', 'reasonwhy', 'reason', 'requestreason'], 'required' => true],
                     ['name' => 'classificationId', 'aliases' => ['classificationid', 'classification', 'requestclassification'], 'required' => true],
                     ['name' => 'orderNumber', 'aliases' => ['ordernumber'], 'required' => false],
@@ -77,7 +77,7 @@ return [
                 'fields' => [
                     ['name' => 'requestDate', 'aliases' => ['requestdate', 'date'], 'required' => false],
                     ['name' => 'customerId', 'aliases' => ['customerid', 'customernumber'], 'required' => true],
-                    ['name' => 'area', 'aliases' => ['area'], 'required' => true],
+                    ['name' => 'area', 'aliases' => ['area'], 'required' => false],
                     ['name' => 'reasonId', 'aliases' => ['reasonid', 'reasonwhy', 'reason', 'requestreason'], 'required' => true],
                     ['name' => 'classificationId', 'aliases' => ['classificationid', 'classification', 'requestclassification'], 'required' => true],
                     ['name' => 'orderNumber', 'aliases' => ['ordernumber'], 'required' => false],
@@ -96,7 +96,7 @@ return [
                 'fields' => [
                     ['name' => 'requestDate', 'aliases' => ['requestdate', 'date'], 'required' => false],
                     ['name' => 'customerId', 'aliases' => ['customerid', 'customernumber'], 'required' => true],
-                    ['name' => 'area', 'aliases' => ['area'], 'required' => true],
+                    ['name' => 'area', 'aliases' => ['area'], 'required' => false],
                     ['name' => 'reasonId', 'aliases' => ['reasonid', 'reasonwhy', 'reason', 'requestreason'], 'required' => true],
                     ['name' => 'classificationId', 'aliases' => ['classificationid', 'classification', 'requestclassification'], 'required' => true],
                     ['name' => 'orderNumber', 'aliases' => ['ordernumber'], 'required' => false],
@@ -117,7 +117,7 @@ return [
                 'fields' => [
                     ['name' => 'requestDate', 'aliases' => ['requestdate', 'date'], 'required' => false],
                     ['name' => 'customerId', 'aliases' => ['customerid', 'customernumber'], 'required' => true],
-                    ['name' => 'area', 'aliases' => ['area'], 'required' => true],
+                    ['name' => 'area', 'aliases' => ['area'], 'required' => false],
                     ['name' => 'reasonId', 'aliases' => ['reasonid', 'reasonwhy', 'reason', 'requestreason'], 'required' => true],
                     ['name' => 'classificationId', 'aliases' => ['classificationid', 'classification', 'requestclassification'], 'required' => true],
                     ['name' => 'orderNumber', 'aliases' => ['ordernumber'], 'required' => false],
