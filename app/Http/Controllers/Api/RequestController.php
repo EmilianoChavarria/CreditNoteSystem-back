@@ -248,6 +248,26 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
     }
 
+    public function getMyPendingAll(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id, $authUser->roleId)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $isAdmin = $this->isAdminUser($authUser);
+        $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
+        $search = trim((string) $request->query('search', ''));
+        $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
+        $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
+        $classificationType = $request->filled('classificationType') ? trim((string) $request->input('classificationType')) : null;
+
+        $requests = $this->requestCrudService->getMyPendingAll($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType);
+
+        return response()->json(ApiResponse::success('Pending requests for current user', RequestResource::collection($requests)));
+    }
+
     public function getAll()
     {
         $requests = RequestModel::with([
