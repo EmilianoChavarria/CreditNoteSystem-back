@@ -294,6 +294,15 @@ class RequestCrudService
         return $paginator;
     }
 
+    public function getMyPendingAll(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
+    {
+        $results = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType)
+            ->get();
+        $this->enrichWithRazonSocial($results);
+
+        return $results;
+    }
+
     public function getClassificationsForMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId): Collection
     {
         $classificationIds = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, '')
@@ -512,14 +521,16 @@ class RequestCrudService
         });
     }
 
-    private function enrichWithRazonSocial(LengthAwarePaginator $paginator): void
+    private function enrichWithRazonSocial(LengthAwarePaginator|\Illuminate\Support\Collection $source): void
     {
         try {
             if (!Schema::connection('invoices')->hasTable('clientes_TME700618RC7')) {
                 return;
             }
 
-            $customerIds = $paginator->getCollection()
+            $collection = $source instanceof LengthAwarePaginator ? $source->getCollection() : $source;
+
+            $customerIds = $collection
                 ->pluck('customerId')
                 ->filter()
                 ->unique()
@@ -535,7 +546,7 @@ class RequestCrudService
                 ->whereIn('idCliente', $customerIds)
                 ->pluck('razonSocial', 'idCliente');
 
-            $paginator->getCollection()->each(function ($request) use ($map) {
+            $collection->each(function ($request) use ($map) {
                 $request->razonSocial = $map[(string) $request->customerId] ?? null;
             });
         } catch (\Throwable) {
