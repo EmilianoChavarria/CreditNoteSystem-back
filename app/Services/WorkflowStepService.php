@@ -153,6 +153,7 @@ class WorkflowStepService
                 'conditionOperator' => $transition['conditionOperator'] ?? null,
                 'conditionValue' => $transition['conditionValue'] ?? null,
                 'priority' => (int) ($transition['priority'] ?? 1),
+                'markAsApproved' => (bool) ($transition['markAsApproved'] ?? false),
             ]);
         }
     }
