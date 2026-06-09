@@ -311,7 +311,9 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'El paso actual del workflow no existe']];
             }
 
-            $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+            $resolved = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+            $nextStep = $resolved ? $resolved['step'] : null;
+            $transitionMarkAsApproved = $resolved ? $resolved['markAsApproved'] : false;
             $isFinalStep = !$nextStep || (bool) $currentWorkflowStep->isFinalStep;
 
             if (!$isFinalStep) {
@@ -339,7 +341,7 @@ class RequestWorkflowService
 
             if ($isFinalStep) {
                 $currentStep->update(['status' => 'approved']);
-                $requestModel->update(['status' => 'approved']);
+                $requestModel->update(['status' => 'released']);
 
                 ReturnOrder::whereIn('id', ReturnOrderRequest::where('requestId', $requestModel->id)->pluck('returnOrderId'))
                     ->update(['status' => 'released']);
@@ -384,7 +386,8 @@ class RequestWorkflowService
                 'comments' => 'Solicitud enviada al siguiente paso del flujo.',
             ]);
 
-            $requestModel->update(['status' => 'pending']);
+            $newStatus = $transitionMarkAsApproved ? 'approved' : 'pending';
+            $requestModel->update(['status' => $newStatus]);
 
             return [
                 'ok' => true,
@@ -527,7 +530,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            $nonCancellableStatuses = ['approved', 'rejected', 'cancelled', 'draft'];
+            $nonCancellableStatuses = ['approved', 'released', 'rejected', 'cancelled', 'draft'];
             if (in_array($requestModel->status, $nonCancellableStatuses, true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede cancelar una solicitud con estatus "' . $requestModel->status . '"']];
             }
@@ -598,7 +601,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            if (in_array($requestModel->status, ['approved', 'rejected', 'cancelled', 'draft'], true)) {
+            if (in_array($requestModel->status, ['approved', 'released', 'rejected', 'cancelled', 'draft'], true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede regresar una solicitud con estatus "' . $requestModel->status . '"']];
             }
 
@@ -838,7 +841,10 @@ class RequestWorkflowService
         ];
     }
 
-    private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?WorkflowStep
+    /**
+     * @return array{step: WorkflowStep, markAsApproved: bool}|null
+     */
+    private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?array
     {
         $transitions = WorkflowStepTransition::query()
             ->where('workflowId', $currentStep->workflowId)
@@ -848,7 +854,8 @@ class RequestWorkflowService
             ->get();
 
         if ($transitions->isEmpty()) {
-            return $this->resolveNextStepByOrder($currentStep);
+            $step = $this->resolveNextStepByOrder($currentStep);
+            return $step ? ['step' => $step, 'markAsApproved' => false] : null;
         }
 
         foreach ($transitions as $transition) {
@@ -859,12 +866,13 @@ class RequestWorkflowService
                     ->first();
 
                 if ($nextByTransition) {
-                    return $nextByTransition;
+                    return ['step' => $nextByTransition, 'markAsApproved' => (bool) $transition->markAsApproved];
                 }
             }
         }
 
-        return $this->resolveNextStepByOrder($currentStep);
+        $step = $this->resolveNextStepByOrder($currentStep);
+        return $step ? ['step' => $step, 'markAsApproved' => false] : null;
     }
 
     private function resolveNextStepByOrder(WorkflowStep $currentStep): ?WorkflowStep
