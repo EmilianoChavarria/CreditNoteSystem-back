@@ -285,22 +285,30 @@ class RequestCrudService
         return ['status' => 200, 'message' => 'Borrador eliminado'];
     }
 
-    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
+    public function getMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, int $perPage, int $page, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null, ?string $dateFrom = null, ?string $dateTo = null)
     {
-        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType)
+        $paginator = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType, $dateFrom, $dateTo)
             ->paginate($perPage, ['*'], 'page', $page);
         $this->enrichWithRazonSocial($paginator);
 
         return $paginator;
     }
 
-    public function getMyPendingAll(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
+    public function getMyPendingAll(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null, ?string $dateFrom = null, ?string $dateTo = null)
     {
-        $results = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType)
+        $results = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType, $dateFrom, $dateTo)
             ->get();
         $this->enrichWithRazonSocial($results);
 
         return $results;
+    }
+
+    public function getMyPendingIds(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        return $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType, $dateFrom, $dateTo)
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
+            ->all();
     }
 
     public function getClassificationsForMyPending(mixed $authUser, bool $isAdmin, ?int $requestTypeId): Collection
@@ -317,9 +325,9 @@ class RequestCrudService
             ->get();
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null)
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null)
     {
-        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId)
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId, $dateFrom, $dateTo)
             ->paginate($perPage);
         $this->enrichWithRazonSocial($paginator);
 
@@ -352,6 +360,8 @@ class RequestCrudService
         $page = max(1, (int) ($filters['page'] ?? 1));
         $search = trim((string) ($filters['search'] ?? ''));
         $roleName = trim((string) ($filters['roleName'] ?? $filters['role_name'] ?? ''));
+        $dateFrom = isset($filters['dateFrom']) && $filters['dateFrom'] !== '' ? (string) $filters['dateFrom'] : null;
+        $dateTo = isset($filters['dateTo']) && $filters['dateTo'] !== '' ? (string) $filters['dateTo'] : null;
 
         $query = match ($module) {
             'pending_me' => $this->buildMyPendingQuery(
@@ -359,12 +369,19 @@ class RequestCrudService
                 $isAdmin,
                 isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : null,
                 $search,
-                $roleName
+                $roleName,
+                null,
+                null,
+                $dateFrom,
+                $dateTo
             ),
             'request_type' => $this->buildByRequestTypeQuery(
                 isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : 0,
                 $search,
-                $roleName
+                $roleName,
+                null,
+                $dateFrom,
+                $dateTo
             ),
             'drafts' => $this->buildDraftsQuery((int) ($authUser->id ?? 0)),
             default => throw ValidationException::withMessages([
@@ -385,7 +402,7 @@ class RequestCrudService
         return $query->paginate($perPage, ['*'], 'page', $page)->getCollection();
     }
 
-    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null)
+    private function buildMyPendingQuery(mixed $authUser, bool $isAdmin, ?int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $classificationType = null, ?string $dateFrom = null, ?string $dateTo = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -436,6 +453,14 @@ class RequestCrudService
             });
         }
 
+        if ($dateFrom !== null) {
+            $query->whereDate('createdAt', '>=', $dateFrom);
+        }
+
+        if ($dateTo !== null) {
+            $query->whereDate('createdAt', '<=', $dateTo);
+        }
+
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
         }
@@ -443,7 +468,7 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null)
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -465,6 +490,14 @@ class RequestCrudService
             })
             ->when($requesterId !== null, fn ($q) => $q->where('userId', $requesterId))
             ->orderByDesc('createdAt');
+
+        if ($dateFrom !== null) {
+            $query->whereDate('createdAt', '>=', $dateFrom);
+        }
+
+        if ($dateTo !== null) {
+            $query->whereDate('createdAt', '<=', $dateTo);
+        }
 
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
