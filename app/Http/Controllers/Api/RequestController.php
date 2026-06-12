@@ -242,7 +242,9 @@ class RequestController extends Controller
         $page = max(1, (int) $request->query('page', 1));
         $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
         $classificationType = $request->filled('classificationType') ? trim((string) $request->input('classificationType')) : null;
-        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName, $requesterId, $classificationType);
+        $dateFrom = $request->filled('dateFrom') ? trim((string) $request->input('dateFrom')) : null;
+        $dateTo = $request->filled('dateTo') ? trim((string) $request->input('dateTo')) : null;
+        $requests = $this->requestCrudService->getMyPending($authUser, $isAdmin, $requestTypeId, $search, $perPage, $page, $roleName, $requesterId, $classificationType, $dateFrom, $dateTo);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Pending requests for current user', $requests));
@@ -262,8 +264,10 @@ class RequestController extends Controller
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
         $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
         $classificationType = $request->filled('classificationType') ? trim((string) $request->input('classificationType')) : null;
+        $dateFrom = $request->filled('dateFrom') ? trim((string) $request->input('dateFrom')) : null;
+        $dateTo = $request->filled('dateTo') ? trim((string) $request->input('dateTo')) : null;
 
-        $requests = $this->requestCrudService->getMyPendingAll($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType);
+        $requests = $this->requestCrudService->getMyPendingAll($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType, $dateFrom, $dateTo);
 
         return response()->json(ApiResponse::success('Pending requests for current user', RequestResource::collection($requests)));
     }
@@ -286,7 +290,9 @@ class RequestController extends Controller
         $search = trim((string) $request->query('search', ''));
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
         $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId);
+        $dateFrom = $request->filled('dateFrom') ? trim((string) $request->input('dateFrom')) : null;
+        $dateTo = $request->filled('dateTo') ? trim((string) $request->input('dateTo')) : null;
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId, $dateFrom, $dateTo);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));
@@ -452,7 +458,7 @@ class RequestController extends Controller
     {
         $authUser = $request->attributes->get('authUser');
         $isAdmin = $this->isAdminUser($authUser);
-        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $requestIds = $this->resolveRequestIds($request, $authUser, $isAdmin);
         $result = $this->approveMassRequestsAction->execute($requestIds, $authUser, $isAdmin, $request->input('comments'));
 
         return response()->json(ApiResponse::success('Aprobacion masiva procesada', [
@@ -468,7 +474,7 @@ class RequestController extends Controller
     {
         $authUser = $request->attributes->get('authUser');
         $isAdmin = $this->isAdminUser($authUser);
-        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $requestIds = $this->resolveRequestIds($request, $authUser, $isAdmin);
         $globalComment = (string) $request->input('comments');
         $result = $this->rejectMassRequestsAction->execute($requestIds, $authUser, $isAdmin, $globalComment);
 
@@ -500,7 +506,7 @@ class RequestController extends Controller
     {
         $authUser = $request->attributes->get('authUser');
         $isAdmin = $this->isAdminUser($authUser);
-        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $requestIds = $this->resolveRequestIds($request, $authUser, $isAdmin);
         $comments = $request->filled('comments') ? (string) $request->input('comments') : null;
         $result = $this->cancelMassRequestsAction->execute($requestIds, $authUser, $isAdmin, $comments);
 
@@ -517,7 +523,7 @@ class RequestController extends Controller
     {
         $authUser = $request->attributes->get('authUser');
         $isAdmin = $this->isAdminUser($authUser);
-        $requestIds = array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
+        $requestIds = $this->resolveRequestIds($request, $authUser, $isAdmin);
         $targetWorkflowStepId = (int) $request->input('targetWorkflowStepId');
         $comments = $request->filled('comments') ? (string) $request->input('comments') : null;
         $result = $this->sendBackMassRequestsAction->execute($requestIds, $targetWorkflowStepId, $authUser, $isAdmin, $comments);
@@ -529,6 +535,26 @@ class RequestController extends Controller
             'sentBackRequestIds' => $result['sentBackRequestIds'],
             'failedRequests'     => $result['failedRequests'],
         ]));
+    }
+
+    private function resolveRequestIds(Request $request, mixed $authUser, bool $isAdmin): array
+    {
+        if ($request->boolean('selectAll')) {
+            $filters = (array) $request->input('filters', []);
+            return $this->requestCrudService->getMyPendingIds(
+                $authUser,
+                $isAdmin,
+                isset($filters['requestTypeId']) ? (int) $filters['requestTypeId'] : null,
+                trim((string) ($filters['search'] ?? '')),
+                trim((string) ($filters['roleName'] ?? '')),
+                isset($filters['requesterId']) ? (int) $filters['requesterId'] : null,
+                isset($filters['classificationType']) ? trim((string) $filters['classificationType']) : null,
+                isset($filters['dateFrom']) && $filters['dateFrom'] !== '' ? trim((string) $filters['dateFrom']) : null,
+                isset($filters['dateTo']) && $filters['dateTo'] !== '' ? trim((string) $filters['dateTo']) : null,
+            );
+        }
+
+        return array_values(array_unique(array_map('intval', (array) $request->input('requestIds', []))));
     }
 
     private function isAdminUser(mixed $authUser): bool
