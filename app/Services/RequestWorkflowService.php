@@ -26,8 +26,12 @@ use Illuminate\Validation\ValidationException;
 class RequestWorkflowService
 {
     private const AMOUNT_FIELDS = [
-        'totalAmount', 'amount', 'replenishmentAmount', 'replenishmentTotal',
-        'warehouseAmount', 'warehouseTotal',
+        'totalAmount',
+        'amount',
+        'replenishmentAmount',
+        'replenishmentTotal',
+        'warehouseAmount',
+        'warehouseTotal',
     ];
 
     public function __construct(
@@ -276,6 +280,10 @@ class RequestWorkflowService
 
             if ($requestModel->status === 'cancelled') {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede aprobar una solicitud cancelada']];
+            }
+
+            if (!$requestModel->attachments()->exists()) {
+                return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'La solicitud ' . $requestModel->requestNumber . ' no tiene archivos adjuntos. No se puede aprobar.']];
             }
 
             $currentStep = WorkflowRequestCurrentStep::query()->where('requestId', $requestId)->lockForUpdate()->first();
@@ -705,13 +713,24 @@ class RequestWorkflowService
 
     public function approveMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
+        set_time_limit(300);
+
         $approvedIds = [];
         $failed = [];
         $notificationsByUser = [];
-
+        Log::error('Array de solicitudes', [
+            'id´s' => $requestIds,
+        ]);
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
+
+            try {
+                $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
+            } catch (\Throwable $e) {
+                \Log::error("[approveMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $approvedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -742,13 +761,22 @@ class RequestWorkflowService
 
     public function rejectMass(array $requestIds, mixed $authUser, bool $isAdmin, string $comments): array
     {
+        set_time_limit(300);
+
         $rejectedIds = [];
         $failed = [];
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
+
+            try {
+                $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
+            } catch (\Throwable $e) {
+                \Log::error("[rejectMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $rejectedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -780,12 +808,21 @@ class RequestWorkflowService
 
     public function cancelMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
+        set_time_limit(300);
+
         $cancelledIds = [];
         $failed = [];
 
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
+
+            try {
+                $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
+            } catch (\Throwable $e) {
+                \Log::error("[cancelMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $cancelledIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -806,13 +843,22 @@ class RequestWorkflowService
 
     public function sendBackMass(array $requestIds, int $targetWorkflowStepId, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
+        set_time_limit(300);
+
         $sentBackIds = [];
         $failed = [];
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
+
+            try {
+                $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
+            } catch (\Throwable $e) {
+                \Log::error("[sendBackMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $sentBackIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -833,11 +879,11 @@ class RequestWorkflowService
         }
 
         return [
-            'totalReceived'    => count($requestIds),
-            'totalSentBack'    => count($sentBackIds),
-            'totalFailed'      => count($failed),
+            'totalReceived' => count($requestIds),
+            'totalSentBack' => count($sentBackIds),
+            'totalFailed' => count($failed),
             'sentBackRequestIds' => $sentBackIds,
-            'failedRequests'   => $failed,
+            'failedRequests' => $failed,
         ];
     }
 
@@ -926,7 +972,7 @@ class RequestWorkflowService
                 return false;
             }
 
-            $leftNumber  = (float) $left;
+            $leftNumber = (float) $left;
             $rightNumber = (float) $rightRaw;
 
             // Convert amount fields to USD before comparing so condition values
@@ -942,15 +988,15 @@ class RequestWorkflowService
             }
 
             return match ($operator) {
-                '>'  => $leftNumber > $rightNumber,
-                '<'  => $leftNumber < $rightNumber,
+                '>' => $leftNumber > $rightNumber,
+                '<' => $leftNumber < $rightNumber,
                 '>=' => $leftNumber >= $rightNumber,
                 '<=' => $leftNumber <= $rightNumber,
                 default => false,
             };
         }
 
-        $leftString  = (string) $left;
+        $leftString = (string) $left;
         $rightString = (string) $rightRaw;
 
         return match ($operator) {
@@ -1013,10 +1059,10 @@ class RequestWorkflowService
         $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
 
         $managerColumn = match (true) {
-            str_contains($classificationType, 'finance')    => 'financeManagerId',
-            str_contains($classificationType, 'marketing')  => 'marketingManagerId',
-            str_contains($classificationType, 'customer')   => 'salesManagerId',
-            default                                         => 'salesManagerId',
+            str_contains($classificationType, 'finance') => 'financeManagerId',
+            str_contains($classificationType, 'marketing') => 'marketingManagerId',
+            str_contains($classificationType, 'customer') => 'salesManagerId',
+            default => 'salesManagerId',
         };
 
         $customer = Customer::query()->where('idClient', $customerId)->first();
@@ -1125,7 +1171,7 @@ class RequestWorkflowService
         $equivalentroleid = Role::query()->where('id', $roleId)->value('equivalentroleid');
 
         Log::info('[resolveFirstUserByRoleId] no primary user, checking equivalent', [
-            'roleId'          => $roleId,
+            'roleId' => $roleId,
             'equivalentroleid' => $equivalentroleid,
         ]);
 
@@ -1139,7 +1185,7 @@ class RequestWorkflowService
 
             Log::info('[resolveFirstUserByRoleId] fallback result via role equivalentroleid', [
                 'equivalentroleid' => $equivalentroleid,
-                'fallbackUserId'   => $fallbackUser?->id,
+                'fallbackUserId' => $fallbackUser?->id,
             ]);
 
             if ($fallbackUser) {
@@ -1152,7 +1198,7 @@ class RequestWorkflowService
             ->pluck('id');
 
         Log::info('[resolveFirstUserByRoleId] checking reverse equivalent roles', [
-            'roleId'         => $roleId,
+            'roleId' => $roleId,
             'reverseRoleIds' => $reverseRoleIds,
         ]);
 
