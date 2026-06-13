@@ -18,6 +18,7 @@ class ReturnOrder extends Model
         'notes',
         'chargeTypeId',
         'customRate',
+        'currency',
         'orderStatus',
     ];
 

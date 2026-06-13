@@ -33,6 +33,7 @@ class StoreWorkflowStepRequest extends FormRequest
             'transitions.*.conditionOperator' => ['nullable', 'string', 'max:20'],
             'transitions.*.conditionValue' => ['nullable', 'string', 'max:100'],
             'transitions.*.priority' => ['nullable', 'integer', 'min:1'],
+            'transitions.*.markAsApproved' => ['nullable', 'boolean'],
         ];
     }
 }

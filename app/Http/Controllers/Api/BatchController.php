@@ -13,6 +13,7 @@ use App\Services\BatchService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class BatchController extends Controller
@@ -44,6 +45,9 @@ class BatchController extends Controller
 
             return response()->json(ApiResponse::success('Batch creado y encolado', BatchResource::make($batch), 201), 201);
         } catch (Throwable $e) {
+            Log::error('Error emitiendo evento request.assigned', [
+                'error' => $e->getMessage(),
+            ]);
             return response()->json(ApiResponse::error('No se pudo crear el batch', [
                 'message' => $e->getMessage(),
             ], 422), 422);

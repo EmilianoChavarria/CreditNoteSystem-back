@@ -12,8 +12,8 @@ class CreateReturnOrderAction
     ) {
     }
 
-    public function execute(int $clientId, ?int $userId, array $items, ?string $notes, int $chargeTypeId, ?float $customRate): ReturnOrder
+    public function execute(int $clientId, ?int $userId, array $items, ?string $notes, int $chargeTypeId, ?float $customRate, string $currency): ReturnOrder
     {
-        return $this->returnOrderService->createReturnOrder($clientId, $userId, $items, $notes, $chargeTypeId, $customRate);
+        return $this->returnOrderService->createReturnOrder($clientId, $userId, $items, $notes, $chargeTypeId, $customRate, $currency);
     }
 }

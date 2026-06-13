@@ -18,17 +18,21 @@ class ReturnOrderRequestItem extends Model
         'sapId',
         'replenishmentAccepted',
         'replenishmentReasonForRejection',
+        'rejectedReplenishmentBy',
         'warehouseReceived',
         'warehouseAccepted',
         'warehouseReasonForRejection',
+        'rejectedWarehouseBy',
     ];
 
     protected $casts = [
-        'replenishmentAccepted' => 'float',
-        'warehouseReceived'     => 'float',
-        'warehouseAccepted'     => 'float',
-        'createdAt'             => 'datetime',
-        'updatedAt'             => 'datetime',
+        'replenishmentAccepted'  => 'float',
+        'rejectedReplenishmentBy'=> 'integer',
+        'warehouseReceived'      => 'float',
+        'warehouseAccepted'      => 'float',
+        'rejectedWarehouseBy'    => 'integer',
+        'createdAt'              => 'datetime',
+        'updatedAt'              => 'datetime',
     ];
 
     public function returnOrderRequest()

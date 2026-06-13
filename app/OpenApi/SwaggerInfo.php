@@ -8,7 +8,7 @@ use OpenApi\Attributes as OA;
     title: 'Notas Creditos API',
     version: '1.0.0',
     description: 'API para el sistema de notas credito, solicitudes, devoluciones y facturacion.',
-    contact: new OA\Contact(email: 'aldrickemilianoch@gmail.com')
+    contact: new OA\Contact(email: 'aldrick@ittec.mx')
 )]
 #[OA\Server(url: '/api', description: 'API Principal')]
 #[OA\SecurityScheme(securityScheme: 'bearerAuth', type: 'http', scheme: 'bearer', bearerFormat: 'JWT')]
@@ -36,6 +36,9 @@ use OpenApi\Attributes as OA;
 #[OA\Tag(name: 'PasswordRequirements',  description: 'Requisitos de contrasena')]
 #[OA\Tag(name: 'Dashboard',             description: 'Metricas y estadisticas')]
 #[OA\Tag(name: 'ChargePolicies',        description: 'Politicas de cargo por dias transcurridos')]
+#[OA\Tag(name: 'ChargeTypes',           description: 'Tipos de cargo (catalogo)')]
+#[OA\Tag(name: 'EmailConfig',           description: 'Configuracion del proveedor de correo')]
+#[OA\Tag(name: 'Exports',               description: 'Exportacion de datos a Excel')]
 class SwaggerInfo
 {
 }

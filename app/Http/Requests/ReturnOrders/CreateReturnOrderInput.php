@@ -15,6 +15,7 @@ class CreateReturnOrderInput extends FormRequest
     {
         return [
             'clientId'                    => ['required', 'integer'],
+            'currency'                    => ['required', 'string', 'in:MXN,USD'],
             'chargeTypeId'                => ['required', 'integer', 'exists:chargetypes,id'],
             'customRate'                  => ['nullable', 'numeric', 'min:0'],
             'notes'                       => ['nullable', 'string', 'max:1000'],
@@ -29,6 +30,8 @@ class CreateReturnOrderInput extends FormRequest
     public function messages(): array
     {
         return [
+            'currency.required'                      => 'La moneda es requerida.',
+            'currency.in'                            => 'La moneda debe ser MXN o USD.',
             'chargeTypeId.required'                  => 'El tipo de cargo es requerido.',
             'chargeTypeId.exists'                    => 'El tipo de cargo seleccionado no existe.',
             'items.required'                         => 'Debe incluir al menos un producto.',
