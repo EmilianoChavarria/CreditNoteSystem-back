@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class SendBackMassRequestInput extends FormRequest
 {
@@ -14,10 +15,19 @@ class SendBackMassRequestInput extends FormRequest
     public function rules(): array
     {
         return [
-            'requestIds'           => ['required', 'array', 'min:1'],
-            'requestIds.*'         => ['integer', 'distinct'],
-            'targetWorkflowStepId' => ['required', 'integer', 'min:1'],
-            'comments'             => ['nullable', 'string', 'max:7000'],
+            'selectAll'                  => ['boolean'],
+            'requestIds'                 => [Rule::requiredIf(fn () => !$this->boolean('selectAll')), 'array', 'min:1'],
+            'requestIds.*'               => ['integer', 'distinct'],
+            'filters'                    => ['sometimes', 'array'],
+            'filters.requestTypeId'      => ['nullable', 'integer'],
+            'filters.search'             => ['nullable', 'string', 'max:500'],
+            'filters.roleName'           => ['nullable', 'string', 'max:100'],
+            'filters.requesterId'        => ['nullable', 'integer'],
+            'filters.classificationType' => ['nullable', 'string', 'max:100'],
+            'filters.dateFrom'           => ['nullable', 'date_format:Y-m-d'],
+            'filters.dateTo'             => ['nullable', 'date_format:Y-m-d'],
+            'targetWorkflowStepId'       => ['required', 'integer', 'min:1'],
+            'comments'                   => ['nullable', 'string', 'max:7000'],
         ];
     }
 }

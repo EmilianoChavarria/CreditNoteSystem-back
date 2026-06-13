@@ -14,6 +14,8 @@ use App\Models\WorkflowRequestHistory;
 use App\Models\WorkflowRequestStep;
 use App\Models\WorkflowStep;
 use App\Models\Role;
+use App\Models\ReturnOrder;
+use App\Models\ReturnOrderRequest;
 use App\Models\WorkflowStepTransition;
 use App\Mail\RequestPendingApprovalMail;
 use Illuminate\Support\Facades\DB;
@@ -24,8 +26,12 @@ use Illuminate\Validation\ValidationException;
 class RequestWorkflowService
 {
     private const AMOUNT_FIELDS = [
-        'totalAmount', 'amount', 'replenishmentAmount', 'replenishmentTotal',
-        'warehouseAmount', 'warehouseTotal',
+        'totalAmount',
+        'amount',
+        'replenishmentAmount',
+        'replenishmentTotal',
+        'warehouseAmount',
+        'warehouseTotal',
     ];
 
     public function __construct(
@@ -202,7 +208,7 @@ class RequestWorkflowService
         }
 
         $roleName = mb_strtoupper((string) ($currentStep->assignedRole?->roleName ?? ''));
-        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE'], true);
+        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true);
 
         if ($isBroadcastRole && $currentStep->assignedRoleId) {
             $users = User::query()
@@ -276,6 +282,10 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede aprobar una solicitud cancelada']];
             }
 
+            if (!$requestModel->attachments()->exists()) {
+                return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'La solicitud ' . $requestModel->requestNumber . ' no tiene archivos adjuntos. No se puede aprobar.']];
+            }
+
             $currentStep = WorkflowRequestCurrentStep::query()->where('requestId', $requestId)->lockForUpdate()->first();
             if (!$currentStep) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'La solicitud no tiene un paso actual asignado']];
@@ -285,7 +295,7 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE'])
+                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
@@ -309,7 +319,9 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'El paso actual del workflow no existe']];
             }
 
-            $nextStep = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+            $resolved = $this->resolveNextStep($requestModel, $currentWorkflowStep);
+            $nextStep = $resolved ? $resolved['step'] : null;
+            $transitionMarkAsApproved = $resolved ? $resolved['markAsApproved'] : false;
             $isFinalStep = !$nextStep || (bool) $currentWorkflowStep->isFinalStep;
 
             if (!$isFinalStep) {
@@ -337,7 +349,10 @@ class RequestWorkflowService
 
             if ($isFinalStep) {
                 $currentStep->update(['status' => 'approved']);
-                $requestModel->update(['status' => 'approved']);
+                $requestModel->update(['status' => 'released']);
+
+                ReturnOrder::whereIn('id', ReturnOrderRequest::where('requestId', $requestModel->id)->pluck('returnOrderId'))
+                    ->update(['status' => 'released']);
 
                 return [
                     'ok' => true,
@@ -379,7 +394,8 @@ class RequestWorkflowService
                 'comments' => 'Solicitud enviada al siguiente paso del flujo.',
             ]);
 
-            $requestModel->update(['status' => 'pending']);
+            $newStatus = $transitionMarkAsApproved ? 'approved' : 'pending';
+            $requestModel->update(['status' => $newStatus]);
 
             return [
                 'ok' => true,
@@ -414,7 +430,7 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE'])
+                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
@@ -522,7 +538,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            $nonCancellableStatuses = ['approved', 'rejected', 'cancelled', 'draft'];
+            $nonCancellableStatuses = ['approved', 'released', 'rejected', 'cancelled', 'draft'];
             if (in_array($requestModel->status, $nonCancellableStatuses, true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede cancelar una solicitud con estatus "' . $requestModel->status . '"']];
             }
@@ -570,6 +586,9 @@ class RequestWorkflowService
 
             $requestModel->update(['status' => 'cancelled']);
 
+            ReturnOrder::whereIn('id', ReturnOrderRequest::where('requestId', $requestModel->id)->pluck('returnOrderId'))
+                ->update(['status' => 'cancelled']);
+
             return [
                 'ok' => true,
                 'status' => 200,
@@ -590,7 +609,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            if (in_array($requestModel->status, ['approved', 'rejected', 'cancelled', 'draft'], true)) {
+            if (in_array($requestModel->status, ['approved', 'released', 'rejected', 'cancelled', 'draft'], true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede regresar una solicitud con estatus "' . $requestModel->status . '"']];
             }
 
@@ -694,13 +713,24 @@ class RequestWorkflowService
 
     public function approveMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
+        set_time_limit(300);
+
         $approvedIds = [];
         $failed = [];
         $notificationsByUser = [];
-
+        Log::error('Array de solicitudes', [
+            'id´s' => $requestIds,
+        ]);
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
+
+            try {
+                $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
+            } catch (\Throwable $e) {
+                \Log::error("[approveMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $approvedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -731,13 +761,22 @@ class RequestWorkflowService
 
     public function rejectMass(array $requestIds, mixed $authUser, bool $isAdmin, string $comments): array
     {
+        set_time_limit(300);
+
         $rejectedIds = [];
         $failed = [];
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
+
+            try {
+                $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
+            } catch (\Throwable $e) {
+                \Log::error("[rejectMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $rejectedIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -769,12 +808,21 @@ class RequestWorkflowService
 
     public function cancelMass(array $requestIds, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
+        set_time_limit(300);
+
         $cancelledIds = [];
         $failed = [];
 
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
+
+            try {
+                $result = $this->cancel((int) $requestId, $authUser, $isAdmin, $comments);
+            } catch (\Throwable $e) {
+                \Log::error("[cancelMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $cancelledIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -795,13 +843,22 @@ class RequestWorkflowService
 
     public function sendBackMass(array $requestIds, int $targetWorkflowStepId, mixed $authUser, bool $isAdmin, ?string $comments): array
     {
+        set_time_limit(300);
+
         $sentBackIds = [];
         $failed = [];
         $notificationsByUser = [];
 
         foreach ($requestIds as $requestId) {
             $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
-            $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
+
+            try {
+                $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
+            } catch (\Throwable $e) {
+                \Log::error("[sendBackMass] Error inesperado en solicitud {$requestId}: " . $e->getMessage());
+                $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => 'Error inesperado: ' . $e->getMessage()];
+                continue;
+            }
 
             if ($result['ok']) {
                 $sentBackIds[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber];
@@ -822,15 +879,18 @@ class RequestWorkflowService
         }
 
         return [
-            'totalReceived'    => count($requestIds),
-            'totalSentBack'    => count($sentBackIds),
-            'totalFailed'      => count($failed),
+            'totalReceived' => count($requestIds),
+            'totalSentBack' => count($sentBackIds),
+            'totalFailed' => count($failed),
             'sentBackRequestIds' => $sentBackIds,
-            'failedRequests'   => $failed,
+            'failedRequests' => $failed,
         ];
     }
 
-    private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?WorkflowStep
+    /**
+     * @return array{step: WorkflowStep, markAsApproved: bool}|null
+     */
+    private function resolveNextStep(RequestModel $requestModel, WorkflowStep $currentStep): ?array
     {
         $transitions = WorkflowStepTransition::query()
             ->where('workflowId', $currentStep->workflowId)
@@ -840,7 +900,8 @@ class RequestWorkflowService
             ->get();
 
         if ($transitions->isEmpty()) {
-            return $this->resolveNextStepByOrder($currentStep);
+            $step = $this->resolveNextStepByOrder($currentStep);
+            return $step ? ['step' => $step, 'markAsApproved' => false] : null;
         }
 
         foreach ($transitions as $transition) {
@@ -851,12 +912,13 @@ class RequestWorkflowService
                     ->first();
 
                 if ($nextByTransition) {
-                    return $nextByTransition;
+                    return ['step' => $nextByTransition, 'markAsApproved' => (bool) $transition->markAsApproved];
                 }
             }
         }
 
-        return $this->resolveNextStepByOrder($currentStep);
+        $step = $this->resolveNextStepByOrder($currentStep);
+        return $step ? ['step' => $step, 'markAsApproved' => false] : null;
     }
 
     private function resolveNextStepByOrder(WorkflowStep $currentStep): ?WorkflowStep
@@ -910,7 +972,7 @@ class RequestWorkflowService
                 return false;
             }
 
-            $leftNumber  = (float) $left;
+            $leftNumber = (float) $left;
             $rightNumber = (float) $rightRaw;
 
             // Convert amount fields to USD before comparing so condition values
@@ -926,15 +988,15 @@ class RequestWorkflowService
             }
 
             return match ($operator) {
-                '>'  => $leftNumber > $rightNumber,
-                '<'  => $leftNumber < $rightNumber,
+                '>' => $leftNumber > $rightNumber,
+                '<' => $leftNumber < $rightNumber,
                 '>=' => $leftNumber >= $rightNumber,
                 '<=' => $leftNumber <= $rightNumber,
                 default => false,
             };
         }
 
-        $leftString  = (string) $left;
+        $leftString = (string) $left;
         $rightString = (string) $rightRaw;
 
         return match ($operator) {
@@ -954,6 +1016,11 @@ class RequestWorkflowService
         }
 
         if (str_contains($roleName, 'REQUESTER')) {
+            $classification = RequestClassification::find($requestModel->classificationId);
+            $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
+            if (str_contains($classificationType, 'marketing')) {
+                return $this->resolveProcessorAssignedUserId($requestModel);
+            }
             $creatorId = (int) ($requestModel->userId ?? 0);
             return $creatorId > 0 ? $creatorId : null;
         }
@@ -966,11 +1033,23 @@ class RequestWorkflowService
             return $this->resolveManagerAssignedUserId($requestModel);
         }
 
+        if (str_contains($roleName, 'PROCESSOR')) {
+            $classification = RequestClassification::find($requestModel->classificationId);
+            $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
+            if (str_contains($classificationType, 'marketing')) {
+                return $this->resolveProcessorAssignedUserId($requestModel);
+            }
+        }
+
         return $this->resolveFirstUserByRoleId((int) $step->roleId);
     }
 
     private function resolveManagerAssignedUserId(RequestModel $requestModel): ?int
     {
+        if ((int) $requestModel->requestTypeId === 6) {
+            return 14;
+        }
+
         $customerId = (int) ($requestModel->customerId ?? 0);
         if ($customerId <= 0) {
             return null;
@@ -980,10 +1059,10 @@ class RequestWorkflowService
         $classificationType = mb_strtolower((string) ($classification?->type ?? ''));
 
         $managerColumn = match (true) {
-            str_contains($classificationType, 'finance')    => 'financeManagerId',
-            str_contains($classificationType, 'marketing')  => 'marketingManagerId',
-            str_contains($classificationType, 'customer')   => 'salesManagerId',
-            default                                         => 'salesManagerId',
+            str_contains($classificationType, 'finance') => 'financeManagerId',
+            str_contains($classificationType, 'marketing') => 'marketingManagerId',
+            str_contains($classificationType, 'customer') => 'salesManagerId',
+            default => 'salesManagerId',
         };
 
         $customer = Customer::query()->where('idClient', $customerId)->first();
@@ -1002,6 +1081,31 @@ class RequestWorkflowService
             $candidateUserId = DB::connection('invoices')->table($extTable)
                 ->where('idCliente', $customerId)
                 ->value($managerColumn);
+
+            if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
+                return (int) $candidateUserId;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveProcessorAssignedUserId(RequestModel $requestModel): ?int
+    {
+        $customerId = (int) ($requestModel->customerId ?? 0);
+        if ($customerId <= 0) {
+            return null;
+        }
+
+        $extTable = 'clientes_TME700618RC7_ext';
+        if (
+            Schema::connection('invoices')->hasTable($extTable)
+            && Schema::connection('invoices')->hasColumn($extTable, 'idCliente')
+            && Schema::connection('invoices')->hasColumn($extTable, 'processorId')
+        ) {
+            $candidateUserId = DB::connection('invoices')->table($extTable)
+                ->where('idCliente', $customerId)
+                ->value('processorId');
 
             if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
                 return (int) $candidateUserId;
@@ -1067,7 +1171,7 @@ class RequestWorkflowService
         $equivalentroleid = Role::query()->where('id', $roleId)->value('equivalentroleid');
 
         Log::info('[resolveFirstUserByRoleId] no primary user, checking equivalent', [
-            'roleId'          => $roleId,
+            'roleId' => $roleId,
             'equivalentroleid' => $equivalentroleid,
         ]);
 
@@ -1081,7 +1185,7 @@ class RequestWorkflowService
 
             Log::info('[resolveFirstUserByRoleId] fallback result via role equivalentroleid', [
                 'equivalentroleid' => $equivalentroleid,
-                'fallbackUserId'   => $fallbackUser?->id,
+                'fallbackUserId' => $fallbackUser?->id,
             ]);
 
             if ($fallbackUser) {
@@ -1094,7 +1198,7 @@ class RequestWorkflowService
             ->pluck('id');
 
         Log::info('[resolveFirstUserByRoleId] checking reverse equivalent roles', [
-            'roleId'         => $roleId,
+            'roleId' => $roleId,
             'reverseRoleIds' => $reverseRoleIds,
         ]);
 

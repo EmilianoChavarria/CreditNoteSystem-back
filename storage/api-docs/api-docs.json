@@ -4,7 +4,7 @@
         "title": "Notas Creditos API",
         "description": "API para el sistema de notas credito, solicitudes, devoluciones y facturacion.",
         "contact": {
-            "email": "aldrickemilianoch@gmail.com"
+            "email": "aldrick@ittec.mx"
         },
         "version": "1.0.0"
     },
@@ -218,7 +218,22 @@
                 "operationId": "rolesList",
                 "responses": {
                     "200": {
-                        "description": "Lista de roles"
+                        "description": "Lista de roles",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Role"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
                     }
                 },
                 "security": [
@@ -245,6 +260,11 @@
                                     "roleName": {
                                         "type": "string",
                                         "example": "SUPERVISOR"
+                                    },
+                                    "color": {
+                                        "type": "string",
+                                        "example": "#FF5733",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -319,6 +339,10 @@
                                 "properties": {
                                     "roleName": {
                                         "type": "string"
+                                    },
+                                    "color": {
+                                        "type": "string",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -363,6 +387,126 @@
                         "bearerAuth": []
                     }
                 ]
+            },
+            "patch": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Actualizar rol parcialmente",
+                "operationId": "rolesPatch",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "roleName": {
+                                        "type": "string"
+                                    },
+                                    "color": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Rol actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/roles/{id}/equivalent-role": {
+            "get": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Obtener rol equivalente configurado",
+                "description": "El rol equivalente se usa como fallback cuando no hay usuario disponible con el rol principal en el siguiente paso del workflow.",
+                "operationId": "rolesEquivalentRole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Rol equivalente"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Configurar rol equivalente (fallback de asignacion)",
+                "operationId": "rolesSetEquivalentRole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "equivalentRoleId": {
+                                        "type": "integer",
+                                        "example": 4,
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Rol equivalente actualizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/modules": {
@@ -370,11 +514,11 @@
                 "tags": [
                     "Modules"
                 ],
-                "summary": "Listar todos los modulos",
+                "summary": "Listar todos los modulos (con hijos anidados)",
                 "operationId": "modulesList",
                 "responses": {
                     "200": {
-                        "description": "Lista de modulos"
+                        "description": "Lista jerarquica de modulos"
                     }
                 },
                 "security": [
@@ -387,7 +531,7 @@
                 "tags": [
                     "Modules"
                 ],
-                "summary": "Crear modulo",
+                "summary": "Crear modulo de sidebar",
                 "operationId": "modulesStore",
                 "requestBody": {
                     "required": true,
@@ -400,16 +544,25 @@
                                 ],
                                 "properties": {
                                     "name": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "Solicitudes"
                                     },
                                     "slug": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "requests"
                                     },
                                     "icon": {
                                         "type": "string",
+                                        "example": "FileText",
                                         "nullable": true
                                     },
                                     "order": {
+                                        "type": "integer",
+                                        "example": 1,
+                                        "nullable": true
+                                    },
+                                    "parentId": {
+                                        "description": "ID del modulo padre para crear submenu",
                                         "type": "integer",
                                         "nullable": true
                                     }
@@ -486,6 +639,17 @@
                                 "properties": {
                                     "name": {
                                         "type": "string"
+                                    },
+                                    "slug": {
+                                        "type": "string"
+                                    },
+                                    "icon": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "order": {
+                                        "type": "integer",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -537,7 +701,7 @@
                 "tags": [
                     "Actions"
                 ],
-                "summary": "Listar todas las acciones",
+                "summary": "Listar todas las acciones de permiso",
                 "operationId": "actionsList",
                 "responses": {
                     "200": {
@@ -554,7 +718,7 @@
                 "tags": [
                     "Actions"
                 ],
-                "summary": "Crear una accion",
+                "summary": "Crear accion de permiso",
                 "operationId": "actionsStore",
                 "requestBody": {
                     "required": true,
@@ -597,11 +761,11 @@
                 "tags": [
                     "RolesPermission"
                 ],
-                "summary": "Listar permisos de modulos",
+                "summary": "Listar todos los permisos de modulo",
                 "operationId": "rolesPermissionList",
                 "responses": {
                     "200": {
-                        "description": "Lista de permisos"
+                        "description": "Matriz de permisos rol-modulo-accion"
                     }
                 },
                 "security": [
@@ -616,7 +780,7 @@
                 "tags": [
                     "RolesPermission"
                 ],
-                "summary": "Asignar permisos de modulo a rol",
+                "summary": "Asignar o actualizar permisos de modulo a un rol (upsert)",
                 "operationId": "rolesPermissionAssign",
                 "requestBody": {
                     "required": true,
@@ -630,16 +794,23 @@
                                 ],
                                 "properties": {
                                     "roleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
                                     },
                                     "moduleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 5
                                     },
                                     "permissions": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
-                                        }
+                                        },
+                                        "example": [
+                                            "view",
+                                            "create",
+                                            "approve"
+                                        ]
                                     }
                                 },
                                 "type": "object"
@@ -649,7 +820,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Permisos asignados"
+                        "description": "Permisos guardados"
                     }
                 },
                 "security": [
@@ -664,7 +835,7 @@
                 "tags": [
                     "RolesPermission"
                 ],
-                "summary": "Permisos de un rol",
+                "summary": "Permisos de modulo de un rol",
                 "operationId": "rolesPermissionByRole",
                 "parameters": [
                     {
@@ -693,11 +864,12 @@
                 "tags": [
                     "RolesPermission"
                 ],
-                "summary": "Sidebar del usuario autenticado",
+                "summary": "Sidebar filtrado para el usuario autenticado",
+                "description": "Retorna solo los modulos a los que el usuario tiene acceso segun su rol.",
                 "operationId": "rolesPermissionSidebar",
                 "responses": {
                     "200": {
-                        "description": "Modulos visibles"
+                        "description": "Modulos del sidebar del usuario"
                     }
                 },
                 "security": [
@@ -712,7 +884,7 @@
                 "tags": [
                     "RolesPermission"
                 ],
-                "summary": "Sidebar por rol",
+                "summary": "Sidebar para un rol especifico",
                 "operationId": "rolesPermissionSidebarByRole",
                 "parameters": [
                     {
@@ -741,7 +913,7 @@
                 "tags": [
                     "RolesPermission"
                 ],
-                "summary": "Verificar acceso de rol a modulo",
+                "summary": "Verificar si un rol tiene acceso a un modulo",
                 "operationId": "rolesPermissionCheck",
                 "requestBody": {
                     "required": true,
@@ -754,10 +926,17 @@
                                 ],
                                 "properties": {
                                     "roleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
                                     },
                                     "moduleSlug": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "requests"
+                                    },
+                                    "actionSlug": {
+                                        "type": "string",
+                                        "example": "approve",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -767,7 +946,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Resultado de verificacion"
+                        "description": "Resultado: allowed true/false"
                     }
                 },
                 "security": [
@@ -782,7 +961,7 @@
                 "tags": [
                     "Classifications"
                 ],
-                "summary": "Crear clasificacion",
+                "summary": "Crear clasificacion de solicitud",
                 "operationId": "classificationsStore",
                 "requestBody": {
                     "required": true,
@@ -795,10 +974,17 @@
                                 ],
                                 "properties": {
                                     "name": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "Devolucion por defecto de fabrica"
                                     },
                                     "requestTypeId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "example": "ventas",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -823,7 +1009,7 @@
                 "tags": [
                     "Classifications"
                 ],
-                "summary": "Clasificaciones agrupadas por tipo",
+                "summary": "Clasificaciones agrupadas por tipo de solicitud",
                 "operationId": "classificationsGrouped",
                 "responses": {
                     "200": {
@@ -842,7 +1028,7 @@
                 "tags": [
                     "Classifications"
                 ],
-                "summary": "Clasificaciones por tipo de solicitud",
+                "summary": "Clasificaciones de un tipo de solicitud",
                 "operationId": "classificationsByType",
                 "parameters": [
                     {
@@ -857,6 +1043,81 @@
                 "responses": {
                     "200": {
                         "description": "Clasificaciones del tipo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/classifications/my-pending": {
+            "get": {
+                "tags": [
+                    "Classifications"
+                ],
+                "summary": "Clasificaciones usadas en solicitudes pendientes del usuario actual",
+                "description": "Retorna solo las clasificaciones que aparecen en solicitudes cuyo paso actual esta asignado al usuario. Util para filtros en pantalla de pendientes.",
+                "operationId": "classificationsMyPending",
+                "responses": {
+                    "200": {
+                        "description": "Clasificaciones relevantes al usuario"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/classifications/{id}/reasons": {
+            "post": {
+                "tags": [
+                    "Classifications"
+                ],
+                "summary": "Sincronizar razones de rechazo a una clasificacion (reemplaza las existentes)",
+                "operationId": "classificationsReasons",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "reasonIds"
+                                ],
+                                "properties": {
+                                    "reasonIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        },
+                                        "example": [
+                                            1,
+                                            3,
+                                            5
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Razones sincronizadas"
                     }
                 },
                 "security": [
@@ -900,7 +1161,14 @@
                                 ],
                                 "properties": {
                                     "name": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "Nota de Credito"
+                                    },
+                                    "prefix": {
+                                        "description": "Prefijo para numeracion de solicitudes",
+                                        "type": "string",
+                                        "example": "NC",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -925,7 +1193,7 @@
                 "tags": [
                     "RequestTypes"
                 ],
-                "summary": "Actualizar tipo",
+                "summary": "Actualizar tipo de solicitud",
                 "operationId": "requestTypeUpdate",
                 "parameters": [
                     {
@@ -945,6 +1213,10 @@
                                 "properties": {
                                     "name": {
                                         "type": "string"
+                                    },
+                                    "prefix": {
+                                        "type": "string",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -967,7 +1239,7 @@
                 "tags": [
                     "RequestTypes"
                 ],
-                "summary": "Eliminar tipo",
+                "summary": "Eliminar tipo de solicitud",
                 "operationId": "requestTypeDestroy",
                 "parameters": [
                     {
@@ -996,11 +1268,11 @@
                 "tags": [
                     "RequestTypePermissions"
                 ],
-                "summary": "Listar permisos por tipo",
+                "summary": "Listar permisos por tipo de solicitud",
                 "operationId": "rtpList",
                 "responses": {
                     "200": {
-                        "description": "Permisos"
+                        "description": "Matriz de permisos tipo-rol-accion"
                     }
                 },
                 "security": [
@@ -1015,7 +1287,7 @@
                 "tags": [
                     "RequestTypePermissions"
                 ],
-                "summary": "Asignar permiso de accion a rol",
+                "summary": "Asignar permiso de accion a un rol para un tipo de solicitud",
                 "operationId": "rtpAssign",
                 "requestBody": {
                     "required": true,
@@ -1030,16 +1302,20 @@
                                 ],
                                 "properties": {
                                     "roleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
                                     },
                                     "requestTypeId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
                                     },
                                     "actionId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 3
                                     },
                                     "isAllowed": {
-                                        "type": "boolean"
+                                        "type": "boolean",
+                                        "example": true
                                     }
                                 },
                                 "type": "object"
@@ -1049,7 +1325,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Permiso asignado"
+                        "description": "Permiso guardado"
                     }
                 },
                 "security": [
@@ -1064,7 +1340,7 @@
                 "tags": [
                     "RequestTypePermissions"
                 ],
-                "summary": "Permisos de un rol",
+                "summary": "Permisos de tipo de solicitud de un rol",
                 "operationId": "rtpByRole",
                 "parameters": [
                     {
@@ -1093,7 +1369,7 @@
                 "tags": [
                     "RequestTypePermissions"
                 ],
-                "summary": "Permisos por tipo de solicitud",
+                "summary": "Permisos de todos los roles para un tipo de solicitud",
                 "operationId": "rtpByRequestType",
                 "parameters": [
                     {
@@ -1107,7 +1383,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Permisos del tipo"
+                        "description": "Permisos por tipo"
                     }
                 },
                 "security": [
@@ -1122,7 +1398,7 @@
                 "tags": [
                     "RequestTypePermissions"
                 ],
-                "summary": "Verificar permiso de accion",
+                "summary": "Verificar si un rol puede ejecutar una accion en un tipo de solicitud",
                 "operationId": "rtpCheck",
                 "requestBody": {
                     "required": true,
@@ -1136,13 +1412,16 @@
                                 ],
                                 "properties": {
                                     "roleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
                                     },
                                     "requestTypeId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
                                     },
                                     "actionSlug": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "create"
                                     }
                                 },
                                 "type": "object"
@@ -1152,7 +1431,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Resultado de verificacion"
+                        "description": "Resultado: allowed true/false"
                     }
                 },
                 "security": [
@@ -1415,7 +1694,7 @@
                 "tags": [
                     "Invoices"
                 ],
-                "summary": "Listar todas las facturas",
+                "summary": "Listar todas las facturas (desde BD local)",
                 "operationId": "invoicesList",
                 "responses": {
                     "200": {
@@ -1466,22 +1745,14 @@
                 ]
             }
         },
-        "/invoices/{folio}/products/{clientId}": {
+        "/invoices/{clientId}/search": {
             "get": {
                 "tags": [
                     "Invoices"
                 ],
-                "summary": "Productos de factura con cantidades disponibles a devolver",
-                "operationId": "invoicesProducts",
+                "summary": "Buscar facturas paginadas de un cliente",
+                "operationId": "invoicesSearchByClient",
                 "parameters": [
-                    {
-                        "name": "folio",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
                     {
                         "name": "clientId",
                         "in": "path",
@@ -1489,14 +1760,197 @@
                         "schema": {
                             "type": "integer"
                         }
+                    },
+                    {
+                        "name": "uuid",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "folio",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "receptorRfc",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "receptorNombre",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "moneda",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "MXN",
+                                "USD"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "fechaInicial",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "fechaFinal",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Productos con cantidad disponible"
+                        "description": "Facturas paginadas filtradas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/invoices/{clientId}/charge-type/{chargeType}": {
+            "get": {
+                "tags": [
+                    "Invoices"
+                ],
+                "summary": "Facturas paginadas de un cliente filtradas por tipo de cargo",
+                "operationId": "invoicesByClientAndChargeType",
+                "parameters": [
+                    {
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "chargeType",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "annual"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Busca por folio de factura",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Facturas paginadas del cliente y tipo de cargo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/invoices/{folio}/products/{clientId}": {
+            "get": {
+                "tags": [
+                    "Invoices"
+                ],
+                "summary": "Productos de una factura con cantidades disponibles a devolver",
+                "description": "Obtiene el XML de la factura desde FESA y calcula cantidad disponible (facturada - ya devuelta) por concepto.",
+                "operationId": "invoicesProducts",
+                "parameters": [
+                    {
+                        "name": "folio",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "536662"
+                        }
+                    },
+                    {
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 121693
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de conceptos con cantidad disponible"
                     },
                     "404": {
-                        "description": "Factura no encontrada"
+                        "description": "Factura no encontrada en FESA"
                     }
                 },
                 "security": [
@@ -1511,7 +1965,7 @@
                 "tags": [
                     "Invoices"
                 ],
-                "summary": "Historial de devoluciones de un concepto de factura",
+                "summary": "Historial de devoluciones de un concepto especifico de una factura",
                 "operationId": "invoicesProductHistory",
                 "parameters": [
                     {
@@ -1519,7 +1973,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "example": "536662"
                         }
                     },
                     {
@@ -1527,7 +1982,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "example": 121693
                         }
                     },
                     {
@@ -1535,13 +1991,17 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "example": 0
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Historial del producto"
+                        "description": "Historial con resumen (totalSent, totalReturned, available) y lista de ordenes"
+                    },
+                    "404": {
+                        "description": "Concepto no encontrado en la factura"
                     }
                 },
                 "security": [
@@ -1556,15 +2016,16 @@
                 "tags": [
                     "ReturnOrders"
                 ],
-                "summary": "Buscar ordenes de devolucion",
+                "summary": "Buscar ordenes de devolucion por clientId o razon social",
                 "operationId": "returnOrdersSearch",
                 "parameters": [
                     {
-                        "name": "search",
+                        "name": "q",
                         "in": "query",
                         "required": true,
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "example": "ACME"
                         }
                     }
                 ],
@@ -1593,13 +2054,14 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "example": 121693
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Ordenes del cliente"
+                        "description": "Ordenes del cliente con sus items"
                     }
                 },
                 "security": [
@@ -1628,7 +2090,14 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Orden de devolucion"
+                        "description": "Orden de devolucion con items",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReturnOrder"
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "description": "No encontrada"
@@ -1647,6 +2116,7 @@
                     "ReturnOrders"
                 ],
                 "summary": "Crear orden de devolucion",
+                "description": "Valida que las cantidades solicitadas no excedan las disponibles (facturadas - ya devueltas). Se ejecuta en transaccion: crea ReturnOrder, ReturnOrderItems e historial.",
                 "operationId": "returnOrdersStore",
                 "requestBody": {
                     "required": true,
@@ -1655,11 +2125,32 @@
                             "schema": {
                                 "required": [
                                     "clientId",
+                                    "currency",
+                                    "chargeTypeId",
                                     "items"
                                 ],
                                 "properties": {
                                     "clientId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 121693
+                                    },
+                                    "currency": {
+                                        "type": "string",
+                                        "example": "MXN",
+                                        "enum": [
+                                            "MXN",
+                                            "USD"
+                                        ]
+                                    },
+                                    "chargeTypeId": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "customRate": {
+                                        "description": "Porcentaje personalizado; si se envía, sobreescribe el tipo de cargo",
+                                        "type": "number",
+                                        "example": 12.5,
+                                        "nullable": true
                                     },
                                     "notes": {
                                         "type": "string",
@@ -1676,20 +2167,27 @@
                                             ],
                                             "properties": {
                                                 "invoiceFolio": {
-                                                    "type": "string"
+                                                    "type": "string",
+                                                    "example": "536662"
                                                 },
                                                 "invoiceClientId": {
-                                                    "type": "integer"
+                                                    "type": "integer",
+                                                    "example": 121693
                                                 },
                                                 "conceptoIndex": {
-                                                    "type": "integer"
+                                                    "description": "Indice 0-based del concepto en el XML de la factura",
+                                                    "type": "integer",
+                                                    "example": 0
                                                 },
                                                 "requestedQuantity": {
-                                                    "type": "number"
+                                                    "description": "Debe ser mayor a 0 y no exceder la cantidad disponible",
+                                                    "type": "number",
+                                                    "example": 3
                                                 }
                                             },
                                             "type": "object"
-                                        }
+                                        },
+                                        "minItems": 1
                                     }
                                 },
                                 "type": "object"
@@ -1699,10 +2197,72 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Orden creada"
+                        "description": "Orden de devolucion creada",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReturnOrder"
+                                }
+                            }
+                        }
                     },
                     "422": {
-                        "description": "Cantidades invalidas o excedidas"
+                        "description": "Cantidades invalidas o excedidas, o factura no encontrada en FESA"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-orders/{id}/charge": {
+            "patch": {
+                "tags": [
+                    "ReturnOrders"
+                ],
+                "summary": "Actualizar configuracion de cargo de una orden de devolucion",
+                "description": "Tres modos:\n- Enviar `chargeTypeId`: usa el porcentaje default del tipo (limpia customRate)\n- Enviar `customRate`: porcentaje personalizado (limpia chargeTypeId)\n- Enviar body vacio `{}`: sin cargo (limpia ambos)",
+                "operationId": "returnOrdersUpdateCharge",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "chargeTypeId": {
+                                        "type": "integer",
+                                        "example": 2,
+                                        "nullable": true
+                                    },
+                                    "customRate": {
+                                        "type": "number",
+                                        "example": 15,
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Cargo actualizado"
+                    },
+                    "404": {
+                        "description": "Orden no encontrada"
                     }
                 },
                 "security": [
@@ -1717,7 +2277,7 @@
                 "tags": [
                     "ReturnOrderRequests"
                 ],
-                "summary": "Vincular orden de devolucion a solicitud",
+                "summary": "Vincular orden de devolucion a una solicitud de material",
                 "operationId": "returnOrderRequestsStore",
                 "requestBody": {
                     "required": true,
@@ -1730,10 +2290,19 @@
                                 ],
                                 "properties": {
                                     "returnOrderId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 10
                                     },
                                     "requestId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 45
+                                    },
+                                    "returnChargePercent": {
+                                        "type": "number",
+                                        "example": 10,
+                                        "nullable": true,
+                                        "maximum": 100,
+                                        "minimum": 0
                                     }
                                 },
                                 "type": "object"
@@ -1744,6 +2313,9 @@
                 "responses": {
                     "201": {
                         "description": "Vinculo creado"
+                    },
+                    "422": {
+                        "description": "Orden o solicitud no existe"
                     }
                 },
                 "security": [
@@ -1758,7 +2330,7 @@
                 "tags": [
                     "ReturnOrderRequests"
                 ],
-                "summary": "Devoluciones vinculadas a una solicitud",
+                "summary": "Devoluciones vinculadas a una solicitud especifica",
                 "operationId": "returnOrderRequestsByRequest",
                 "parameters": [
                     {
@@ -1772,7 +2344,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Devoluciones de la solicitud"
+                        "description": "Devoluciones de la solicitud con sus items"
                     }
                 },
                 "security": [
@@ -1801,10 +2373,101 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Vinculo"
+                        "description": "Vinculo con items"
                     },
                     "404": {
                         "description": "No encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/return-order-requests/{id}/items": {
+            "put": {
+                "tags": [
+                    "ReturnOrderRequests"
+                ],
+                "summary": "Actualizar multiples items de devolucion vinculada (bulk)",
+                "operationId": "returnOrderRequestsUpdateItems",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "items"
+                                ],
+                                "properties": {
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "required": [
+                                                "id"
+                                            ],
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 12
+                                                },
+                                                "sapId": {
+                                                    "type": "string",
+                                                    "example": "100045",
+                                                    "nullable": true
+                                                },
+                                                "replenishmentAccepted": {
+                                                    "type": "number",
+                                                    "example": 2,
+                                                    "nullable": true
+                                                },
+                                                "replenishmentReasonForRejection": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "warehouseReceived": {
+                                                    "type": "number",
+                                                    "example": 2,
+                                                    "nullable": true
+                                                },
+                                                "warehouseAccepted": {
+                                                    "type": "number",
+                                                    "example": 1.5,
+                                                    "nullable": true
+                                                },
+                                                "warehouseReasonForRejection": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "minItems": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Items actualizados"
+                    },
+                    "422": {
+                        "description": "Datos invalidos"
                     }
                 },
                 "security": [
@@ -1819,7 +2482,7 @@
                 "tags": [
                     "ReturnOrderRequests"
                 ],
-                "summary": "Actualizar item de devolucion vinculada",
+                "summary": "Actualizar un item individual de devolucion vinculada",
                 "operationId": "returnOrderRequestsUpdateItem",
                 "parameters": [
                     {
@@ -1845,8 +2508,33 @@
                         "application/json": {
                             "schema": {
                                 "properties": {
-                                    "approvedQuantity": {
-                                        "type": "number"
+                                    "sapId": {
+                                        "type": "string",
+                                        "example": "100045",
+                                        "nullable": true
+                                    },
+                                    "replenishmentAccepted": {
+                                        "type": "number",
+                                        "example": 2,
+                                        "nullable": true
+                                    },
+                                    "replenishmentReasonForRejection": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "warehouseReceived": {
+                                        "type": "number",
+                                        "example": 2,
+                                        "nullable": true
+                                    },
+                                    "warehouseAccepted": {
+                                        "type": "number",
+                                        "example": 1.5,
+                                        "nullable": true
+                                    },
+                                    "warehouseReasonForRejection": {
+                                        "type": "string",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -1857,6 +2545,9 @@
                 "responses": {
                     "200": {
                         "description": "Item actualizado"
+                    },
+                    "404": {
+                        "description": "Item no encontrado"
                     }
                 },
                 "security": [
@@ -1871,14 +2562,23 @@
                 "tags": [
                     "Customers"
                 ],
-                "summary": "Listar clientes",
+                "summary": "Listar clientes paginados",
                 "operationId": "customersList",
                 "parameters": [
                     {
                         "name": "per_page",
                         "in": "query",
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 15
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
                         }
                     },
                     {
@@ -1917,10 +2617,12 @@
                                 ],
                                 "properties": {
                                     "idCliente": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 121693
                                     },
                                     "razonSocial": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "ACME SA DE CV"
                                     }
                                 },
                                 "type": "object"
@@ -1945,7 +2647,7 @@
                 "tags": [
                     "Customers"
                 ],
-                "summary": "Buscar clientes por nombre",
+                "summary": "Buscar clientes por razon social",
                 "operationId": "customersSearch",
                 "parameters": [
                     {
@@ -1953,7 +2655,8 @@
                         "in": "query",
                         "required": true,
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "example": "LAMINADORA"
                         }
                     }
                 ],
@@ -1988,7 +2691,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Cliente"
+                        "description": "Datos del cliente"
                     },
                     "404": {
                         "description": "No encontrado"
@@ -2004,7 +2707,7 @@
                 "tags": [
                     "Customers"
                 ],
-                "summary": "Actualizar cliente",
+                "summary": "Actualizar datos de cliente",
                 "operationId": "customersUpdate",
                 "parameters": [
                     {
@@ -2023,7 +2726,8 @@
                             "schema": {
                                 "properties": {
                                     "razonSocial": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -2075,7 +2779,7 @@
                 "tags": [
                     "Customers"
                 ],
-                "summary": "Guardar cliente en tabla local",
+                "summary": "Guardar cliente en tabla local del sistema",
                 "operationId": "customersStoreLocal",
                 "requestBody": {
                     "required": true,
@@ -2088,10 +2792,12 @@
                                 ],
                                 "properties": {
                                     "idCliente": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 121693
                                     },
                                     "razonSocial": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "ACME SA DE CV"
                                     }
                                 },
                                 "type": "object"
@@ -2101,7 +2807,7 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Cliente creado localmente"
+                        "description": "Cliente guardado localmente"
                     }
                 },
                 "security": [
@@ -2116,11 +2822,27 @@
                 "tags": [
                     "Notifications"
                 ],
-                "summary": "Notificaciones del usuario",
+                "summary": "Notificaciones del usuario autenticado",
                 "operationId": "notificationsList",
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Notificaciones"
+                        "description": "Notificaciones paginadas"
                     }
                 },
                 "security": [
@@ -2135,11 +2857,11 @@
                 "tags": [
                     "Notifications"
                 ],
-                "summary": "Notificaciones no leidas",
+                "summary": "Contador de notificaciones no leidas",
                 "operationId": "notificationsUnread",
                 "responses": {
                     "200": {
-                        "description": "Notificaciones no leidas"
+                        "description": "Total de no leidas"
                     }
                 },
                 "security": [
@@ -2187,14 +2909,16 @@
                     "Dashboard"
                 ],
                 "summary": "Metricas de solicitudes por periodo",
+                "description": "Retorna totales, series por fecha y distribuciones. Puede filtrar por rango de fechas o por N ultimos dias.",
                 "operationId": "dashboardMetrics",
                 "parameters": [
                     {
                         "name": "days",
                         "in": "query",
-                        "description": "Ultimos N dias (ej. 30)",
+                        "description": "Ultimos N dias (ej. 30). Ignorado si se envia from/to.",
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "example": 30
                         }
                     },
                     {
@@ -2203,7 +2927,8 @@
                         "description": "Fecha inicio YYYY-MM-DD",
                         "schema": {
                             "type": "string",
-                            "format": "date"
+                            "format": "date",
+                            "example": "2026-01-01"
                         }
                     },
                     {
@@ -2212,7 +2937,8 @@
                         "description": "Fecha fin YYYY-MM-DD",
                         "schema": {
                             "type": "string",
-                            "format": "date"
+                            "format": "date",
+                            "example": "2026-06-01"
                         }
                     },
                     {
@@ -2226,7 +2952,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Series y totales por periodo"
+                        "description": "Series temporales y totales por periodo y estado"
                     }
                 },
                 "security": [
@@ -2241,7 +2967,7 @@
                 "tags": [
                     "Security"
                 ],
-                "summary": "Usuarios bloqueados",
+                "summary": "Listar usuarios bloqueados por intentos fallidos",
                 "operationId": "securityBlockedUsers",
                 "responses": {
                     "200": {
@@ -2260,7 +2986,7 @@
                 "tags": [
                     "Security"
                 ],
-                "summary": "IPs bloqueadas",
+                "summary": "Listar IPs bloqueadas",
                 "operationId": "securityBlockedIps",
                 "responses": {
                     "200": {
@@ -2279,7 +3005,7 @@
                 "tags": [
                     "Security"
                 ],
-                "summary": "Desbloquear usuario",
+                "summary": "Desbloquear usuario manualmente",
                 "operationId": "securityUnlockUser",
                 "parameters": [
                     {
@@ -2308,7 +3034,7 @@
                 "tags": [
                     "Security"
                 ],
-                "summary": "Desbloquear IP",
+                "summary": "Desbloquear IP manualmente",
                 "operationId": "securityUnlockIp",
                 "requestBody": {
                     "required": true,
@@ -2321,7 +3047,8 @@
                                 "properties": {
                                     "ip": {
                                         "type": "string",
-                                        "example": "192.168.1.1"
+                                        "format": "ipv4",
+                                        "example": "192.168.1.100"
                                     }
                                 },
                                 "type": "object"
@@ -2350,7 +3077,7 @@
                 "operationId": "securityLoginSettings",
                 "responses": {
                     "200": {
-                        "description": "Configuracion"
+                        "description": "Umbrales y tiempos de bloqueo actuales"
                     }
                 },
                 "security": [
@@ -2377,14 +3104,17 @@
                                 ],
                                 "properties": {
                                     "maxUserAttempts": {
+                                        "description": "Intentos fallidos antes de bloquear usuario",
                                         "type": "integer",
                                         "example": 5
                                     },
                                     "maxIpAttempts": {
+                                        "description": "Intentos fallidos antes de bloquear IP",
                                         "type": "integer",
                                         "example": 10
                                     },
                                     "sessionTimeoutMinutes": {
+                                        "description": "Minutos de inactividad antes de expirar sesion",
                                         "type": "integer",
                                         "example": 120
                                     }
@@ -2411,7 +3141,7 @@
                 "tags": [
                     "PasswordRequirements"
                 ],
-                "summary": "Validar contrasena (publica)",
+                "summary": "Validar una contrasena contra los requisitos activos (endpoint publico)",
                 "operationId": "passwordValidate",
                 "requestBody": {
                     "required": true,
@@ -2423,7 +3153,8 @@
                                 ],
                                 "properties": {
                                     "password": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "MyP@ss2024"
                                     }
                                 },
                                 "type": "object"
@@ -2433,7 +3164,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Resultado de validacion"
+                        "description": "Resultado de validacion con detalle de reglas"
                     }
                 }
             }
@@ -2443,11 +3174,11 @@
                 "tags": [
                     "PasswordRequirements"
                 ],
-                "summary": "Requisitos de contrasena",
+                "summary": "Obtener requisitos de contrasena activos",
                 "operationId": "passwordRequirements",
                 "responses": {
                     "200": {
-                        "description": "Requisitos"
+                        "description": "Objeto de requisitos"
                     }
                 },
                 "security": [
@@ -2460,7 +3191,7 @@
                 "tags": [
                     "PasswordRequirements"
                 ],
-                "summary": "Actualizar requisitos (admin)",
+                "summary": "Actualizar requisitos de contrasena (admin)",
                 "operationId": "passwordRequirementsUpdate",
                 "requestBody": {
                     "required": true,
@@ -2469,16 +3200,20 @@
                             "schema": {
                                 "properties": {
                                     "minLength": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 8
                                     },
                                     "requireUppercase": {
-                                        "type": "boolean"
+                                        "type": "boolean",
+                                        "example": true
                                     },
                                     "requireNumbers": {
-                                        "type": "boolean"
+                                        "type": "boolean",
+                                        "example": true
                                     },
                                     "requireSymbols": {
-                                        "type": "boolean"
+                                        "type": "boolean",
+                                        "example": true
                                     }
                                 },
                                 "type": "object"
@@ -2503,11 +3238,170 @@
                 "tags": [
                     "PasswordRequirements"
                 ],
-                "summary": "Requisitos formateados para UI",
+                "summary": "Obtener requisitos formateados para mostrar en UI",
                 "operationId": "passwordRequirementsFormatted",
                 "responses": {
                     "200": {
-                        "description": "Requisitos formateados"
+                        "description": "Lista de reglas con texto descriptivo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/charge-types": {
+            "get": {
+                "tags": [
+                    "ChargeTypes"
+                ],
+                "summary": "Listar tipos de cargo disponibles",
+                "operationId": "chargeTypesList",
+                "responses": {
+                    "200": {
+                        "description": "Catalogo de tipos de cargo"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/email-config": {
+            "get": {
+                "tags": [
+                    "EmailConfig"
+                ],
+                "summary": "Obtener configuracion de email del sistema",
+                "operationId": "emailConfigShow",
+                "responses": {
+                    "200": {
+                        "description": "Configuracion de email actual"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "EmailConfig"
+                ],
+                "summary": "Crear o actualizar configuracion de email (upsert)",
+                "operationId": "emailConfigUpdate",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "driver": {
+                                        "type": "string",
+                                        "example": "sendgrid",
+                                        "nullable": true
+                                    },
+                                    "fromAddress": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "no-reply@empresa.com",
+                                        "nullable": true
+                                    },
+                                    "fromName": {
+                                        "type": "string",
+                                        "example": "Sistema Notas de Credito",
+                                        "nullable": true
+                                    },
+                                    "apiKey": {
+                                        "type": "string",
+                                        "example": "SG.xxxxx",
+                                        "nullable": true
+                                    },
+                                    "emailMode": {
+                                        "type": "string",
+                                        "example": "sendgrid",
+                                        "nullable": true,
+                                        "enum": [
+                                            "sendgrid",
+                                            "smtp",
+                                            "disabled"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Configuracion guardada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/exports/excel": {
+            "get": {
+                "tags": [
+                    "Exports"
+                ],
+                "summary": "Exportar solicitudes a Excel",
+                "description": "Genera y descarga un archivo .xlsx con los datos de solicitudes segun los filtros aplicados.",
+                "operationId": "exportsExcel",
+                "parameters": [
+                    {
+                        "name": "requestTypeId",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "approved",
+                                "rejected",
+                                "cancelled"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archivo Excel",
+                        "content": {
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+                        }
                     }
                 },
                 "security": [
@@ -2527,6 +3421,25 @@
                 "responses": {
                     "200": {
                         "description": "Lista de solicitudes"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/requesters": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Usuarios que han creado solicitudes",
+                "operationId": "requestsRequesters",
+                "responses": {
+                    "200": {
+                        "description": "Lista de solicitantes"
                     }
                 },
                 "security": [
@@ -2561,7 +3474,54 @@
                     "Requests"
                 ],
                 "summary": "Solicitudes pendientes del usuario actual",
+                "description": "Retorna solicitudes cuyo paso actual esta asignado al usuario autenticado o a su rol broadcast (REPLENISHMENT, WAREHOUSE, IT).",
                 "operationId": "requestsPendingMe",
+                "parameters": [
+                    {
+                        "name": "requestTypeId",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "roleName",
+                        "in": "query",
+                        "description": "Filtra por roleName del paso actual. Omitir o enviar \"All\" para todos.",
+                        "schema": {
+                            "type": "string",
+                            "example": "ADMIN"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Pendientes propias"
@@ -2585,6 +3545,7 @@
                     {
                         "name": "id",
                         "in": "path",
+                        "description": "roleId",
                         "required": true,
                         "schema": {
                             "type": "integer"
@@ -2603,13 +3564,23 @@
                 ]
             }
         },
-        "/requests/reasons": {
+        "/requests/reasons/{requestTypeId}": {
             "get": {
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Listar razones de solicitud",
-                "operationId": "requestsReasons",
+                "summary": "Razones de rechazo por tipo de solicitud",
+                "operationId": "requestsReasonsByType",
+                "parameters": [
+                    {
+                        "name": "requestTypeId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Lista de razones"
@@ -2627,7 +3598,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Siguiente numero de solicitud",
+                "summary": "Siguiente numero de solicitud para el tipo dado",
                 "operationId": "requestsNextNumber",
                 "parameters": [
                     {
@@ -2651,12 +3622,55 @@
                 ]
             }
         },
+        "/requests/customer/{customerId}": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Solicitudes de un cliente especifico",
+                "operationId": "requestsByCustomer",
+                "parameters": [
+                    {
+                        "name": "customerId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Solicitudes del cliente"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/requests/{id}": {
             "get": {
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Solicitudes por tipo",
+                "summary": "Solicitudes paginadas por tipo (requestTypeId)",
                 "operationId": "requestsByType",
                 "parameters": [
                     {
@@ -2667,11 +3681,41 @@
                         "schema": {
                             "type": "integer"
                         }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "roleName",
+                        "in": "query",
+                        "description": "Filtra por roleName del paso actual. Omitir o enviar \"All\" para todos.",
+                        "schema": {
+                            "type": "string",
+                            "example": "ADMIN"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Solicitudes del tipo"
+                        "description": "Solicitudes paginadas del tipo"
                     }
                 },
                 "security": [
@@ -2686,7 +3730,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Historial de una solicitud",
+                "summary": "Historial de flujo de una solicitud",
                 "operationId": "requestsHistory",
                 "parameters": [
                     {
@@ -2700,7 +3744,42 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Historial"
+                        "description": "Historial de acciones del workflow"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/pdf": {
+            "get": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Descargar PDF de una solicitud",
+                "operationId": "requestsDownloadPdf",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PDF de la solicitud",
+                        "content": {
+                            "application/pdf": {}
+                        }
+                    },
+                    "404": {
+                        "description": "Solicitud no encontrada"
                     }
                 },
                 "security": [
@@ -2715,7 +3794,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Adjuntos de una solicitud",
+                "summary": "Archivos adjuntos de una solicitud",
                 "operationId": "requestsAttachments",
                 "parameters": [
                     {
@@ -2776,7 +3855,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "URL firmada de preview del adjunto",
+                "summary": "URL firmada para preview del adjunto",
                 "operationId": "requestsAttachmentPreviewLink",
                 "parameters": [
                     {
@@ -2805,7 +3884,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Eliminar adjunto de solicitud",
+                "summary": "Eliminar adjunto de una solicitud",
                 "operationId": "requestsAttachmentDelete",
                 "parameters": [
                     {
@@ -2842,7 +3921,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Guardar borrador",
+                "summary": "Guardar borrador de solicitud",
                 "operationId": "requestsSaveDraft",
                 "requestBody": {
                     "required": true,
@@ -2854,7 +3933,8 @@
                                 ],
                                 "properties": {
                                     "requestTypeId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
                                     },
                                     "classificationId": {
                                         "type": "integer",
@@ -2867,6 +3947,14 @@
                                     "notes": {
                                         "type": "string",
                                         "nullable": true
+                                    },
+                                    "reasonId": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "totalAmount": {
+                                        "type": "number",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -2876,7 +3964,49 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Borrador guardado"
+                        "description": "Borrador guardado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Request"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/drafts/{id}": {
+            "delete": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Eliminar borrador",
+                "operationId": "requestsDeleteDraft",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Borrador eliminado"
+                    },
+                    "403": {
+                        "description": "No autorizado"
+                    },
+                    "404": {
+                        "description": "No encontrado"
                     }
                 },
                 "security": [
@@ -2891,7 +4021,8 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Crear solicitud formal",
+                "summary": "Crear solicitud formal e iniciar flujo de aprobacion",
+                "description": "Crea la solicitud, le asigna numero correlativo y la enruta al primer paso del workflow configurado para su tipo y clasificacion.",
                 "operationId": "requestsCreate",
                 "requestBody": {
                     "required": true,
@@ -2904,13 +4035,16 @@
                                 ],
                                 "properties": {
                                     "requestTypeId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
                                     },
                                     "classificationId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 3
                                     },
                                     "clientId": {
                                         "type": "string",
+                                        "example": "121693",
                                         "nullable": true
                                     },
                                     "notes": {
@@ -2919,6 +4053,11 @@
                                     },
                                     "reasonId": {
                                         "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "totalAmount": {
+                                        "type": "number",
+                                        "example": 50000,
                                         "nullable": true
                                     }
                                 },
@@ -2929,7 +4068,17 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Solicitud creada"
+                        "description": "Solicitud creada y asignada al workflow",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Request"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Datos invalidos o workflow no configurado"
                     }
                 },
                 "security": [
@@ -2944,7 +4093,7 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Actualizar solicitud",
+                "summary": "Actualizar solicitud (solo campos editables)",
                 "operationId": "requestsUpdate",
                 "parameters": [
                     {
@@ -2963,7 +4112,12 @@
                             "schema": {
                                 "properties": {
                                     "notes": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "totalAmount": {
+                                        "type": "number",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -2974,6 +4128,12 @@
                 "responses": {
                     "200": {
                         "description": "Solicitud actualizada"
+                    },
+                    "403": {
+                        "description": "Sin permisos para editar"
+                    },
+                    "422": {
+                        "description": "La solicitud no es editable en su estado actual"
                     }
                 },
                 "security": [
@@ -2988,7 +4148,8 @@
                 "tags": [
                     "Requests"
                 ],
-                "summary": "Aprobar solicitud",
+                "summary": "Aprobar solicitud en el paso actual",
+                "description": "Solo puede aprobar: admin, usuario asignado al paso, o cualquier usuario de un rol broadcast (REPLENISHMENT, WAREHOUSE, IT).",
                 "operationId": "requestsApprove",
                 "parameters": [
                     {
@@ -3008,6 +4169,7 @@
                                 "properties": {
                                     "comment": {
                                         "type": "string",
+                                        "example": "Aprobado sin observaciones",
                                         "nullable": true
                                     }
                                 },
@@ -3018,10 +4180,13 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Solicitud aprobada"
+                        "description": "Solicitud aprobada o avanzada al siguiente paso"
+                    },
+                    "403": {
+                        "description": "Sin permisos para aprobar este paso"
                     },
                     "422": {
-                        "description": "No se puede aprobar"
+                        "description": "No se puede aprobar (estado invalido, no hay siguiente usuario disponible)"
                     }
                 },
                 "security": [
@@ -3058,7 +4223,8 @@
                                 ],
                                 "properties": {
                                     "reasonId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
                                     },
                                     "comment": {
                                         "type": "string",
@@ -3073,6 +4239,120 @@
                 "responses": {
                     "200": {
                         "description": "Solicitud rechazada"
+                    },
+                    "403": {
+                        "description": "Sin permisos"
+                    },
+                    "422": {
+                        "description": "No se puede rechazar en su estado actual"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/cancel": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Cancelar solicitud",
+                "description": "Accion irreversible. El estado pasa a \"cancelled\".",
+                "operationId": "requestsCancel",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "comments": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Solicitud cancelada"
+                    },
+                    "422": {
+                        "description": "No se puede cancelar en su estado actual"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/{requestId}/send-back": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Regresar solicitud a un paso anterior",
+                "operationId": "requestsSendBack",
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "targetWorkflowStepId"
+                                ],
+                                "properties": {
+                                    "targetWorkflowStepId": {
+                                        "description": "ID del paso al que se regresa",
+                                        "type": "integer",
+                                        "example": 5
+                                    },
+                                    "comments": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Solicitud regresada al paso indicado"
+                    },
+                    "403": {
+                        "description": "Sin permisos"
+                    },
+                    "422": {
+                        "description": "Paso destino invalido"
                     }
                 },
                 "security": [
@@ -3088,6 +4368,7 @@
                     "Requests"
                 ],
                 "summary": "Aprobar multiples solicitudes",
+                "description": "Procesa cada solicitud de forma independiente. Retorna un resumen de exitos y errores por ID.",
                 "operationId": "requestsApproveMass",
                 "requestBody": {
                     "required": true,
@@ -3102,7 +4383,16 @@
                                         "type": "array",
                                         "items": {
                                             "type": "integer"
-                                        }
+                                        },
+                                        "example": [
+                                            1,
+                                            2,
+                                            3
+                                        ]
+                                    },
+                                    "comment": {
+                                        "type": "string",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -3112,7 +4402,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Resultado de aprobacion masiva"
+                        "description": "Resultado de aprobacion masiva con detalle por solicitud"
                     }
                 },
                 "security": [
@@ -3143,10 +4433,19 @@
                                         "type": "array",
                                         "items": {
                                             "type": "integer"
-                                        }
+                                        },
+                                        "example": [
+                                            4,
+                                            5
+                                        ]
                                     },
                                     "reasonId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "comment": {
+                                        "type": "string",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -3156,7 +4455,108 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Resultado de rechazo masivo"
+                        "description": "Resultado de rechazo masivo con detalle por solicitud"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/cancel-mass": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Cancelar multiples solicitudes",
+                "operationId": "requestsCancelMass",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestIds"
+                                ],
+                                "properties": {
+                                    "requestIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        },
+                                        "example": [
+                                            6,
+                                            7
+                                        ]
+                                    },
+                                    "comments": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de cancelacion masiva"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/requests/send-back-mass": {
+            "post": {
+                "tags": [
+                    "Requests"
+                ],
+                "summary": "Regresar multiples solicitudes al mismo paso anterior",
+                "operationId": "requestsSendBackMass",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "requestIds",
+                                    "targetWorkflowStepId"
+                                ],
+                                "properties": {
+                                    "requestIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        },
+                                        "example": [
+                                            8,
+                                            9
+                                        ]
+                                    },
+                                    "targetWorkflowStepId": {
+                                        "type": "integer",
+                                        "example": 5
+                                    },
+                                    "comments": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resultado de regreso masivo"
                     }
                 },
                 "security": [
@@ -3175,7 +4575,22 @@
                 "operationId": "usersList",
                 "responses": {
                     "200": {
-                        "description": "Lista de usuarios"
+                        "description": "Lista de usuarios",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/User"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
                     }
                 },
                 "security": [
@@ -3203,21 +4618,39 @@
                                 ],
                                 "properties": {
                                     "fullName": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "Maria Lopez"
                                     },
                                     "email": {
                                         "type": "string",
-                                        "format": "email"
+                                        "format": "email",
+                                        "example": "maria@empresa.com"
                                     },
                                     "password": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "P@ssw0rd!"
                                     },
                                     "roleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "supervisorId": {
+                                        "description": "ID del supervisor directo",
+                                        "type": "integer",
+                                        "nullable": true
                                     },
                                     "clientId": {
                                         "type": "string",
                                         "nullable": true
+                                    },
+                                    "preferredLanguage": {
+                                        "type": "string",
+                                        "example": "es",
+                                        "nullable": true,
+                                        "enum": [
+                                            "en",
+                                            "es"
+                                        ]
                                     }
                                 },
                                 "type": "object"
@@ -3227,7 +4660,17 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Usuario creado"
+                        "description": "Usuario creado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Datos invalidos o email duplicado"
                     }
                 },
                 "security": [
@@ -3242,21 +4685,40 @@
                 "tags": [
                     "Users"
                 ],
-                "summary": "Usuarios paginados",
+                "summary": "Usuarios paginados con filtros",
                 "operationId": "usersPaginated",
                 "parameters": [
                     {
                         "name": "per_page",
                         "in": "query",
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 15
                         }
                     },
                     {
                         "name": "page",
                         "in": "query",
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 1
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Busca por nombre o email",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "roleName",
+                        "in": "query",
+                        "description": "Filtra por roleName exacto. Omitir o enviar \"All\" para todos.",
+                        "schema": {
+                            "type": "string",
+                            "example": "ADMIN"
                         }
                     }
                 ],
@@ -3300,7 +4762,14 @@
                 "operationId": "usersMe",
                 "responses": {
                     "200": {
-                        "description": "Datos del usuario actual"
+                        "description": "Datos del usuario actual",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
                     }
                 },
                 "security": [
@@ -3328,10 +4797,12 @@
                                 ],
                                 "properties": {
                                     "currentPassword": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "OldP@ss1"
                                     },
                                     "newPassword": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "NewP@ss2024!"
                                     }
                                 },
                                 "type": "object"
@@ -3344,7 +4815,7 @@
                         "description": "Contrasena actualizada"
                     },
                     "422": {
-                        "description": "Contrasena invalida"
+                        "description": "Contrasena actual incorrecta o nueva no cumple requisitos"
                     }
                 },
                 "security": [
@@ -3381,7 +4852,8 @@
                                 ],
                                 "properties": {
                                     "newPassword": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "TempP@ss2024!"
                                     }
                                 },
                                 "type": "object"
@@ -3392,6 +4864,41 @@
                 "responses": {
                     "200": {
                         "description": "Contrasena actualizada"
+                    },
+                    "404": {
+                        "description": "Usuario no encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/{id}/resend-welcome-email": {
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Reenviar email de bienvenida a un usuario",
+                "operationId": "usersResendWelcome",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email reenviado"
+                    },
+                    "404": {
+                        "description": "Usuario no encontrado"
                     }
                 },
                 "security": [
@@ -3420,7 +4927,14 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Datos del usuario"
+                        "description": "Datos del usuario",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "description": "No encontrado"
@@ -3455,7 +4969,24 @@
                             "schema": {
                                 "properties": {
                                     "fullName": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "roleId": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "supervisorId": {
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "clientId": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "isActive": {
+                                        "type": "boolean",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -3481,7 +5012,7 @@
                 "tags": [
                     "Users"
                 ],
-                "summary": "Eliminar usuario",
+                "summary": "Eliminar usuario (soft delete)",
                 "operationId": "usersDestroy",
                 "parameters": [
                     {
@@ -3495,7 +5026,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Eliminado"
+                        "description": "Usuario eliminado"
                     },
                     "404": {
                         "description": "No encontrado"
@@ -3513,7 +5044,7 @@
                 "tags": [
                     "UserAssignments"
                 ],
-                "summary": "Listar lideres disponibles",
+                "summary": "Listar usuarios con rol CS Leader disponibles para asignar",
                 "operationId": "assignmentLeaders",
                 "responses": {
                     "200": {
@@ -3532,7 +5063,7 @@
                 "tags": [
                     "UserAssignments"
                 ],
-                "summary": "Usuarios asignables",
+                "summary": "Listar usuarios que pueden ser asignados a un lider",
                 "operationId": "assignableUsers",
                 "responses": {
                     "200": {
@@ -3551,7 +5082,7 @@
                 "tags": [
                     "UserAssignments"
                 ],
-                "summary": "Asignaciones de un lider",
+                "summary": "Obtener asignaciones de un CS Leader",
                 "operationId": "assignmentsIndex",
                 "parameters": [
                     {
@@ -3565,7 +5096,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Asignaciones del lider"
+                        "description": "Usuarios asignados al lider"
                     }
                 },
                 "security": [
@@ -3580,22 +5111,33 @@
                 "tags": [
                     "UserAssignments"
                 ],
-                "summary": "Crear o actualizar asignaciones (upsert)",
+                "summary": "Crear o actualizar asignaciones de un CS Leader (upsert)",
+                "description": "Reemplaza todas las asignaciones del lider con los IDs enviados.",
                 "operationId": "assignmentsUpsert",
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
+                                "required": [
+                                    "leaderUserId",
+                                    "assignedUserIds"
+                                ],
                                 "properties": {
                                     "leaderUserId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 10
                                     },
                                     "assignedUserIds": {
                                         "type": "array",
                                         "items": {
                                             "type": "integer"
-                                        }
+                                        },
+                                        "example": [
+                                            3,
+                                            7,
+                                            12
+                                        ]
                                     }
                                 },
                                 "type": "object"
@@ -3620,7 +5162,7 @@
                 "tags": [
                     "UserAssignments"
                 ],
-                "summary": "Eliminar asignacion",
+                "summary": "Eliminar asignacion entre lider y usuario",
                 "operationId": "assignmentsDestroy",
                 "parameters": [
                     {
@@ -3661,7 +5203,22 @@
                 "operationId": "workflowsList",
                 "responses": {
                     "200": {
-                        "description": "Lista de workflows"
+                        "description": "Lista de workflows",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Workflow"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
                     }
                 },
                 "security": [
@@ -3687,13 +5244,16 @@
                                 ],
                                 "properties": {
                                     "name": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "Flujo Nota de Credito"
                                     },
                                     "requestTypeId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
                                     },
                                     "isActive": {
                                         "type": "boolean",
+                                        "example": true,
                                         "nullable": true
                                     }
                                 },
@@ -3705,6 +5265,9 @@
                 "responses": {
                     "201": {
                         "description": "Workflow creado"
+                    },
+                    "422": {
+                        "description": "Ya existe un workflow activo para ese tipo y clasificacion"
                     }
                 },
                 "security": [
@@ -3733,7 +5296,14 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Datos del workflow"
+                        "description": "Datos del workflow",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Workflow"
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "description": "No encontrado"
@@ -3769,6 +5339,10 @@
                                 "properties": {
                                     "name": {
                                         "type": "string"
+                                    },
+                                    "isActive": {
+                                        "type": "boolean",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -3806,6 +5380,9 @@
                 "responses": {
                     "200": {
                         "description": "Workflow eliminado"
+                    },
+                    "422": {
+                        "description": "No se puede eliminar: tiene solicitudes activas"
                     }
                 },
                 "security": [
@@ -3820,7 +5397,7 @@
                 "tags": [
                     "WorkflowSteps"
                 ],
-                "summary": "Listar todos los pasos",
+                "summary": "Listar todos los pasos de workflow",
                 "operationId": "workflowStepsList",
                 "responses": {
                     "200": {
@@ -3837,7 +5414,8 @@
                 "tags": [
                     "WorkflowSteps"
                 ],
-                "summary": "Crear paso de workflow",
+                "summary": "Crear paso de workflow con transiciones condicionales opcionales",
+                "description": "Las transitions permiten enrutar al siguiente paso segun el valor de un campo de la solicitud. Si no se definen, el flujo es lineal por stepOrder. Operadores soportados: >, <, >=, <=, ==, !=.",
                 "operationId": "workflowStepsStore",
                 "requestBody": {
                     "required": true,
@@ -3852,46 +5430,66 @@
                                 ],
                                 "properties": {
                                     "workflowId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 1
                                     },
                                     "stepName": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "example": "Aprobacion Gerente"
                                     },
                                     "stepOrder": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 2
                                     },
                                     "roleId": {
-                                        "type": "integer"
+                                        "type": "integer",
+                                        "example": 3
                                     },
                                     "isInitialStep": {
                                         "type": "boolean",
+                                        "example": false,
                                         "nullable": true
                                     },
                                     "isFinalStep": {
                                         "type": "boolean",
+                                        "example": false,
                                         "nullable": true
                                     },
                                     "transitions": {
+                                        "description": "Transiciones condicionales. Si omitida, el siguiente paso se resuelve por stepOrder.",
                                         "type": "array",
                                         "items": {
+                                            "required": [
+                                                "toStepId"
+                                            ],
                                             "properties": {
                                                 "toStepId": {
-                                                    "type": "integer"
+                                                    "description": "ID del paso destino",
+                                                    "type": "integer",
+                                                    "example": 5
                                                 },
                                                 "conditionField": {
+                                                    "description": "Campo de la solicitud a evaluar",
                                                     "type": "string",
+                                                    "example": "totalAmount",
                                                     "nullable": true
                                                 },
                                                 "conditionOperator": {
+                                                    "description": "Operador: >, <, >=, <=, ==, !=",
                                                     "type": "string",
+                                                    "example": ">",
                                                     "nullable": true
                                                 },
                                                 "conditionValue": {
+                                                    "description": "Valor umbral (string)",
                                                     "type": "string",
+                                                    "example": "150000",
                                                     "nullable": true
                                                 },
                                                 "priority": {
+                                                    "description": "Prioridad de evaluacion (menor = primero)",
                                                     "type": "integer",
+                                                    "example": 1,
                                                     "nullable": true
                                                 }
                                             },
@@ -3907,10 +5505,10 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Paso creado"
+                        "description": "Paso creado con sus transiciones"
                     },
                     "422": {
-                        "description": "Error: paso inicial/final duplicado"
+                        "description": "Error: paso inicial o final duplicado en el workflow"
                     }
                 },
                 "security": [
@@ -3929,7 +5527,7 @@
                 "operationId": "workflowStepsAllWorkflows",
                 "responses": {
                     "200": {
-                        "description": "Workflows con pasos"
+                        "description": "Workflows con sus pasos anidados"
                     }
                 },
                 "security": [
@@ -3944,7 +5542,7 @@
                 "tags": [
                     "WorkflowSteps"
                 ],
-                "summary": "Pasos de un workflow",
+                "summary": "Pasos de un workflow especifico",
                 "operationId": "workflowStepsByWorkflow",
                 "parameters": [
                     {
@@ -3958,7 +5556,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Pasos del workflow"
+                        "description": "Pasos del workflow en orden"
                     },
                     "404": {
                         "description": "Workflow no encontrado"
@@ -4006,7 +5604,7 @@
                 "tags": [
                     "WorkflowSteps"
                 ],
-                "summary": "Actualizar paso",
+                "summary": "Actualizar paso de workflow",
                 "operationId": "workflowStepsUpdate",
                 "parameters": [
                     {
@@ -4026,6 +5624,20 @@
                                 "properties": {
                                     "stepName": {
                                         "type": "string"
+                                    },
+                                    "stepOrder": {
+                                        "type": "integer"
+                                    },
+                                    "roleId": {
+                                        "type": "integer"
+                                    },
+                                    "isInitialStep": {
+                                        "type": "boolean",
+                                        "nullable": true
+                                    },
+                                    "isFinalStep": {
+                                        "type": "boolean",
+                                        "nullable": true
                                     }
                                 },
                                 "type": "object"
@@ -4048,7 +5660,7 @@
                 "tags": [
                     "WorkflowSteps"
                 ],
-                "summary": "Eliminar paso",
+                "summary": "Eliminar paso de workflow",
                 "operationId": "workflowStepsDestroy",
                 "parameters": [
                     {
@@ -4065,7 +5677,7 @@
                         "description": "Paso eliminado"
                     },
                     "422": {
-                        "description": "No se puede eliminar"
+                        "description": "No se puede eliminar: solicitudes activas en este paso"
                     }
                 },
                 "security": [
@@ -4080,7 +5692,7 @@
                 "tags": [
                     "Batches"
                 ],
-                "summary": "Listar todos los lotes",
+                "summary": "Listar todos los lotes de carga masiva",
                 "operationId": "batchesList",
                 "responses": {
                     "200": {
@@ -4097,25 +5709,65 @@
                 "tags": [
                     "Batches"
                 ],
-                "summary": "Crear lote de solicitudes",
+                "summary": "Crear lote de carga masiva (multipart/form-data)",
+                "description": "Sube uno o mas archivos y los procesa de forma asincrona via queue worker.\n\n**Tipos y requerimientos:**\n- `sapScreen`: PDFs/imagenes de SAP. Multiples archivos.\n- `creditsData`: Excel con columnas requestNumber, creditNumber.\n- `orderNumbers`: Excel con columnas requestNumber, orderNumber.\n- `newRequest`: Excel para creacion masiva de solicitudes. Requiere `requestTypeId`. Acepta nombres en lugar de IDs para customerId, reasonId, classificationId.\n- `uploadSupport`: Adjuntos en rango de solicitudes. Requiere `requestTypeId`, `minRange`, `maxRange`. Hasta 10 archivos.\n- `users`: Excel para creacion masiva de usuarios. Acepta roleName y supervisorId por nombre.",
                 "operationId": "batchesStore",
                 "requestBody": {
                     "required": true,
                     "content": {
-                        "application/json": {
+                        "multipart/form-data": {
                             "schema": {
                                 "required": [
-                                    "requestIds"
+                                    "batchType",
+                                    "file"
                                 ],
                                 "properties": {
-                                    "requestIds": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "integer"
-                                        }
-                                    },
-                                    "notes": {
+                                    "batchType": {
                                         "type": "string",
+                                        "example": "newRequest",
+                                        "enum": [
+                                            "sapScreen",
+                                            "creditsData",
+                                            "orderNumbers",
+                                            "newRequest",
+                                            "uploadSupport",
+                                            "users"
+                                        ]
+                                    },
+                                    "file": {
+                                        "description": "Archivo(s) a procesar. Para sapScreen y uploadSupport se pueden enviar multiples archivos como file[].",
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "requestTypeId": {
+                                        "description": "Requerido para newRequest y uploadSupport",
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "minRange": {
+                                        "description": "Requerido para uploadSupport. Numero correlativo minimo de solicitud",
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "maxRange": {
+                                        "description": "Requerido para uploadSupport. Numero correlativo maximo de solicitud",
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "welcomeEmailMode": {
+                                        "description": "Para batchType=users. Modo de envio de email de bienvenida",
+                                        "type": "string",
+                                        "nullable": true,
+                                        "enum": [
+                                            "none",
+                                            "individual",
+                                            "single"
+                                        ]
+                                    },
+                                    "welcomeEmailRecipient": {
+                                        "description": "Para welcomeEmailMode=single: email destino unico",
+                                        "type": "string",
+                                        "format": "email",
                                         "nullable": true
                                     }
                                 },
@@ -4126,7 +5778,10 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Lote creado"
+                        "description": "Lote creado y encolado para procesamiento asíncrono"
+                    },
+                    "422": {
+                        "description": "Datos invalidos, tipo no soportado o archivo con extension no permitida"
                     }
                 },
                 "security": [
@@ -4141,7 +5796,7 @@
                 "tags": [
                     "Batches"
                 ],
-                "summary": "Obtener lote por ID",
+                "summary": "Estado y errores de un lote",
                 "operationId": "batchesShow",
                 "parameters": [
                     {
@@ -4155,10 +5810,10 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Datos del lote"
+                        "description": "Datos del lote con items y errores"
                     },
                     "404": {
-                        "description": "No encontrado"
+                        "description": "Lote no encontrado"
                     }
                 },
                 "security": [
@@ -4173,7 +5828,7 @@
                 "tags": [
                     "Batches"
                 ],
-                "summary": "Solicitudes de un lote",
+                "summary": "Solicitudes creadas por un lote",
                 "operationId": "batchesRequests",
                 "parameters": [
                     {
@@ -4187,7 +5842,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Solicitudes del lote"
+                        "description": "Solicitudes generadas por el lote"
                     }
                 },
                 "security": [
@@ -4199,6 +5854,889 @@
         }
     },
     "components": {
+        "schemas": {
+            "AuthToken": {
+                "properties": {
+                    "token": {
+                        "type": "string",
+                        "example": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                    },
+                    "expiresAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "Role": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "roleName": {
+                        "type": "string",
+                        "example": "REPLENISHMENT"
+                    },
+                    "color": {
+                        "type": "string",
+                        "example": "#3B82F6",
+                        "nullable": true
+                    },
+                    "equivalentRoleId": {
+                        "description": "Rol fallback cuando no hay usuario disponible con este rol en el siguiente paso",
+                        "type": "integer",
+                        "example": 5,
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "User": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Juan Perez"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "example": "juan@empresa.com"
+                    },
+                    "roleId": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "role": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Role"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "supervisorId": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "clientId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "preferredLanguage": {
+                        "type": "string",
+                        "example": "es",
+                        "enum": [
+                            "en",
+                            "es"
+                        ]
+                    },
+                    "isActive": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "RequestType": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Nota de Credito"
+                    },
+                    "prefix": {
+                        "type": "string",
+                        "example": "NC",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "Classification": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Devolucion por defecto de fabrica"
+                    },
+                    "requestTypeId": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "type": {
+                        "description": "Clasifica el manager: ventas, finanzas o marketing",
+                        "type": "string",
+                        "example": "ventas",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "Request": {
+                "description": "Solicitud con su estado en el workflow",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 45
+                    },
+                    "requestNumber": {
+                        "type": "string",
+                        "example": "NC-000045"
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "pending",
+                        "enum": [
+                            "draft",
+                            "pending",
+                            "approved",
+                            "rejected",
+                            "cancelled"
+                        ]
+                    },
+                    "requestTypeId": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "requestType": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/RequestType"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "classificationId": {
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true
+                    },
+                    "classification": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Classification"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "userId": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "clientId": {
+                        "type": "string",
+                        "example": "121693",
+                        "nullable": true
+                    },
+                    "reasonId": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "notes": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "totalAmount": {
+                        "type": "number",
+                        "example": 50000,
+                        "nullable": true
+                    },
+                    "currentStep": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkflowCurrentStep"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "WorkflowStepTransition": {
+                "description": "Transicion condicional. Evalua campo de la solicitud con operador y valor. La ruta sin condicion es el default.",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "fromStepId": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "toStepId": {
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "conditionField": {
+                        "type": "string",
+                        "example": "totalAmount",
+                        "nullable": true
+                    },
+                    "conditionOperator": {
+                        "type": "string",
+                        "example": ">",
+                        "nullable": true,
+                        "enum": [
+                            ">",
+                            "<",
+                            ">=",
+                            "<=",
+                            "==",
+                            "!="
+                        ]
+                    },
+                    "conditionValue": {
+                        "type": "string",
+                        "example": "150000",
+                        "nullable": true
+                    },
+                    "priority": {
+                        "description": "Menor numero = mayor prioridad de evaluacion",
+                        "type": "integer",
+                        "example": 1
+                    }
+                },
+                "type": "object"
+            },
+            "WorkflowStep": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "workflowId": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "stepName": {
+                        "type": "string",
+                        "example": "Aprobacion Gerente"
+                    },
+                    "stepOrder": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "roleId": {
+                        "type": "integer",
+                        "example": 4
+                    },
+                    "role": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Role"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "isInitialStep": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "isFinalStep": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "transitions": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/WorkflowStepTransition"
+                        },
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "Workflow": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Flujo Nota de Credito"
+                    },
+                    "requestTypeId": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "isActive": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/WorkflowStep"
+                        },
+                        "nullable": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "WorkflowCurrentStep": {
+                "description": "Paso actual de la solicitud. assignedUserId es null para roles broadcast (REPLENISHMENT, WAREHOUSE, IT).",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 78
+                    },
+                    "requestId": {
+                        "type": "integer",
+                        "example": 45
+                    },
+                    "workflowStepId": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "assignedRoleId": {
+                        "type": "integer",
+                        "example": 4,
+                        "nullable": true
+                    },
+                    "assignedUserId": {
+                        "type": "integer",
+                        "example": 12,
+                        "nullable": true
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "pending",
+                        "enum": [
+                            "pending",
+                            "approved",
+                            "rejected"
+                        ]
+                    },
+                    "assignedRole": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Role"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "assignedUser": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/User"
+                            }
+                        ],
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "WorkflowHistory": {
+                "description": "Registro de cada accion del flujo de aprobacion",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 101
+                    },
+                    "requestId": {
+                        "type": "integer",
+                        "example": 45
+                    },
+                    "workflowStepId": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "actionUserId": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "actionUser": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/User"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "actionType": {
+                        "type": "string",
+                        "example": "approved",
+                        "enum": [
+                            "approved",
+                            "rejected",
+                            "cancelled",
+                            "sent_back"
+                        ]
+                    },
+                    "comments": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "BatchItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "batchId": {
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "rowNumber": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "done",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "done",
+                            "failed"
+                        ]
+                    },
+                    "errorLog": {
+                        "type": "string",
+                        "example": "Cliente no encontrado: ACME CORP",
+                        "nullable": true
+                    },
+                    "rawData": {
+                        "description": "Fila original del archivo como objeto JSON",
+                        "type": "object",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "Batch": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "batchType": {
+                        "type": "string",
+                        "example": "newRequest",
+                        "enum": [
+                            "sapScreen",
+                            "creditsData",
+                            "orderNumbers",
+                            "newRequest",
+                            "uploadSupport",
+                            "users"
+                        ]
+                    },
+                    "userId": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "done",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "done",
+                            "failed"
+                        ]
+                    },
+                    "totalItems": {
+                        "type": "integer",
+                        "example": 50
+                    },
+                    "processedItems": {
+                        "type": "integer",
+                        "example": 48
+                    },
+                    "failedItems": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BatchItem"
+                        },
+                        "nullable": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "ReturnOrderItem": {
+                "description": "Producto incluido en una orden de devolucion",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "returnOrderId": {
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "invoiceFolio": {
+                        "type": "string",
+                        "example": "536662"
+                    },
+                    "invoiceClientId": {
+                        "type": "integer",
+                        "example": 121693
+                    },
+                    "conceptoIndex": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "claveProdServ": {
+                        "type": "string",
+                        "example": "31161500"
+                    },
+                    "descripcion": {
+                        "type": "string",
+                        "example": "TORNILLO HEXAGONAL M8x30;"
+                    },
+                    "claveUnidad": {
+                        "type": "string",
+                        "example": "H87"
+                    },
+                    "unidad": {
+                        "type": "string",
+                        "example": "Pieza"
+                    },
+                    "valorUnitario": {
+                        "type": "number",
+                        "example": 12.5
+                    },
+                    "originalQuantity": {
+                        "description": "Cantidad facturada originalmente",
+                        "type": "number",
+                        "example": 100
+                    },
+                    "requestedQuantity": {
+                        "description": "Cantidad solicitada a devolver",
+                        "type": "number",
+                        "example": 5
+                    }
+                },
+                "type": "object"
+            },
+            "ReturnOrder": {
+                "description": "Orden de devolucion de productos de una factura",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "clientId": {
+                        "type": "integer",
+                        "example": 121693
+                    },
+                    "userId": {
+                        "type": "integer",
+                        "example": 12,
+                        "nullable": true
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "pending",
+                        "enum": [
+                            "pending",
+                            "approved",
+                            "rejected"
+                        ]
+                    },
+                    "currency": {
+                        "type": "string",
+                        "example": "MXN",
+                        "enum": [
+                            "MXN",
+                            "USD"
+                        ]
+                    },
+                    "chargeTypeId": {
+                        "type": "integer",
+                        "example": 1,
+                        "nullable": true
+                    },
+                    "customRate": {
+                        "description": "Porcentaje personalizado. Si null, se usa el porcentaje del chargeType",
+                        "type": "number",
+                        "example": 12.5,
+                        "nullable": true
+                    },
+                    "notes": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "orderStatus": {
+                        "description": "false=activa, true=cerrada",
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ReturnOrderItem"
+                        }
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "ReturnOrderRequestItem": {
+                "description": "Item de devolucion con resultado de inspeccion (reposicion + almacen)",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "returnOrderRequestId": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "returnOrderItemId": {
+                        "type": "integer",
+                        "example": 7
+                    },
+                    "sapId": {
+                        "type": "string",
+                        "example": "100045",
+                        "nullable": true
+                    },
+                    "replenishmentAccepted": {
+                        "type": "number",
+                        "example": 4,
+                        "nullable": true
+                    },
+                    "replenishmentReasonForRejection": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "warehouseReceived": {
+                        "type": "number",
+                        "example": 5,
+                        "nullable": true
+                    },
+                    "warehouseAccepted": {
+                        "type": "number",
+                        "example": 4,
+                        "nullable": true
+                    },
+                    "warehouseReasonForRejection": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "ReturnOrderRequest": {
+                "description": "Vinculo entre una ReturnOrder y una Request de tipo devolucion de material",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "returnOrderId": {
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "requestId": {
+                        "type": "integer",
+                        "example": 45
+                    },
+                    "returnChargePercent": {
+                        "type": "number",
+                        "example": 10,
+                        "nullable": true,
+                        "maximum": 100,
+                        "minimum": 0
+                    },
+                    "returnOrder": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/ReturnOrder"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ReturnOrderRequestItem"
+                        }
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "ChargePolicy": {
+                "description": "Politica de cargo segun dias transcurridos desde la factura",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "day": {
+                        "description": "Dias transcurridos desde la factura",
+                        "type": "integer",
+                        "example": 30
+                    },
+                    "conditional": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "percentage": {
+                        "description": "Porcentaje a cobrar (0-100)",
+                        "type": "number",
+                        "example": 10.5
+                    },
+                    "deletedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "Notification": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 55
+                    },
+                    "userId": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Solicitud NC-000045 requiere tu aprobacion"
+                    },
+                    "body": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "type": {
+                        "type": "string",
+                        "example": "request_pending"
+                    },
+                    "data": {
+                        "description": "Payload adicional (requestId, etc.)",
+                        "type": "object",
+                        "nullable": true
+                    },
+                    "readAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponse": {
+                "description": "Envelope estandar de todas las respuestas de la API",
+                "properties": {
+                    "ok": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Operacion exitosa"
+                    },
+                    "data": {
+                        "description": "Payload (objeto, array o null)",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "PaginatedResponse": {
+                "description": "Respuesta paginada estandar de Laravel",
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "items": {}
+                    },
+                    "current_page": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "example": 15
+                    },
+                    "total": {
+                        "type": "integer",
+                        "example": 150
+                    },
+                    "last_page": {
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "from": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "to": {
+                        "type": "integer",
+                        "example": 15
+                    }
+                },
+                "type": "object"
+            }
+        },
         "securitySchemes": {
             "bearerAuth": {
                 "type": "http",
@@ -4303,6 +6841,18 @@
         {
             "name": "ChargePolicies",
             "description": "Politicas de cargo por dias transcurridos"
+        },
+        {
+            "name": "ChargeTypes",
+            "description": "Tipos de cargo (catalogo)"
+        },
+        {
+            "name": "EmailConfig",
+            "description": "Configuracion del proveedor de correo"
+        },
+        {
+            "name": "Exports",
+            "description": "Exportacion de datos a Excel"
         }
     ]
 }

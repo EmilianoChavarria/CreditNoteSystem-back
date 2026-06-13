@@ -121,6 +121,7 @@ class ReturnOrderController extends Controller
                 $request->input('notes'),
                 $request->integer('chargeTypeId'),
                 $request->input('customRate') !== null ? (float) $request->input('customRate') : null,
+                $request->input('currency'),
             );
 
             return response()->json(

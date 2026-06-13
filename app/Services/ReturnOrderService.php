@@ -120,18 +120,19 @@ class ReturnOrderService
      *   'requestedQuantity' => 3,
      * ]
      */
-    public function createReturnOrder(int $clientId, ?int $userId, array $items, ?string $notes, int $chargeTypeId, ?float $customRate): ReturnOrder
+    public function createReturnOrder(int $clientId, ?int $userId, array $items, ?string $notes, int $chargeTypeId, ?float $customRate, string $currency): ReturnOrder
     {
         $this->validateItems($items);
 
-        return DB::transaction(function () use ($clientId, $userId, $items, $notes, $chargeTypeId, $customRate) {
+        return DB::transaction(function () use ($clientId, $userId, $items, $notes, $chargeTypeId, $customRate, $currency) {
             $returnOrder = ReturnOrder::create([
                 'clientId'     => $clientId,
                 'userId'       => $userId,
-                'status'       => 'pending',
+                'status'       => 'in process',
                 'notes'        => $notes,
                 'chargeTypeId' => $chargeTypeId,
                 'customRate'   => $customRate,
+                'currency'     => $currency,
             ]);
 
             foreach ($items as $itemData) {

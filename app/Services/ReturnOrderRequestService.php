@@ -43,7 +43,7 @@ class ReturnOrderRequestService
                 ]);
             }
 
-            $returnOrder->update(['orderStatus' => 1]);
+            $returnOrder->update(['orderStatus' => 1, 'status' => 'in process']);
 
             return $returnOrderRequest->load(['returnOrder', 'items.returnOrderItem']);
         });
@@ -99,14 +99,28 @@ class ReturnOrderRequestService
             }
         }
 
-        $item->update(array_filter([
+        $updatePayload = array_filter([
             'sapId'                          => $data['sapId'] ?? $item->sapId,
-            'replenishmentAccepted'           => $data['replenishmentAccepted'] ?? null,
-            'replenishmentReasonForRejection' => $data['replenishmentReasonForRejection'] ?? null,
-            'warehouseReceived'               => $data['warehouseReceived'] ?? null,
-            'warehouseAccepted'               => $data['warehouseAccepted'] ?? null,
-            'warehouseReasonForRejection'     => $data['warehouseReasonForRejection'] ?? null,
-        ], fn ($v) => $v !== null));
+            'replenishmentAccepted'          => $data['replenishmentAccepted'] ?? null,
+            'replenishmentReasonForRejection'=> $data['replenishmentReasonForRejection'] ?? null,
+            'warehouseReceived'              => $data['warehouseReceived'] ?? null,
+            'warehouseAccepted'              => $data['warehouseAccepted'] ?? null,
+            'warehouseReasonForRejection'    => $data['warehouseReasonForRejection'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        if (array_key_exists('replenishmentAccepted', $data)) {
+            $updatePayload['rejectedReplenishmentBy'] = ($data['replenishmentAccepted'] !== null && (float) $data['replenishmentAccepted'] === 0.0)
+                ? auth()->id()
+                : null;
+        }
+
+        if (array_key_exists('warehouseAccepted', $data)) {
+            $updatePayload['rejectedWarehouseBy'] = ($data['warehouseAccepted'] !== null && (float) $data['warehouseAccepted'] === 0.0)
+                ? auth()->id()
+                : null;
+        }
+
+        $item->update($updatePayload);
 
         return $item->fresh()->load('returnOrderItem');
     }

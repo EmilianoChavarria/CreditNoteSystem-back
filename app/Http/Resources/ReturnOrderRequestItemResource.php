@@ -37,11 +37,13 @@ class ReturnOrderRequestItemResource extends JsonResource
             // Campos del revisor — Replenishment
             'replenishmentAccepted'           => $this->replenishmentAccepted,
             'replenishmentReasonForRejection' => $this->replenishmentReasonForRejection,
+            'rejectedReplenishmentBy'         => $this->rejectedReplenishmentBy,
 
             // Campos del revisor — Warehouse
             'warehouseReceived'               => $this->warehouseReceived,
             'warehouseAccepted'               => $this->warehouseAccepted,
             'warehouseReasonForRejection'     => $this->warehouseReasonForRejection,
+            'rejectedWarehouseBy'             => $this->rejectedWarehouseBy,
 
             'createdAt'                      => $this->createdAt,
             'updatedAt'                      => $this->updatedAt,

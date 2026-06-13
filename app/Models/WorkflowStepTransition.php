@@ -22,6 +22,7 @@ class WorkflowStepTransition extends Model
         'conditionOperator',
         'conditionValue',
         'priority',
+        'markAsApproved',
     ];
 
     protected $casts = [
@@ -29,6 +30,7 @@ class WorkflowStepTransition extends Model
         'fromStepId' => 'integer',
         'toStepId' => 'integer',
         'priority' => 'integer',
+        'markAsApproved' => 'boolean',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
     ];
