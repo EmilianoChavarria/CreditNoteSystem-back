@@ -8,13 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('forecast_sales', function (Blueprint $table) {
+        Schema::create('forecastsales', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('idClient');
             $table->unsignedSmallInteger('year');
             $table->unsignedTinyInteger('month');
             $table->decimal('amount', 15, 2)->default(0);
-            $table->timestamps();
+            $table->timestamp('createdAt')->useCurrent();
+            $table->timestamp('updatedAt')->useCurrent()->useCurrentOnUpdate();
 
             $table->unique(['idClient', 'year', 'month']);
         });
@@ -22,6 +23,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('forecast_sales');
+        Schema::dropIfExists('forecastsales');
     }
 };
