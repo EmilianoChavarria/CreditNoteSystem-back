@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\SocketMessageSent;
 use App\Models\Batch;
+use App\Models\ForecastChangeRequest;
 use App\Models\Notification as NotificationModel;
 use App\Models\Request as RequestModel;
 use App\Models\User;
@@ -216,6 +217,54 @@ class NotificationService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Forecast approval notifications
+    // -------------------------------------------------------------------------
+
+    public function notifyForecastPendingApproval(ForecastChangeRequest $changeRequest): void
+    {
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->approverUserId,
+            type: 'forecast_pending_approval',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tienes un forecast pendiente por aprobar',
+            message: "Se propuso un cambio de monto para el mes {$changeRequest->month}/{$changeRequest->year} (Cliente #{$changeRequest->idClient}). Monto propuesto: \${$changeRequest->proposedAmount}.",
+        );
+    }
+
+    public function notifyForecastStepApproved(ForecastChangeRequest $changeRequest, User $approver): void
+    {
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->submittedByUserId,
+            type: 'forecast_step_approved',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tu solicitud avanzó en el flujo de aprobación',
+            message: "{$approver->fullName} aprobó el cambio de monto para el mes {$changeRequest->month}/{$changeRequest->year} (Cliente #{$changeRequest->idClient}). Pendiente de aprobación final por GENERAL MANAGER.",
+        );
+    }
+
+    public function notifyForecastApproved(ForecastChangeRequest $changeRequest, User $approver): void
+    {
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->submittedByUserId,
+            type: 'forecast_approved',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tu solicitud de cambio fue aprobada',
+            message: "{$approver->fullName} aprobó el monto de \${$changeRequest->proposedAmount} para el mes {$changeRequest->month}/{$changeRequest->year} (Cliente #{$changeRequest->idClient}). El nuevo objetivo de ventas ha sido confirmado.",
+        );
+    }
+
+    public function notifyForecastRejected(ForecastChangeRequest $changeRequest, User $rejector): void
+    {
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->submittedByUserId,
+            type: 'forecast_rejected',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tu solicitud de cambio fue rechazada',
+            message: "{$rejector->fullName} rechazó el cambio de monto para el mes {$changeRequest->month}/{$changeRequest->year} (Cliente #{$changeRequest->idClient}).",
+        );
     }
 
     private function createAndBroadcast(int $userId, string $type, ?int $relatedId, string $title, string $message): ?NotificationModel
