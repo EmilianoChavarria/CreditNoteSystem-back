@@ -6,10 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class ForecastSale extends Model
 {
-    public const CREATED_AT = 'created_at';
-    public const UPDATED_AT = 'updated_at';
+    public const CREATED_AT = 'createdAt';
+    public const UPDATED_AT = 'updatedAt';
 
-    protected $table = 'forecast_sales';
+    protected $table = 'forecastsales';
 
     protected $fillable = [
         'idClient',
