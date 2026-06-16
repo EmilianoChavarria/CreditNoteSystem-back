@@ -28,6 +28,13 @@ class ForecastController extends Controller
         return response()->json(ApiResponse::success('Clientes con forecast', $result));
     }
 
+    public function invoicesByMonth(int $idClient, int $year, int $month)
+    {
+        $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
+
+        return response()->json(ApiResponse::success('Facturas del mes', $invoices));
+    }
+
     public function store(StoreForecastRequest $request)
     {
         $data  = $request->validated();
