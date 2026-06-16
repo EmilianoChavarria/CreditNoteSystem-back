@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\DB;
 
 class ForecastService
 {
-    private const CONNECTION       = 'invoices';
-    private const CLIENT_TABLE     = 'clientes_TME700618RC7';
-    private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
+    private const CONNECTION        = 'invoices';
+    private const CLIENT_TABLE      = 'clientes_TME700618RC7';
+    private const CLIENT_EXT_TABLE  = 'clientes_TME700618RC7_ext';
+    private const COMPROBANTES_TABLE = 'comprobantes_TME700618RC7';
 
     public function getByClient(int $idClient, int $year): Collection
     {
@@ -22,9 +23,15 @@ class ForecastService
         $modifications = $this->fetchModifications([$idClient], $year)
             ->get($idClient, collect());
 
-        $months = $forecast->keys()->merge($modifications->keys())->unique()->sort()->values();
+        $sales = $this->fetchSales([$idClient], $year)
+            ->get($idClient, collect());
 
-        return $months->map(fn($month) => $this->buildMonthEntry($month, $forecast, $modifications));
+        $months = $forecast->keys()
+            ->merge($modifications->keys())
+            ->merge($sales->keys())
+            ->unique()->sort()->values();
+
+        return $months->map(fn($month) => $this->buildMonthEntry($month, $forecast, $modifications, $sales));
     }
 
     public function getBySalesEngineer(int $salesEngineerId, int $year): Collection
@@ -40,22 +47,27 @@ class ForecastService
             return collect();
         }
 
-        $clientIds     = $extClients->pluck('idCliente')->toArray();
-        $forecastMap   = $this->fetchForecast($clientIds, $year);
-        $modificationMap = $this->fetchModifications($clientIds, $year);
+        $clientIds        = $extClients->pluck('idCliente')->toArray();
+        $forecastMap      = $this->fetchForecast($clientIds, $year);
+        $modificationMap  = $this->fetchModifications($clientIds, $year);
+        $salesMap         = $this->fetchSales($clientIds, $year);
 
-        return $extClients->map(function ($client) use ($year, $forecastMap, $modificationMap) {
+        return $extClients->map(function ($client) use ($year, $forecastMap, $modificationMap, $salesMap) {
             $key           = (string) $client->idCliente;
             $forecast      = $forecastMap->get($key, collect());
             $modifications = $modificationMap->get($key, collect());
+            $sales         = $salesMap->get($key, collect());
 
-            $months = $forecast->keys()->merge($modifications->keys())->unique()->sort()->values();
+            $months = $forecast->keys()
+                ->merge($modifications->keys())
+                ->merge($sales->keys())
+                ->unique()->sort()->values();
 
             return [
                 'idCliente'   => $client->idCliente,
                 'razonSocial' => $client->razonSocial,
                 'year'        => $year,
-                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications))->values(),
+                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
             ];
         });
     }
@@ -111,14 +123,47 @@ class ForecastService
             ->map(fn($rows) => $rows->keyBy('month')); // keyBy con ASC → el último (más reciente) gana
     }
 
-    private function buildMonthEntry(int $month, Collection $forecast, Collection $modifications): array
+    /** Retorna facturas individuales de un cliente en un mes/año. */
+    public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
+    {
+        return DB::connection(self::CONNECTION)
+            ->table(self::COMPROBANTES_TABLE)
+            ->where('receptorId', $idClient)
+            ->where('serie', '')
+            ->where('status', 'Emitido')
+            ->whereYear('fechaEmision', $year)
+            ->whereMonth('fechaEmision', $month)
+            ->select('folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda')
+            ->orderBy('fechaEmision')
+            ->get();
+    }
+
+    /** Retorna ventas reales (suma de total) indexado por [idClient][month]. */
+    private function fetchSales(array $clientIds, int $year): Collection
+    {
+        return DB::connection(self::CONNECTION)
+            ->table(self::COMPROBANTES_TABLE)
+            ->whereIn('receptorId', $clientIds)
+            ->where('serie', '')
+            ->where('status', 'Emitido')
+            ->whereYear('fechaEmision', $year)
+            ->selectRaw('receptorId, MONTH(fechaEmision) as month, ROUND(SUM(total), 2) as total')
+            ->groupBy('receptorId', 'month')
+            ->get()
+            ->groupBy(fn($row) => (string) $row->receptorId)
+            ->map(fn($rows) => $rows->keyBy('month'));
+    }
+
+    private function buildMonthEntry(int $month, Collection $forecast, Collection $modifications, Collection $sales): array
     {
         $f = $forecast->get($month);
         $m = $modifications->get($month);
+        $s = $sales->get($month);
 
         return [
             'month'        => $month,
             'amount'       => $f?->amount,
+            'sales'        => $s?->total,
             'modification' => $m ? [
                 'id'             => $m->id,
                 'proposedAmount' => $m->proposedAmount,
