@@ -15,6 +15,8 @@ class ForecastService
     private const CLIENT_EXT_TABLE  = 'clientes_TME700618RC7_ext';
     private const COMPROBANTES_TABLE = 'comprobantes_TME700618RC7';
 
+    public function __construct(private readonly BanxicoService $banxico) {}
+
     public function getByClient(int $idClient, int $year): Collection
     {
         $forecast      = $this->fetchForecast([$idClient], $year)
@@ -123,9 +125,11 @@ class ForecastService
             ->map(fn($rows) => $rows->keyBy('month')); // keyBy con ASC → el último (más reciente) gana
     }
 
-    /** Retorna facturas individuales de un cliente en un mes/año. */
+    /** Retorna facturas individuales de un cliente en un mes/año con totales en USD. */
     public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
     {
+        $rate = $this->banxico->getCurrentUsdRate();
+
         return DB::connection(self::CONNECTION)
             ->table(self::COMPROBANTES_TABLE)
             ->where('receptorId', $idClient)
@@ -135,23 +139,41 @@ class ForecastService
             ->whereMonth('fechaEmision', $month)
             ->select('folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda')
             ->orderBy('fechaEmision')
-            ->get();
+            ->get()
+            ->map(function ($invoice) use ($rate) {
+                if ($invoice->moneda === 'MXN') {
+                    $invoice->subTotal = round($invoice->subTotal / $rate, 2);
+                    $invoice->iva      = round($invoice->iva / $rate, 2);
+                    $invoice->total    = round($invoice->total / $rate, 2);
+                    $invoice->moneda   = 'USD';
+                }
+                return $invoice;
+            });
     }
 
-    /** Retorna ventas reales (suma de total) indexado por [idClient][month]. */
+    /** Retorna ventas reales (suma de total en USD) indexado por [idClient][month]. */
     private function fetchSales(array $clientIds, int $year): Collection
     {
+        $rate = $this->banxico->getCurrentUsdRate();
+
         return DB::connection(self::CONNECTION)
             ->table(self::COMPROBANTES_TABLE)
             ->whereIn('receptorId', $clientIds)
             ->where('serie', '')
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
-            ->selectRaw('receptorId, MONTH(fechaEmision) as month, ROUND(SUM(total), 2) as total')
-            ->groupBy('receptorId', 'month')
+            ->selectRaw('receptorId, MONTH(fechaEmision) as month, total, moneda')
             ->get()
             ->groupBy(fn($row) => (string) $row->receptorId)
-            ->map(fn($rows) => $rows->keyBy('month'));
+            ->map(fn($byClient) => $byClient
+                ->groupBy('month')
+                ->map(function ($rows) use ($rate) {
+                    $totalUsd = $rows->sum(
+                        fn($r) => $r->moneda === 'MXN' ? $r->total / $rate : (float) $r->total
+                    );
+                    return (object) ['total' => round($totalUsd, 2)];
+                })
+            );
     }
 
     private function buildMonthEntry(int $month, Collection $forecast, Collection $modifications, Collection $sales): array

@@ -12,6 +12,7 @@ class CustomerQueryService
     private const CLIENT_TABLE = 'clientes_TME700618RC7';
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
     private const MANAGER_COLUMNS = [
+        'processorId',
         'salesEngineerId',
         'salesManagerId',
         'financeManagerId',

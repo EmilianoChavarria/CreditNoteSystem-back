@@ -8,9 +8,9 @@ use RuntimeException;
 
 class BanxicoService
 {
-    private const SERIES_URL = 'https://www.banxico.org.mx/SieAPIRest/service/v1/series/SF43718/datos/oportuno';
-    private const CACHE_KEY  = 'banxico_usd_fix_rate';
-    private const CACHE_TTL  = 3600; // 1 hora
+    private const BASE_URL  = 'https://www.banxico.org.mx/SieAPIRest/service/v1/series/SF43718/datos';
+    private const CACHE_KEY = 'banxico_usd_fix_rate';
+    private const CACHE_TTL = 3600; // 1 hora
 
     public function getCurrentUsdRate(): float
     {
@@ -27,19 +27,27 @@ class BanxicoService
             throw new RuntimeException('BANXICO_TOKEN no configurado.');
         }
 
+        $endDate   = date('Y-m-d');
+        $startDate = date('Y-m-d', strtotime('-7 days'));
+        $url       = self::BASE_URL . "/{$startDate}/{$endDate}";
+
         $response = Http::timeout(10)
-            ->get(self::SERIES_URL, ['token' => $token]);
+            ->get($url, ['token' => $token]);
 
         if (!$response->successful()) {
             throw new RuntimeException('Error al consultar Banxico: HTTP ' . $response->status());
         }
 
-        $dato = $response->json('bmx.series.0.datos.0.dato');
+        $datos = $response->json('bmx.series.0.datos') ?? [];
 
-        if ($dato === null || $dato === 'N/E') {
+        $available = array_filter($datos, fn($d) => !empty($d['dato']) && $d['dato'] !== 'N/E');
+
+        $last = end($available);
+
+        if (!$last) {
             throw new RuntimeException('Banxico no devolvió tipo de cambio FIX.');
         }
 
-        return (float) $dato;
+        return (float) $last['dato'];
     }
 }
