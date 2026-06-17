@@ -7,4 +7,6 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::get('notifications/unread', [NotificationController::class, 'unread']);
     Route::patch('notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::patch('notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::patch('notifications/unread-all', [NotificationController::class, 'markAllAsUnread']);
 });

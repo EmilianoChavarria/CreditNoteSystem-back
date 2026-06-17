@@ -69,4 +69,36 @@ class NotificationController extends Controller
 
         return response()->json(ApiResponse::success('Notificacion marcada como leida', NotificationResource::make($notification->fresh())));
     }
+
+    public function markAllAsRead(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $updated = NotificationModel::query()
+            ->where('userId', (int) $authUser->id)
+            ->where('isRead', false)
+            ->update(['isRead' => true, 'readAt' => now()]);
+
+        return response()->json(ApiResponse::success("$updated notificaciones marcadas como leidas", null));
+    }
+
+    public function markAllAsUnread(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $updated = NotificationModel::query()
+            ->where('userId', (int) $authUser->id)
+            ->where('isRead', true)
+            ->update(['isRead' => false, 'readAt' => null]);
+
+        return response()->json(ApiResponse::success("$updated notificaciones marcadas como no leidas", null));
+    }
 }
