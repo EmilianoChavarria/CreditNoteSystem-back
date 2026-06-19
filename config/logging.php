@@ -127,6 +127,13 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        'mail_trace' => [
+            'driver' => 'daily',
+            'path'   => storage_path('logs/mail-trace.log'),
+            'level'  => 'info',
+            'days'   => 14,
+        ],
+
     ],
 
 ];
