@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
+use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Services\ForecastService;
 use App\Support\ApiResponse;
 
@@ -21,6 +22,16 @@ class ForecastController extends Controller
         return response()->json(ApiResponse::success('Forecast obtenido exitosamente', $rows));
     }
 
+    public function clients()
+    {
+        $perPage = request()->integer('perPage', 15) ?: 15;
+        $search  = request()->string('search', '')->trim()->toString();
+
+        $result = $this->forecastService->getPaginatedClients($perPage, $search);
+
+        return response()->json(ApiResponse::success('Clientes forecast', $result));
+    }
+
     public function indexBySalesEngineer(int $salesEngineerId, int $year)
     {
         $result = $this->forecastService->getBySalesEngineer($salesEngineerId, $year);
@@ -33,6 +44,13 @@ class ForecastController extends Controller
         $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
 
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
+    }
+
+    public function updateClientEmails(int $idCliente, UpdateForecastEmailsRequest $request)
+    {
+        $this->forecastService->updateClientEmails($idCliente, $request->validated()['emails']);
+
+        return response()->json(ApiResponse::success('Correos actualizados exitosamente'));
     }
 
     public function store(StoreForecastRequest $request)

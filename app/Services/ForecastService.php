@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastSale;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ForecastService
 {
@@ -16,6 +18,42 @@ class ForecastService
     private const COMPROBANTES_TABLE = 'comprobantes_TME700618RC7';
 
     public function __construct(private readonly BanxicoService $banxico) {}
+
+    /** @var string[] */
+    private const FORECAST_COUNTRIES = ['BLZ', 'CRI', 'SLV', 'GTM', 'HND', 'NIC', 'PAN', 'ARG'];
+
+    public function updateClientEmails(int $idCliente, array $emails): void
+    {
+        if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosForecast')) {
+            throw new \RuntimeException('La columna correosForecast no existe en ' . self::CLIENT_EXT_TABLE . '. Agrégala a la BD antes de continuar.');
+        }
+
+        DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE)
+            ->where('idCliente', $idCliente)
+            ->update(['correosForecast' => implode(';', $emails)]);
+    }
+
+    public function getPaginatedClients(?int $perPage, string $search): LengthAwarePaginator
+    {
+        return DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE . ' as cl')
+            ->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
+            ->where(function ($q) {
+                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
+                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+            })
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('cl.razonSocial', 'like', "%{$search}%")
+                        ->orWhere('cl.rfc', 'like', "%{$search}%")
+                        ->orWhere('cl.idCliente', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('cl.idCliente')
+            ->select(['cl.idCliente', 'cl.razonSocial', 'cl.direccion', 'cl.rfc', 'cle.correosForecast'])
+            ->paginate($perPage ?? 15);
+    }
 
     public function getByClient(int $idClient, int $year): Collection
     {
@@ -42,6 +80,10 @@ class ForecastService
             ->table(self::CLIENT_EXT_TABLE . ' as cle')
             ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
             ->where('cle.salesEngineerId', $salesEngineerId)
+            ->where(function ($q) {
+                $q->whereIn('cl.ResidenciaFiscal', ['BLZ', 'CRI', 'SLV', 'GTM', 'HND', 'NIC', 'PAN', 'ARG'])
+                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+            })
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
