@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastSale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -36,7 +37,7 @@ class ForecastService
 
     public function getPaginatedClients(?int $perPage, string $search): LengthAwarePaginator
     {
-        return DB::connection(self::CONNECTION)
+        $paginator = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_TABLE . ' as cl')
             ->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->where(function ($q) {
@@ -53,6 +54,30 @@ class ForecastService
             ->orderBy('cl.idCliente')
             ->select(['cl.idCliente', 'cl.razonSocial', 'cl.direccion', 'cl.rfc', 'cle.correosForecast'])
             ->paginate($perPage ?? 15);
+
+        $clientNumbers = collect($paginator->items())
+            ->pluck('idCliente')
+            ->map(fn($id) => (string) $id)
+            ->all();
+
+        $distributors = Distributor::whereIn('clientNumber', $clientNumbers)
+            ->get()
+            ->keyBy('clientNumber');
+
+        $paginator->through(function ($client) use ($distributors) {
+            $dist = $distributors->get((string) $client->idCliente);
+
+            if ($dist) {
+                $client->razonSocial     = $dist->businessName;
+                $client->rfc             = $dist->taxId;
+                $client->direccion       = $dist->address;
+                $client->correosForecast = $dist->emails;
+            }
+
+            return $client;
+        });
+
+        return $paginator;
     }
 
     public function getByClient(int $idClient, int $year): Collection
