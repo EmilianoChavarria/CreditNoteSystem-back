@@ -50,6 +50,18 @@ class OrderNumbersBatchHandler extends AbstractBatchHandler
             throw new RuntimeException('Request no encontrada para requestNumber=' . $requestNumber);
         }
 
+        if ($request->status !== 'approved') {
+            throw new RuntimeException(
+                "La solicitud {$requestNumber} no puede recibir un número de orden porque aún no ha sido aprobada."
+            );
+        }
+
+        if ($request->attachments()->doesntExist()) {
+            throw new RuntimeException(
+                "La solicitud {$requestNumber} no puede recibir un número de orden porque no cuenta con documentos adjuntos."
+            );
+        }
+
         $orderNumber = trim((string) $data['orderNumber']);
 
         if (!empty($request->orderNumber)) {

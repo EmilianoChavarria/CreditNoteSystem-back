@@ -48,4 +48,16 @@ return [
     'pending_approval_cta'            => 'Por favor ingresa al sistema para revisar y aprobar la solicitud.',
     'pending_approval_footer'         => 'Este es un mensaje automático, por favor no respondas a este correo.',
     'pending_approval_override_notice'=> 'Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a :recipient',
+
+    // Pending approval reminder (multiple requests)
+    'reminder_subject'         => 'Recordatorio: tienes solicitudes pendientes por aprobar',
+    'reminder_title'           => 'Solicitudes pendientes de aprobación',
+    'reminder_greeting'        => 'Hola, :name',
+    'reminder_intro'           => 'Te recordamos que tienes las siguientes solicitudes pendientes por aprobar:',
+    'reminder_number_label'    => 'Número de solicitud',
+    'reminder_type_label'      => 'Tipo',
+    'reminder_class_label'     => 'Clasificación',
+    'reminder_cta'             => 'Por favor ingresa al sistema para revisarlas y aprobarlas.',
+    'reminder_footer'          => 'Este es un mensaje automático de recordatorio, por favor no respondas a este correo.',
+    'reminder_override_notice' => 'Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a :recipient',
 ];

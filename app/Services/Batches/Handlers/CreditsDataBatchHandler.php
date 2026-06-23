@@ -53,6 +53,18 @@ class CreditsDataBatchHandler extends AbstractBatchHandler
             throw new RuntimeException('Request no encontrada para requestNumber=' . $requestNumber);
         }
 
+        if ($request->status !== 'approved') {
+            throw new RuntimeException(
+                "La solicitud {$requestNumber} no puede recibir un número de crédito porque aún no ha sido aprobada."
+            );
+        }
+
+        if ($request->attachments()->doesntExist()) {
+            throw new RuntimeException(
+                "La solicitud {$requestNumber} no puede recibir un número de crédito porque no cuenta con documentos adjuntos."
+            );
+        }
+
         $creditNumber = trim((string) $data['creditNumber']);
 
         if (!empty($request->creditNumber)) {
