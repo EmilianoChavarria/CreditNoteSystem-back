@@ -24,6 +24,35 @@ class UserClientService
         ];
     }
 
+    public function isUserAssignedToAnyClient(int $userId): bool
+    {
+        $columns = [
+            'processorId',
+            'salesEngineerId',
+            'salesManagerId',
+            'marketingManagerId',
+            'customerServiceManagerId',
+            'financeManagerId',
+        ];
+
+        foreach (['clientes_tme', 'clientes_TME700618RC7'] as $table) {
+            if (!Schema::connection('invoices')->hasTable($table)) {
+                continue;
+            }
+
+            $query = DB::connection('invoices')->table($table);
+            foreach ($columns as $col) {
+                $query->orWhere($col, $userId);
+            }
+
+            if ($query->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function findClientById(string $clientId): ?object
     {
         if (Schema::connection('invoices')->hasTable('clientes_tme')) {

@@ -48,4 +48,16 @@ return [
     'pending_approval_cta'            => 'Please log in to the system to review and approve the request.',
     'pending_approval_footer'         => 'This is an automated message, please do not reply to this email.',
     'pending_approval_override_notice'=> 'This email was generated from the test environment. In production, this email would have been sent to :recipient',
+
+    // Pending approval reminder (multiple requests)
+    'reminder_subject'         => 'Reminder: you have pending requests awaiting approval',
+    'reminder_title'           => 'Pending Approval Requests',
+    'reminder_greeting'        => 'Hi, :name',
+    'reminder_intro'           => 'This is a reminder that you have the following requests pending your approval:',
+    'reminder_number_label'    => 'Request Number',
+    'reminder_type_label'      => 'Type',
+    'reminder_class_label'     => 'Classification',
+    'reminder_cta'             => 'Please log in to the system to review and approve them.',
+    'reminder_footer'          => 'This is an automated reminder, please do not reply to this email.',
+    'reminder_override_notice' => 'This email was generated from the test environment. In production, this email would have been sent to :recipient',
 ];

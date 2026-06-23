@@ -12,13 +12,10 @@ use App\Http\Requests\Users\ChangeUserPasswordRequest;
 use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
 use App\Http\Resources\UserResource;
-use App\Mail\UserRegisteredMail;
 use App\Models\User;
-use App\Services\EmailSenderService;
-use App\Services\UserClientService;
+use App\Services\UserService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -28,26 +25,13 @@ class UserController extends Controller
         private readonly UpdateUserAction $updateUserAction,
         private readonly ChangePasswordAction $changePasswordAction,
         private readonly ChangeUserPasswordAction $changeUserPasswordAction,
-        private readonly UserClientService $userClientService,
-        private readonly EmailSenderService $emailSender,
+        private readonly UserService $userService,
     ) {
     }
 
     public function usersBySalesAndManagerRoles()
     {
-        $allowedRoles = [
-            'SALES ENGINEER / MANAGER',
-            'SALES ENGINEER',
-            'MANAGER',
-        ];
-
-        $users = User::with('role')
-            ->where('isActive', '1')
-            ->whereHas('role', function ($query) use ($allowedRoles) {
-                $query->whereIn('roleName', $allowedRoles);
-            })
-            ->orderBy('fullName')
-            ->get();
+        $users = $this->userService->getUsersBySalesAndManagerRoles();
 
         $data = $users->map(fn($user) => [
             'id'       => $user->id,
@@ -66,10 +50,7 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
         }
 
-        $user = User::with([
-            'role',
-            'supervisor',
-        ])->find((int) $authUser->id);
+        $user = User::with(['role', 'supervisor'])->find((int) $authUser->id);
 
         if (!$user) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
@@ -108,7 +89,7 @@ class UserController extends Controller
         }
 
         $actor = User::with('role')->find((int) $authUser->id);
-        if (!$actor || !$this->canManagePasswords($actor)) {
+        if (!$actor || !$this->userService->canManagePasswords($actor)) {
             return response()->json(ApiResponse::error('No tienes permisos para cambiar la contraseña de otro usuario', null, 403), 403);
         }
 
@@ -133,41 +114,18 @@ class UserController extends Controller
 
     public function getAll()
     {
-
-        $users = User::with('role')->where('isActive', '1')
-            ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
-            ->get();
+        $users = $this->userService->getAllActive();
 
         return response()->json(ApiResponse::success('Usuarios', UserResource::collection($users)));
     }
 
     public function index(Request $request)
     {
-        $perPage = max(1, (int) $request->query('per_page', 15));
-        $search = trim((string) $request->query('search', ''));
+        $perPage  = max(1, (int) $request->query('per_page', 15));
+        $search   = trim((string) $request->query('search', ''));
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
-        $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
-        $users = User::with('role')
-            ->where('isActive', '1')
-            ->whereHas('role', fn($q) => $q->where('roleName', '!=', 'SUPERADMIN'))
-            ->when($shouldFilterByRole, function ($query) use ($roleName) {
-                $query->whereHas('role', function ($roleQuery) use ($roleName) {
-                    $roleQuery->where('roleName', $roleName);
-                });
-            })
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery->where('fullName', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhereHas('role', function ($roleQuery) use ($search) {
-                            $roleQuery->where('roleName', 'like', "%{$search}%");
-                    });
-                });
-            })
-            ->paginate($perPage)
-            ->withQueryString();
-
+        $users = $this->userService->getPaginated($perPage, $search, $roleName);
         $users->setCollection(UserResource::collection($users->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Usuarios', $users));
@@ -175,17 +133,15 @@ class UserController extends Controller
 
     public function show(int $id)
     {
-        $user = User::with('role')->find($id);
+        $result = $this->userService->getUserWithClient($id);
 
-        if (!$user) {
+        if (!$result) {
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $userData = UserResource::make($user)->resolve();
-
-        $clientData = $this->userClientService->findClientSummaryForUser($user);
-        if ($clientData !== null) {
-            $userData['client'] = $clientData;
+        $userData = UserResource::make($result['user'])->resolve();
+        if (isset($result['client'])) {
+            $userData['client'] = $result['client'];
         }
 
         return response()->json(ApiResponse::success('Usuario', $userData));
@@ -217,24 +173,15 @@ class UserController extends Controller
             return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
         }
 
-        $now = now();
-
-        $user->fill([
-            'passwordHash' => '',
-            'isActive' => false,
-            'deletedAt' => $now,
-        ]);
-
-        $user->save();
-
-        $security = $user->security;
-
-        if ($security) {
-            $security->update([
-                'sessionToken' => null,
-                'lastActivityAt' => $now,
-            ]);
+        if ($this->userService->hasRelatedRecords($user)) {
+            return response()->json(ApiResponse::error(
+                'No es posible eliminar este usuario porque tiene registros relacionados.',
+                null,
+                409
+            ), 409);
         }
+
+        $this->userService->deactivate($user);
 
         return response()->json(ApiResponse::success('Usuario desactivado', null, 201));
     }
@@ -248,72 +195,16 @@ class UserController extends Controller
         }
 
         $isTestOnly = $request->boolean('testOnly');
-        $mailLocale = $isTestOnly
-            ? $this->normalizeMailLocale((string) $request->input('language', $request->input('locale', $user->preferredLanguage ?? 'es')))
-            : $this->normalizeMailLocale((string) ($user->preferredLanguage ?? 'es'));
+        $locale = $isTestOnly
+            ? (string) $request->input('language', $request->input('locale', $user->preferredLanguage ?? 'es'))
+            : (string) ($user->preferredLanguage ?? 'es');
 
-        $tempPassword = $this->generateTempPassword();
-
-        if (!$isTestOnly) {
-            $user->passwordHash = Hash::make($tempPassword);
-            $user->save();
-        }
-
-        $this->emailSender->send(
-            new UserRegisteredMail(
-                (string) $user->fullName,
-                (string) $user->email,
-                $tempPassword,
-                $mailLocale
-            ),
-            (string) $user->email
-        );
+        $this->userService->resendWelcomeEmail($user, $isTestOnly, $locale);
 
         $message = $isTestOnly
             ? 'Correo de prueba enviado sin actualizar la contraseña del usuario'
             : 'Correo de bienvenida reenviado correctamente';
 
         return response()->json(ApiResponse::success($message));
-    }
-
-    private function normalizeMailLocale(string $locale): string
-    {
-        $locale = strtolower(trim($locale));
-
-        return in_array($locale, ['en', 'es'], true)
-            ? $locale
-            : 'es';
-    }
-
-    private function findUser(int $id): ?object
-    {
-        return User::with('role')->find($id);
-    }
-
-    private function canManagePasswords(User $user): bool
-    {
-        $roleName = mb_strtoupper(trim((string) optional($user->role)->roleName));
-
-        return str_contains($roleName, 'ADMIN') || str_contains($roleName, 'MANAGER');
-    }
-
-    private function generateTempPassword(): string
-    {
-        $upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        $lower   = 'abcdefghijklmnopqrstuvwxyz';
-        $digits  = '0123456789';
-        $special = '@#$!%';
-
-        $password  = $upper[random_int(0, strlen($upper) - 1)];
-        $password .= $lower[random_int(0, strlen($lower) - 1)];
-        $password .= $digits[random_int(0, strlen($digits) - 1)];
-        $password .= $special[random_int(0, strlen($special) - 1)];
-
-        $all = $upper . $lower . $digits . $special;
-        for ($i = 0; $i < 6; $i++) {
-            $password .= $all[random_int(0, strlen($all) - 1)];
-        }
-
-        return str_shuffle($password);
     }
 }

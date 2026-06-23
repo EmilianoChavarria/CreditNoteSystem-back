@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Contracts\BatchTypeHandler;
 use App\Services\Batches\Handlers\CreditsDataBatchHandler;
+use App\Services\Batches\Handlers\ForecastBatchHandler;
 use App\Services\Batches\Handlers\NewRequestBatchHandler;
 use App\Services\Batches\Handlers\OrderNumbersBatchHandler;
 use App\Services\Batches\Handlers\SapScreenBatchHandler;
@@ -43,6 +44,7 @@ class BatchService
         UploadSupportBatchHandler $uploadSupportBatchHandler,
         NewRequestBatchHandler $newRequestBatchHandler,
         UsersBatchHandler $usersBatchHandler,
+        ForecastBatchHandler $forecastBatchHandler,
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService $emailSender,
     ) {
@@ -53,6 +55,7 @@ class BatchService
             $uploadSupportBatchHandler,
             $newRequestBatchHandler,
             $usersBatchHandler,
+            $forecastBatchHandler,
         ];
 
         foreach ($allHandlers as $handler) {

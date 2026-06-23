@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Listeners\LogMailSent;
+use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Symfony\Component\Mailer\Bridge\Sendgrid\Transport\SendgridTransportFactory;
@@ -18,5 +21,7 @@ class AppServiceProvider extends ServiceProvider
                 new Dsn('sendgrid+api', 'default', $config['key'])
             );
         });
+
+        Event::listen(MessageSent::class, LogMailSent::class);
     }
 }
