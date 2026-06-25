@@ -16,17 +16,26 @@ class UserService
     ) {
     }
 
-    public function getUsersBySalesAndManagerRoles(): Collection
+    public function getUsersByManagerRole(): Collection
     {
-        $allowedRoles = [
-            'SALES ENGINEER / MANAGER',
-            'SALES ENGINEER',
-            'MANAGER',
-        ];
+        return $this->getUsersBySalesAndManagerRoles();
+    }
 
+    public function getUsersByRequesterRole(): Collection
+    {
         return User::with('role')
             ->where('isActive', '1')
-            ->whereHas('role', fn($q) => $q->whereIn('roleName', $allowedRoles))
+            ->whereNull('deletedAt')
+            ->whereHas('role', fn($q) => $q->whereIn('roleName', ['REQUESTER', 'REQUESTER / PROCESSOR']))
+            ->orderBy('fullName')
+            ->get();
+    }
+
+    public function getUsersBySalesAndManagerRoles(): Collection
+    {
+        return User::with('role')
+            ->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->whereRaw('UPPER(roleName) LIKE ?', ['%MANAGER%']))
             ->orderBy('fullName')
             ->get();
     }
