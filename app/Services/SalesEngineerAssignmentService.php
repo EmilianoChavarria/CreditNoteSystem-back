@@ -23,6 +23,13 @@ class SalesEngineerAssignmentService
         return str_contains($roleName, 'SALES ENGINEER') && str_contains($roleName, 'MANAGER');
     }
 
+    public function isForecastAdmin(User $user): bool
+    {
+        $roleName = $this->normalizeRole($user);
+
+        return str_contains($roleName, 'FORECAST ADMIN') && str_contains($roleName, 'ADMIN');
+    }
+
     public function isSalesEngineer(User $user): bool
     {
         return $this->normalizeRole($user) === 'SALES ENGINEER';
