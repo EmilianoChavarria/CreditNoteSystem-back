@@ -23,6 +23,29 @@ class ForecastService
     /** @var string[] */
     private const FORECAST_COUNTRIES = ['BLZ', 'CRI', 'SLV', 'GTM', 'HND', 'NIC', 'PAN', 'ARG'];
 
+    public function updateClientExt(int $idCliente, array $data): void
+    {
+        if (empty($data)) {
+            return;
+        }
+
+        $exists = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE)
+            ->where('idCliente', $idCliente)
+            ->exists();
+
+        if ($exists) {
+            DB::connection(self::CONNECTION)
+                ->table(self::CLIENT_EXT_TABLE)
+                ->where('idCliente', $idCliente)
+                ->update($data);
+        } else {
+            DB::connection(self::CONNECTION)
+                ->table(self::CLIENT_EXT_TABLE)
+                ->insert(array_merge(['idCliente' => $idCliente], $data));
+        }
+    }
+
     public function updateClientEmails(int $idCliente, array $emails): void
     {
         if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosForecast')) {

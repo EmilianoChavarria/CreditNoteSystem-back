@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
+use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Services\ForecastService;
 use App\Support\ApiResponse;
@@ -44,6 +45,13 @@ class ForecastController extends Controller
         $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
 
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
+    }
+
+    public function updateClientExt(int $idCliente, UpdateClientExtRequest $request)
+    {
+        $this->forecastService->updateClientExt($idCliente, $request->validated());
+
+        return response()->json(ApiResponse::success('Datos del cliente actualizados'));
     }
 
     public function updateClientEmails(int $idCliente, UpdateForecastEmailsRequest $request)
