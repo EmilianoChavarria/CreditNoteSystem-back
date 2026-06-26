@@ -29,20 +29,22 @@ class ForecastService
             return;
         }
 
+        $clienteId = (string) $idCliente;
+
         $exists = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_EXT_TABLE)
-            ->where('idCliente', $idCliente)
+            ->where('idCliente', $clienteId)
             ->exists();
 
         if ($exists) {
             DB::connection(self::CONNECTION)
                 ->table(self::CLIENT_EXT_TABLE)
-                ->where('idCliente', $idCliente)
+                ->where('idCliente', $clienteId)
                 ->update($data);
         } else {
             DB::connection(self::CONNECTION)
                 ->table(self::CLIENT_EXT_TABLE)
-                ->insert(array_merge(['idCliente' => $idCliente], $data));
+                ->insert(array_merge(['idCliente' => $clienteId], $data));
         }
     }
 
@@ -54,7 +56,7 @@ class ForecastService
 
         DB::connection(self::CONNECTION)
             ->table(self::CLIENT_EXT_TABLE)
-            ->where('idCliente', $idCliente)
+            ->where('idCliente', (string) $idCliente)
             ->update(['correosForecast' => implode(';', $emails)]);
     }
 
