@@ -40,4 +40,57 @@ class EmailSenderService
 
         $mailer->send($mailable);
     }
+
+    /**
+     * @param string|string[] $to
+     * @param string[]        $cc
+     * @param string[]        $bcc
+     */
+    public function sendWithCopies(Mailable $mailable, string|array $to, array $cc = [], array $bcc = []): void
+    {
+        $config = EmailConfig::find(1);
+        $mode   = (string) ($config?->emailMode ?? 'normal');
+
+        if ($mode === 'disabled') {
+            return;
+        }
+
+        $originalTo = is_array($to) ? implode(', ', $to) : $to;
+
+        if ($mode === 'override' && !empty($config?->overrideEmail)) {
+            $hasMethod = method_exists($mailable, 'applyOverrideNotice');
+            Log::info('[EmailSender] override mode (sendWithCopies)', [
+                'class'     => get_class($mailable),
+                'hasMethod' => $hasMethod,
+                'original'  => $originalTo,
+            ]);
+            if ($hasMethod) {
+                $mailable->applyOverrideNotice($originalTo);
+            }
+            Mail::to((string) $config->overrideEmail)->send($mailable);
+            return;
+        }
+
+        $toList = is_array($to)
+            ? array_values(array_filter($to, fn($e) => $e !== ''))
+            : [$to];
+
+        if (empty($toList)) {
+            return;
+        }
+
+        $mailer = Mail::to($toList);
+
+        $filteredCc = array_values(array_filter(array_unique($cc), fn($e) => $e !== ''));
+        if (!empty($filteredCc)) {
+            $mailer->cc($filteredCc);
+        }
+
+        $filteredBcc = array_values(array_filter(array_unique($bcc), fn($e) => $e !== ''));
+        if (!empty($filteredBcc)) {
+            $mailer->bcc($filteredBcc);
+        }
+
+        $mailer->send($mailable);
+    }
 }

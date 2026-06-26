@@ -113,6 +113,40 @@ class SalesEngineerAssignmentController extends Controller
         ]));
     }
 
+    public function allEngineers(Request $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->assignmentService->isForecastAdmin($actor)) {
+            return response()->json(ApiResponse::error('No eres FORECAST ADMIN', null, 403), 403);
+        }
+
+        $engineers = $this->assignmentService->getAssignableUsers();
+
+        return response()->json(ApiResponse::success('Todos los Sales Engineers', UserResource::collection($engineers)));
+    }
+
+    public function myEngineers(Request $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->assignmentService->isSalesEngineerManager($actor)) {
+            return response()->json(ApiResponse::error('No eres SALES ENGINEER / MANAGER', null, 403), 403);
+        }
+
+        $engineers = $this->assignmentService->getAssignedUsers($actor);
+
+        return response()->json(ApiResponse::success('Sales Engineers asignados', UserResource::collection($engineers)));
+    }
+
     public function destroy(Request $request, int $managerUserId, int $assignedUserId)
     {
         $actor = $this->resolveAuthenticatedUser($request);

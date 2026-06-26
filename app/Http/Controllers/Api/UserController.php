@@ -29,6 +29,32 @@ class UserController extends Controller
     ) {
     }
 
+    public function managers()
+    {
+        $users = $this->userService->getUsersByManagerRole();
+
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('Managers obtenidos correctamente', $data));
+    }
+
+    public function requesters()
+    {
+        $users = $this->userService->getUsersByRequesterRole();
+
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('Requesters obtenidos correctamente', $data));
+    }
+
     public function usersBySalesAndManagerRoles()
     {
         $users = $this->userService->getUsersBySalesAndManagerRoles();

@@ -2,20 +2,28 @@
 
 namespace App\Services;
 
+use App\Mail\ForecastFinalApprovedMail;
+use App\Mail\ForecastPendingApprovalMail;
+use App\Mail\ForecastRejectedMail;
+use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
 use App\Models\ForecastSale;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ForecastApprovalService
 {
     private const EXT_CONNECTION   = 'invoices';
+    private const CLIENT_TABLE     = 'clientes_TME700618RC7';
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
     public function __construct(
-        private readonly NotificationService $notificationService
+        private readonly NotificationService $notificationService,
+        private readonly EmailSenderService  $emailSender,
     ) {
     }
 
@@ -35,6 +43,45 @@ class ForecastApprovalService
             return ['success' => false, 'code' => 422, 'message' => 'Ya existe una solicitud pendiente para este mes'];
         }
 
+        $previousAmount = ForecastSale::where('idClient', $idClient)
+            ->where('year', $year)
+            ->where('month', $month)
+            ->value('amount') ?? 0;
+
+        // FORECAST ADMIN: aprobación directa, sin flujo de aprobación
+        if ($this->isForecastAdmin($actor)) {
+            $changeRequest = null;
+
+            DB::transaction(function () use ($actor, $idClient, $year, $month, $amount, $previousAmount, &$changeRequest): void {
+                $changeRequest = ForecastChangeRequest::create([
+                    'idClient'          => $idClient,
+                    'year'              => $year,
+                    'month'             => $month,
+                    'previousAmount'    => $previousAmount,
+                    'proposedAmount'    => $amount,
+                    'status'            => 'approved',
+                    'currentStep'       => 'auto_approved',
+                    'approverUserId'    => $actor->id,
+                    'submittedByUserId' => $actor->id,
+                ]);
+
+                ForecastChangeRequestHistory::create([
+                    'forecastChangeRequestId' => $changeRequest->id,
+                    'action'                  => 'auto_approved',
+                    'actorUserId'             => $actor->id,
+                    'amount'                  => $amount,
+                    'step'                    => 'auto_approved',
+                ]);
+
+                ForecastSale::updateOrCreate(
+                    ['idClient' => $idClient, 'year' => $year, 'month' => $month],
+                    ['amount'   => $amount]
+                );
+            });
+
+            return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
+        }
+
         $isSalesManager = $this->isSalesEngineerManager($actor);
 
         if ($isSalesManager) {
@@ -49,11 +96,6 @@ class ForecastApprovalService
             $label = $isSalesManager ? 'GENERAL MANAGER' : 'SALES ENGINEER / MANAGER';
             return ['success' => false, 'code' => 422, 'message' => "No se encontró un {$label} disponible para este cliente"];
         }
-
-        $previousAmount = ForecastSale::where('idClient', $idClient)
-            ->where('year', $year)
-            ->where('month', $month)
-            ->value('amount') ?? 0;
 
         $changeRequest = null;
 
@@ -79,7 +121,22 @@ class ForecastApprovalService
             ]);
         });
 
-        $this->notificationService->notifyForecastPendingApproval($changeRequest);
+        $clientName   = $this->getClientName($idClient);
+        $forecastAdmin = $this->findForecastAdmin();
+
+        $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
+
+        // Email al aprobador + CC FORECAST ADMIN
+        $this->sendEmail(new ForecastPendingApprovalMail(
+            approverName:   (string) $approver->fullName,
+            submitterName:  (string) $actor->fullName,
+            clientId:       $idClient,
+            clientName:     $clientName,
+            month:          $month,
+            year:           $year,
+            proposedAmount: (string) $amount,
+            previousAmount: (string) $previousAmount,
+        ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
     }
@@ -99,6 +156,10 @@ class ForecastApprovalService
         if ((int) $changeRequest->approverUserId !== (int) $actor->id) {
             return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
         }
+
+        $clientName    = $this->getClientName((int) $changeRequest->idClient);
+        $forecastAdmin = $this->findForecastAdmin();
+        $submitter     = User::find((int) $changeRequest->submittedByUserId);
 
         if ($changeRequest->currentStep === 'sales_manager') {
             $generalManager = $this->findGeneralManager();
@@ -122,14 +183,30 @@ class ForecastApprovalService
                 ]);
             });
 
-            // $changeRequest->approverUserId ya es generalManager->id tras el update
-            $this->notificationService->notifyForecastPendingApproval($changeRequest);
-            $this->notificationService->notifyForecastStepApproved($changeRequest, $actor);
+            $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
+            $this->notificationService->notifyForecastStepApproved($changeRequest, $actor, $clientName);
+
+            // Email al GM + CC submitter (SE) + FORECAST ADMIN
+            $cc = array_filter([
+                (string) ($submitter?->email ?? ''),
+                (string) ($forecastAdmin?->email ?? ''),
+            ]);
+
+            $this->sendEmail(new ForecastPendingApprovalMail(
+                approverName:   (string) $generalManager->fullName,
+                submitterName:  (string) ($submitter?->fullName ?? ''),
+                clientId:       (int) $changeRequest->idClient,
+                clientName:     $clientName,
+                month:          (int) $changeRequest->month,
+                year:           (int) $changeRequest->year,
+                proposedAmount: (string) $changeRequest->proposedAmount,
+                previousAmount: (string) $changeRequest->previousAmount,
+            ), (string) $generalManager->email, cc: $cc);
 
             return ['success' => true, 'message' => 'Aprobado por SALES MANAGER, pendiente de GENERAL MANAGER'];
         }
 
-        // general_manager: aprobación final — solo marca como aprobado, el forecast original no se modifica
+        // general_manager: aprobación final — actualiza ForecastSale
         DB::transaction(function () use ($actor, $changeRequest): void {
             ForecastChangeRequestHistory::create([
                 'forecastChangeRequestId' => $changeRequest->id,
@@ -140,9 +217,35 @@ class ForecastApprovalService
             ]);
 
             $changeRequest->update(['status' => 'approved']);
+
+            ForecastSale::updateOrCreate(
+                ['idClient' => (int) $changeRequest->idClient, 'year' => (int) $changeRequest->year, 'month' => (int) $changeRequest->month],
+                ['amount'   => (float) $changeRequest->proposedAmount]
+            );
         });
 
-        $this->notificationService->notifyForecastApproved($changeRequest, $actor);
+        $this->notificationService->notifyForecastApproved($changeRequest, $actor, $clientName);
+
+        $salesManager = $this->findSalesManagerForClient((int) $changeRequest->idClient);
+        $clientEmails = $this->getClientEmails((int) $changeRequest->idClient);
+
+        // Email TO: correos del cliente (distribuidor) | BCC: SE + SM + FORECAST ADMIN
+        $bcc = array_values(array_filter([
+            (string) ($submitter?->email ?? ''),
+            (string) ($salesManager?->email ?? ''),
+            (string) ($forecastAdmin?->email ?? ''),
+        ]));
+
+        $this->sendEmail(new ForecastFinalApprovedMail(
+            submitterName:  (string) ($submitter?->fullName ?? ''),
+            approverName:   (string) $actor->fullName,
+            clientId:       (int) $changeRequest->idClient,
+            clientName:     $clientName,
+            month:          (int) $changeRequest->month,
+            year:           (int) $changeRequest->year,
+            proposedAmount: (string) $changeRequest->proposedAmount,
+            previousAmount: (string) $changeRequest->previousAmount,
+        ), $clientEmails, bcc: $bcc);
 
         return ['success' => true, 'message' => 'Monto aprobado y aplicado al forecast'];
     }
@@ -175,7 +278,24 @@ class ForecastApprovalService
             $changeRequest->update(['status' => 'rejected']);
         });
 
-        $this->notificationService->notifyForecastRejected($changeRequest, $actor);
+        $clientName    = $this->getClientName((int) $changeRequest->idClient);
+        $forecastAdmin = $this->findForecastAdmin();
+        $submitter     = User::find((int) $changeRequest->submittedByUserId);
+
+        $this->notificationService->notifyForecastRejected($changeRequest, $actor, $clientName);
+
+        // Email al SE + CC FORECAST ADMIN
+        $cc = array_filter([(string) ($forecastAdmin?->email ?? '')]);
+
+        $this->sendEmail(new ForecastRejectedMail(
+            submitterName:  (string) ($submitter?->fullName ?? ''),
+            rejectorName:   (string) $actor->fullName,
+            clientId:       (int) $changeRequest->idClient,
+            clientName:     $clientName,
+            month:          (int) $changeRequest->month,
+            year:           (int) $changeRequest->year,
+            proposedAmount: (string) $changeRequest->proposedAmount,
+        ), (string) ($submitter?->email ?? ''), cc: $cc);
 
         return ['success' => true, 'message' => 'Solicitud rechazada'];
     }
@@ -259,15 +379,21 @@ class ForecastApprovalService
         $role = $this->normalizeRole($user);
 
         return $role === 'SALES ENGINEER'
-            || str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER');
+            || (str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER'))
+            || $this->isForecastAdmin($user);
     }
 
     public function canApprove(User $user): bool
     {
         $role = $this->normalizeRole($user);
 
-        return str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER')
+        return (str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER'))
             || $role === 'GENERAL MANAGER';
+    }
+
+    public function isForecastAdmin(User $user): bool
+    {
+        return str_contains($this->normalizeRole($user), 'FORECAST ADMIN');
     }
 
     // -------------------------------------------------------------------------
@@ -289,6 +415,14 @@ class ForecastApprovalService
             ->first();
     }
 
+    private function findForecastAdmin(): ?User
+    {
+        return User::whereHas('role', fn($q) => $q->whereRaw('UPPER(roleName) LIKE ?', ['%FORECAST ADMIN%']))
+            ->where('isActive', true)
+            ->whereNull('deletedAt')
+            ->first();
+    }
+
     private function findSalesManagerForClient(int $idClient): ?User
     {
         $salesManagerId = DB::connection(self::EXT_CONNECTION)
@@ -303,6 +437,50 @@ class ForecastApprovalService
         return User::where('isActive', true)
             ->whereNull('deletedAt')
             ->find((int) $salesManagerId);
+    }
+
+    private function getClientName(int $idClient): string
+    {
+        return (string) (DB::connection(self::EXT_CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->where('idCliente', $idClient)
+            ->value('razonSocial') ?? '');
+    }
+
+    /** @return string[] */
+    private function getClientEmails(int $idClient): array
+    {
+        $raw = Distributor::where('clientNumber', (string) $idClient)->value('emails');
+
+        if (!$raw) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', (string) $raw))));
+    }
+
+    /**
+     * @param string|string[] $to
+     * @param string[]        $cc
+     * @param string[]        $bcc
+     */
+    private function sendEmail(\Illuminate\Mail\Mailable $mailable, string|array $to, array $cc = [], array $bcc = []): void
+    {
+        $isEmpty = is_array($to) ? empty(array_filter($to)) : $to === '';
+
+        if ($isEmpty) {
+            return;
+        }
+
+        try {
+            $this->emailSender->sendWithCopies($mailable, $to, $cc, $bcc);
+        } catch (Throwable $e) {
+            Log::error('Error enviando correo de forecast', [
+                'mail'  => get_class($mailable),
+                'to'    => $to,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function normalizeRole(User $user): string

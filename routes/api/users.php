@@ -4,8 +4,10 @@ use App\Http\Controllers\Api\UserAssignmentController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('users/managers', [UserController::class, 'usersBySalesAndManagerRoles']);
+
 Route::middleware(['jwt'])->group(function () {
+    Route::get('users/managers', [UserController::class, 'usersBySalesAndManagerRoles']);
+    Route::get('users/by-role/requesters', [UserController::class, 'requesters']);
     Route::get('users', [UserController::class, 'getAll']);
     Route::get('usersPag', [UserController::class, 'index']);
     Route::get('users/assignment/leaders', [UserAssignmentController::class, 'leaders']);
