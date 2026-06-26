@@ -62,11 +62,11 @@ class StoreBatchRequest extends FormRequest
             }
 
             if ($batchType === 'sapScreen') {
-                    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'doc', 'docx', 'pdf'];
+                    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'doc', 'docx', 'pdf', 'msg'];
             } elseif ($batchType === 'uploadSupport') {
-                $allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'csv', 'xml', 'xls', 'xlsx', 'txt', 'docx'];
+                $allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'csv', 'xml', 'xls', 'xlsx', 'txt', 'docx', 'msg'];
             } else {
-                $allowedExtensions = ['csv', 'xml', 'xls', 'xlsx', 'txt', 'docx'];
+                $allowedExtensions = ['csv', 'xml', 'xls', 'xlsx', 'txt', 'docx', 'msg'];
             }
 
             foreach ($files as $index => $file) {
