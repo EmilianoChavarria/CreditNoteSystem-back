@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
+use App\Models\ForecastComprobante;
 use App\Models\ForecastSale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -13,10 +14,9 @@ use Illuminate\Support\Facades\Schema;
 
 class ForecastService
 {
-    private const CONNECTION        = 'invoices';
-    private const CLIENT_TABLE      = 'clientes_TME700618RC7';
-    private const CLIENT_EXT_TABLE  = 'clientes_TME700618RC7_ext';
-    private const COMPROBANTES_TABLE = 'comprobantes_TME700618RC7';
+    private const CONNECTION       = 'invoices';
+    private const CLIENT_TABLE     = 'clientes_TME700618RC7';
+    private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
     public function __construct(private readonly BanxicoService $banxico) {}
 
@@ -222,16 +222,12 @@ class ForecastService
     {
         $rate = $this->banxico->getCurrentUsdRate();
 
-        return DB::connection(self::CONNECTION)
-            ->table(self::COMPROBANTES_TABLE)
-            ->where('receptorId', $idClient)
-            ->where('serie', '')
+        return ForecastComprobante::where('receptorId', (string) $idClient)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
             ->whereMonth('fechaEmision', $month)
-            ->select('folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda')
             ->orderBy('fechaEmision')
-            ->get()
+            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda'])
             ->map(function ($invoice) use ($rate) {
                 if ($invoice->moneda === 'MXN') {
                     $invoice->subTotal = round($invoice->subTotal / $rate, 2);
@@ -246,12 +242,10 @@ class ForecastService
     /** Retorna ventas reales (suma de total en USD) indexado por [idClient][month]. */
     private function fetchSales(array $clientIds, int $year): Collection
     {
-        $rate = $this->banxico->getCurrentUsdRate();
+        $rate        = $this->banxico->getCurrentUsdRate();
+        $receptorIds = array_map('strval', $clientIds);
 
-        return DB::connection(self::CONNECTION)
-            ->table(self::COMPROBANTES_TABLE)
-            ->whereIn('receptorId', $clientIds)
-            ->where('serie', '')
+        return ForecastComprobante::whereIn('receptorId', $receptorIds)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
             ->selectRaw('receptorId, MONTH(fechaEmision) as month, total, moneda')
