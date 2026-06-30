@@ -20,6 +20,7 @@ class ForecastComprobante extends Model
         'total',
         'fechaEmision',
         'moneda',
+        'tipoCambio',
         'status',
     ];
 
@@ -27,6 +28,7 @@ class ForecastComprobante extends Model
         'subTotal'     => 'decimal:2',
         'iva'          => 'decimal:2',
         'total'        => 'decimal:2',
+        'tipoCambio'   => 'decimal:4',
         'fechaEmision' => 'date',
     ];
 }
