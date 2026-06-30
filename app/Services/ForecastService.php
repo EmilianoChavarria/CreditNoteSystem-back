@@ -220,16 +220,27 @@ class ForecastService
     /** Retorna facturas individuales de un cliente en un mes/año con totales en USD. */
     public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
     {
-        $rate = $this->banxico->getCurrentUsdRate();
+        $fallbackRate = null;
 
         return ForecastComprobante::where('receptorId', (string) $idClient)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
             ->whereMonth('fechaEmision', $month)
             ->orderBy('fechaEmision')
-            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda'])
-            ->map(function ($invoice) use ($rate) {
+            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio'])
+            ->map(function ($invoice) use (&$fallbackRate) {
                 if ($invoice->moneda === 'MXN') {
+                    // Use rate stored at sync time; fall back to current rate for legacy rows
+                    $rate = $invoice->tipoCambio
+                        ? (float) $invoice->tipoCambio
+                        : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
+
+                    $invoice->originalSubTotal = (float) $invoice->subTotal;
+                    $invoice->originalIva      = (float) $invoice->iva;
+                    $invoice->originalTotal    = (float) $invoice->total;
+                    $invoice->originalMoneda   = 'MXN';
+                    $invoice->tipoCambio       = $rate;
+
                     $invoice->subTotal = round($invoice->subTotal / $rate, 2);
                     $invoice->iva      = round($invoice->iva / $rate, 2);
                     $invoice->total    = round($invoice->total / $rate, 2);

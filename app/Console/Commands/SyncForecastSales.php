@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ForecastComprobante;
 use App\Models\ForecastSyncLog;
+use App\Services\BanxicoService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,11 @@ class SyncForecastSales extends Command
     private const COMPROBANTES_TABLE = 'comprobantes_TME700618RC7';
     private const LOG_RETENTION_DAYS = 10;
     private const CHUNK_SIZE         = 500;
+
+    public function __construct(private readonly BanxicoService $banxico)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -66,33 +72,46 @@ class SyncForecastSales extends Command
         $endOfYear   = Carbon::create($year)->endOfYear();
         $total       = 0;
 
+        // Single Banxico call for the entire year — map [Y-m-d => rate]
+        $this->line("  Fetching Banxico FIX rates for {$year}...");
+        $rates = $this->banxico->getRatesByDateRange(
+            $startOfYear->format('Y-m-d'),
+            min($endOfYear, $now)->format('Y-m-d')
+        );
+
         DB::connection(self::CONNECTION)
             ->table(self::COMPROBANTES_TABLE)
             ->where('serie', '')
             ->whereBetween('fechaEmision', [$startOfYear, $endOfYear])
             ->select(['receptorId', 'folio', 'serie', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'status'])
             ->orderBy('receptorId')
-            ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, &$total) {
-                $records = $rows->map(fn($r) => [
-                    'receptorId'   => (string) $r->receptorId,
-                    'folio'        => (string) ($r->folio ?? ''),
-                    'serie'        => (string) ($r->serie ?? ''),
-                    'subTotal'     => (float) $r->subTotal,
-                    'iva'          => (float) $r->iva,
-                    'total'        => (float) $r->total,
-                    'fechaEmision' => $r->fechaEmision,
-                    'moneda'       => (string) $r->moneda,
-                    'status'       => (string) $r->status,
-                    'createdAt'    => $now,
-                    'updatedAt'    => $now,
-                ])->all();
+            ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, $rates, &$total) {
+                $records = $rows->map(function ($r) use ($now, $rates) {
+                    $date      = Carbon::parse($r->fechaEmision)->format('Y-m-d');
+                    $tipoCambio = $rates[$date] ?? null;
+
+                    return [
+                        'receptorId'   => (string) $r->receptorId,
+                        'folio'        => (string) ($r->folio ?? ''),
+                        'serie'        => (string) ($r->serie ?? ''),
+                        'subTotal'     => (float) $r->subTotal,
+                        'iva'          => (float) $r->iva,
+                        'total'        => (float) $r->total,
+                        'fechaEmision' => $r->fechaEmision,
+                        'moneda'       => (string) $r->moneda,
+                        'tipoCambio'   => $tipoCambio,
+                        'status'       => (string) $r->status,
+                        'createdAt'    => $now,
+                        'updatedAt'    => $now,
+                    ];
+                })->all();
 
                 // Upsert on (receptorId, folio) — no DELETE needed
                 // Captures status changes (e.g. Emitido → Cancelado) on next sync
                 ForecastComprobante::upsert(
                     $records,
                     ['receptorId', 'folio'],
-                    ['subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'status', 'updatedAt']
+                    ['subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio', 'status', 'updatedAt']
                 );
 
                 $total += \count($records);
