@@ -16,7 +16,7 @@ return new class extends Migration
             $table->decimal('subTotal', 14, 2)->default(0);
             $table->decimal('iva', 14, 2)->default(0);
             $table->decimal('total', 14, 2)->default(0);
-            $table->date('fechaEmision');
+            $table->dateTime('fechaEmision');
             $table->string('moneda', 3);
             $table->string('status', 30);
             $table->timestamp('createdAt')->nullable();

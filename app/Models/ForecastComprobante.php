@@ -29,6 +29,6 @@ class ForecastComprobante extends Model
         'iva'          => 'decimal:2',
         'total'        => 'decimal:2',
         'tipoCambio'   => 'decimal:4',
-        'fechaEmision' => 'date',
+        'fechaEmision' => 'datetime',
     ];
 }
