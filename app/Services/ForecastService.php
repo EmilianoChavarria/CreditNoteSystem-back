@@ -218,6 +218,16 @@ class ForecastService
     }
 
     /** Retorna facturas individuales de un cliente en un mes/año con totales en USD. */
+    public function getClientName(int $idClient): string
+    {
+        $client = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->where('idCliente', $idClient)
+            ->value('razonSocial');
+
+        return $client ?? (string) $idClient;
+    }
+
     public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
     {
         $fallbackRate = null;

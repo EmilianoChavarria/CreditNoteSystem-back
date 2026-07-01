@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\ForecastInvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Services\ForecastService;
 use App\Support\ApiResponse;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ForecastController extends Controller
 {
@@ -45,6 +47,19 @@ class ForecastController extends Controller
         $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
 
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
+    }
+
+    public function exportInvoicesByMonth(int $idClient, int $year, int $month)
+    {
+        $invoices   = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
+        $clientName = $this->forecastService->getClientName($idClient);
+
+        $filename = "facturas_{$clientName}_{$year}_{$month}.xlsx";
+
+        return Excel::download(
+            new ForecastInvoicesExport($invoices, $clientName, $month, $year),
+            $filename
+        );
     }
 
     public function updateClientExt(int $idCliente, UpdateClientExtRequest $request)
