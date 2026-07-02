@@ -27,7 +27,7 @@ class ForecastController extends Controller
 
     public function clients()
     {
-        $perPage = request()->integer('perPage', 15) ?: 15;
+        $perPage = request()->integer('per_page', 15) ?: 15;
         $search  = request()->string('search', '')->trim()->toString();
 
         $result = $this->forecastService->getPaginatedClients($perPage, $search);
@@ -44,6 +44,11 @@ class ForecastController extends Controller
 
     public function invoicesByMonth(int $idClient, int $year, int $month)
     {
+        if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
+            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            return response()->json(ApiResponse::success('Facturas del mes por grupo', $data));
+        }
+
         $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
 
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));

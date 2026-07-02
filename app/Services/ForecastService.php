@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\ClientGroup;
+use App\Models\ClientGroupMember;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastComprobante;
@@ -141,29 +143,127 @@ class ForecastService
             return collect();
         }
 
-        $clientIds        = $extClients->pluck('idCliente')->toArray();
-        $forecastMap      = $this->fetchForecast($clientIds, $year);
-        $modificationMap  = $this->fetchModifications($clientIds, $year);
-        $salesMap         = $this->fetchSales($clientIds, $year);
+        $clientIds       = $extClients->pluck('idCliente')->toArray();
+        $forecastMap     = $this->fetchForecast($clientIds, $year);
+        $modificationMap = $this->fetchModifications($clientIds, $year);
+        $salesMap        = $this->fetchSales($clientIds, $year);
 
-        return $extClients->map(function ($client) use ($year, $forecastMap, $modificationMap, $salesMap) {
-            $key           = (string) $client->idCliente;
-            $forecast      = $forecastMap->get($key, collect());
-            $modifications = $modificationMap->get($key, collect());
-            $sales         = $salesMap->get($key, collect());
+        // Map clientId → group (only groups that have members in this SE's client list)
+        $membershipMap = ClientGroupMember::whereIn('clientId', $clientIds)
+            ->with('group')
+            ->get()
+            ->keyBy('clientId');
 
-            $months = $forecast->keys()
-                ->merge($modifications->keys())
-                ->merge($sales->keys())
-                ->unique()->sort()->values();
+        $usedGroupIds  = collect();
+        $result        = collect();
+
+        foreach ($extClients as $client) {
+            $membership = $membershipMap->get($client->idCliente);
+
+            if ($membership) {
+                $groupId = $membership->group->id;
+
+                // Already added this group — skip individual client
+                if ($usedGroupIds->contains($groupId)) {
+                    continue;
+                }
+
+                $usedGroupIds->push($groupId);
+
+                // All members of this group that belong to this SE's clients
+                $groupClientIds = $membershipMap
+                    ->filter(fn($m) => $m->group->id === $groupId)
+                    ->keys()
+                    ->all();
+
+                $groupClients = $extClients->whereIn('idCliente', $groupClientIds);
+
+                $result->push($this->buildGroupEntry(
+                    $membership->group,
+                    $groupClients,
+                    $year,
+                    $salesMap,
+                ));
+            } else {
+                $key           = (string) $client->idCliente;
+                $forecast      = $forecastMap->get($key, collect());
+                $modifications = $modificationMap->get($key, collect());
+                $sales         = $salesMap->get($key, collect());
+
+                $months = $forecast->keys()
+                    ->merge($modifications->keys())
+                    ->merge($sales->keys())
+                    ->unique()->sort()->values();
+
+                $result->push([
+                    'isGroup'     => false,
+                    'idCliente'   => $client->idCliente,
+                    'razonSocial' => $client->razonSocial,
+                    'year'        => $year,
+                    'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
+                ]);
+            }
+        }
+
+        return $result;
+    }
+
+    private function buildGroupEntry(
+        ClientGroup $group,
+        \Illuminate\Support\Collection $groupClients,
+        int $year,
+        \Illuminate\Support\Collection $salesMap,
+    ): array {
+        // Forecast and modifications are stored against the group ID (not individual clients)
+        $groupForecast     = $this->fetchForecast([$group->id], $year)->get((string) $group->id, collect());
+        $groupModifications = $this->fetchModifications([$group->id], $year)->get((string) $group->id, collect());
+
+        // Each child: only sales per month
+        $allSalesMonths = collect();
+
+        $clients = $groupClients->map(function ($client) use ($year, $salesMap, &$allSalesMonths) {
+            $sales      = $salesMap->get((string) $client->idCliente, collect());
+            $salesMonths = $sales->keys()->sort()->values();
+
+            $allSalesMonths = $allSalesMonths->merge($salesMonths);
 
             return [
                 'idCliente'   => $client->idCliente,
                 'razonSocial' => $client->razonSocial,
                 'year'        => $year,
-                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
+                'months'      => $salesMonths->map(fn($m) => [
+                    'month' => $m,
+                    'sales' => round((float) ($sales->get($m)?->total ?? 0), 2),
+                ])->values(),
             ];
-        });
+        })->values();
+
+        // Build summed sales per month keyed by month — matches what buildMonthEntry expects
+        $groupSales = collect();
+        foreach ($allSalesMonths->unique() as $month) {
+            $total = $groupClients->sum(
+                fn($c) => (float) ($salesMap->get((string) $c->idCliente)?->get($month)?->total ?? 0)
+            );
+            $groupSales->put($month, (object) ['total' => round($total, 2)]);
+        }
+
+        $allMonths = $groupForecast->keys()
+            ->merge($groupModifications->keys())
+            ->merge($groupSales->keys())
+            ->unique()->sort()->values();
+
+        $groupMonths = $allMonths->map(
+            fn($month) => $this->buildMonthEntry($month, $groupForecast, $groupModifications, $groupSales)
+        )->values();
+
+        return [
+            'isGroup'     => true,
+            'id'          => $group->id,
+            'razonSocial' => $group->name,
+            'year'        => $year,
+            'months'      => $groupMonths,
+            'clients'     => $clients,
+        ];
     }
 
     public function upsert(int $idClient, int $year, array $months): Collection
@@ -226,6 +326,33 @@ class ForecastService
             ->value('razonSocial');
 
         return $client ?? (string) $idClient;
+    }
+
+    public function getGroupInvoicesByMonth(int $groupId, int $month, int $year): array
+    {
+        $group   = ClientGroup::with('members')->findOrFail($groupId);
+        $members = $group->members->unique('clientId')->values();
+
+        $clientNames = $members->isEmpty() ? [] : DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->whereIn('idCliente', $members->pluck('clientId')->all())
+            ->pluck('razonSocial', 'idCliente')
+            ->all();
+
+        $sections = $members->map(fn($m) => [
+            'clientId'    => $m->clientId,
+            'razonSocial' => $clientNames[$m->clientId] ?? (string) $m->clientId,
+            'invoices'    => $this->getInvoicesByMonth($m->clientId, $month, $year),
+        ])->values()->all();
+
+        return [
+            'isGroup'  => true,
+            'id'       => $group->id,
+            'name'     => $group->name,
+            'month'    => $month,
+            'year'     => $year,
+            'sections' => $sections,
+        ];
     }
 
     public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
