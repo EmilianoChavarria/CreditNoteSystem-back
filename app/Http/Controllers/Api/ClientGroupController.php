@@ -44,9 +44,9 @@ class ClientGroupController extends Controller
         return response()->json(ApiResponse::success('Miembros del grupo', $this->service->getMembers($id)));
     }
 
-    public function addMember(Request $request, int $id)
+    public function addMember(Request $request, string $id)
     {
-        $data = $request->validate(['clientId' => 'required|integer']);
+        $data = $request->validate(['clientId' => 'required|string']);
         $this->service->addMember($id, $data['clientId']);
 
         return response()->json(ApiResponse::success('Miembro agregado'));

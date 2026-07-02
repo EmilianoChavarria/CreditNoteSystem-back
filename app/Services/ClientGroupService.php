@@ -44,7 +44,7 @@ class ClientGroupService
 
     // ── MEMBERS ───────────────────────────────────────────────────────────────
 
-    public function addMember(int $groupId, int $clientId): void
+    public function addMember(int $groupId, string $clientId): void
     {
         ClientGroup::findOrFail($groupId);
 
