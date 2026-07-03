@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\ClientGroup;
+use App\Models\ClientGroupMember;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
+use App\Models\ForecastComprobante;
 use App\Models\ForecastSale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -13,10 +16,9 @@ use Illuminate\Support\Facades\Schema;
 
 class ForecastService
 {
-    private const CONNECTION        = 'invoices';
-    private const CLIENT_TABLE      = 'clientes_TME700618RC7';
-    private const CLIENT_EXT_TABLE  = 'clientes_TME700618RC7_ext';
-    private const COMPROBANTES_TABLE = 'comprobantes_TME700618RC7';
+    private const CONNECTION       = 'invoices';
+    private const CLIENT_TABLE     = 'clientes_TME700618RC7';
+    private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
     public function __construct(private readonly BanxicoService $banxico) {}
 
@@ -141,29 +143,127 @@ class ForecastService
             return collect();
         }
 
-        $clientIds        = $extClients->pluck('idCliente')->toArray();
-        $forecastMap      = $this->fetchForecast($clientIds, $year);
-        $modificationMap  = $this->fetchModifications($clientIds, $year);
-        $salesMap         = $this->fetchSales($clientIds, $year);
+        $clientIds       = $extClients->pluck('idCliente')->toArray();
+        $forecastMap     = $this->fetchForecast($clientIds, $year);
+        $modificationMap = $this->fetchModifications($clientIds, $year);
+        $salesMap        = $this->fetchSales($clientIds, $year);
 
-        return $extClients->map(function ($client) use ($year, $forecastMap, $modificationMap, $salesMap) {
-            $key           = (string) $client->idCliente;
-            $forecast      = $forecastMap->get($key, collect());
-            $modifications = $modificationMap->get($key, collect());
-            $sales         = $salesMap->get($key, collect());
+        // Map clientId → group (only groups that have members in this SE's client list)
+        $membershipMap = ClientGroupMember::whereIn('clientId', $clientIds)
+            ->with('group')
+            ->get()
+            ->keyBy('clientId');
 
-            $months = $forecast->keys()
-                ->merge($modifications->keys())
-                ->merge($sales->keys())
-                ->unique()->sort()->values();
+        $usedGroupIds  = collect();
+        $result        = collect();
+
+        foreach ($extClients as $client) {
+            $membership = $membershipMap->get($client->idCliente);
+
+            if ($membership) {
+                $groupId = $membership->group->id;
+
+                // Already added this group — skip individual client
+                if ($usedGroupIds->contains($groupId)) {
+                    continue;
+                }
+
+                $usedGroupIds->push($groupId);
+
+                // All members of this group that belong to this SE's clients
+                $groupClientIds = $membershipMap
+                    ->filter(fn($m) => $m->group->id === $groupId)
+                    ->keys()
+                    ->all();
+
+                $groupClients = $extClients->whereIn('idCliente', $groupClientIds);
+
+                $result->push($this->buildGroupEntry(
+                    $membership->group,
+                    $groupClients,
+                    $year,
+                    $salesMap,
+                ));
+            } else {
+                $key           = (string) $client->idCliente;
+                $forecast      = $forecastMap->get($key, collect());
+                $modifications = $modificationMap->get($key, collect());
+                $sales         = $salesMap->get($key, collect());
+
+                $months = $forecast->keys()
+                    ->merge($modifications->keys())
+                    ->merge($sales->keys())
+                    ->unique()->sort()->values();
+
+                $result->push([
+                    'isGroup'     => false,
+                    'idCliente'   => $client->idCliente,
+                    'razonSocial' => $client->razonSocial,
+                    'year'        => $year,
+                    'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
+                ]);
+            }
+        }
+
+        return $result;
+    }
+
+    private function buildGroupEntry(
+        ClientGroup $group,
+        \Illuminate\Support\Collection $groupClients,
+        int $year,
+        \Illuminate\Support\Collection $salesMap,
+    ): array {
+        // Forecast and modifications are stored against the group ID (not individual clients)
+        $groupForecast     = $this->fetchForecast([$group->id], $year)->get((string) $group->id, collect());
+        $groupModifications = $this->fetchModifications([$group->id], $year)->get((string) $group->id, collect());
+
+        // Each child: only sales per month
+        $allSalesMonths = collect();
+
+        $clients = $groupClients->map(function ($client) use ($year, $salesMap, &$allSalesMonths) {
+            $sales      = $salesMap->get((string) $client->idCliente, collect());
+            $salesMonths = $sales->keys()->sort()->values();
+
+            $allSalesMonths = $allSalesMonths->merge($salesMonths);
 
             return [
                 'idCliente'   => $client->idCliente,
                 'razonSocial' => $client->razonSocial,
                 'year'        => $year,
-                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
+                'months'      => $salesMonths->map(fn($m) => [
+                    'month' => $m,
+                    'sales' => round((float) ($sales->get($m)?->total ?? 0), 2),
+                ])->values(),
             ];
-        });
+        })->values();
+
+        // Build summed sales per month keyed by month — matches what buildMonthEntry expects
+        $groupSales = collect();
+        foreach ($allSalesMonths->unique() as $month) {
+            $total = $groupClients->sum(
+                fn($c) => (float) ($salesMap->get((string) $c->idCliente)?->get($month)?->total ?? 0)
+            );
+            $groupSales->put($month, (object) ['total' => round($total, 2)]);
+        }
+
+        $allMonths = $groupForecast->keys()
+            ->merge($groupModifications->keys())
+            ->merge($groupSales->keys())
+            ->unique()->sort()->values();
+
+        $groupMonths = $allMonths->map(
+            fn($month) => $this->buildMonthEntry($month, $groupForecast, $groupModifications, $groupSales)
+        )->values();
+
+        return [
+            'isGroup'     => true,
+            'id'          => $group->id,
+            'razonSocial' => $group->name,
+            'year'        => $year,
+            'months'      => $groupMonths,
+            'clients'     => $clients,
+        ];
     }
 
     public function upsert(int $idClient, int $year, array $months): Collection
@@ -218,22 +318,66 @@ class ForecastService
     }
 
     /** Retorna facturas individuales de un cliente en un mes/año con totales en USD. */
+    public function getClientName(int $idClient): string
+    {
+        $client = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->where('idCliente', $idClient)
+            ->value('razonSocial');
+
+        return $client ?? (string) $idClient;
+    }
+
+    public function getGroupInvoicesByMonth(int $groupId, int $month, int $year): array
+    {
+        $group   = ClientGroup::with('members')->findOrFail($groupId);
+        $members = $group->members->unique('clientId')->values();
+
+        $clientNames = $members->isEmpty() ? [] : DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->whereIn('idCliente', $members->pluck('clientId')->all())
+            ->pluck('razonSocial', 'idCliente')
+            ->all();
+
+        $sections = $members->map(fn($m) => [
+            'clientId'    => $m->clientId,
+            'razonSocial' => $clientNames[$m->clientId] ?? (string) $m->clientId,
+            'invoices'    => $this->getInvoicesByMonth($m->clientId, $month, $year),
+        ])->values()->all();
+
+        return [
+            'isGroup'  => true,
+            'id'       => $group->id,
+            'name'     => $group->name,
+            'month'    => $month,
+            'year'     => $year,
+            'sections' => $sections,
+        ];
+    }
+
     public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
     {
-        $rate = $this->banxico->getCurrentUsdRate();
+        $fallbackRate = null;
 
-        return DB::connection(self::CONNECTION)
-            ->table(self::COMPROBANTES_TABLE)
-            ->where('receptorId', $idClient)
-            ->where('serie', '')
+        return ForecastComprobante::where('receptorId', (string) $idClient)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
             ->whereMonth('fechaEmision', $month)
-            ->select('folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda')
             ->orderBy('fechaEmision')
-            ->get()
-            ->map(function ($invoice) use ($rate) {
+            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio'])
+            ->map(function ($invoice) use (&$fallbackRate) {
                 if ($invoice->moneda === 'MXN') {
+                    // Use rate stored at sync time; fall back to current rate for legacy rows
+                    $rate = $invoice->tipoCambio
+                        ? (float) $invoice->tipoCambio
+                        : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
+
+                    $invoice->originalSubTotal = (float) $invoice->subTotal;
+                    $invoice->originalIva      = (float) $invoice->iva;
+                    $invoice->originalTotal    = (float) $invoice->total;
+                    $invoice->originalMoneda   = 'MXN';
+                    $invoice->tipoCambio       = $rate;
+
                     $invoice->subTotal = round($invoice->subTotal / $rate, 2);
                     $invoice->iva      = round($invoice->iva / $rate, 2);
                     $invoice->total    = round($invoice->total / $rate, 2);
@@ -246,12 +390,10 @@ class ForecastService
     /** Retorna ventas reales (suma de total en USD) indexado por [idClient][month]. */
     private function fetchSales(array $clientIds, int $year): Collection
     {
-        $rate = $this->banxico->getCurrentUsdRate();
+        $rate        = $this->banxico->getCurrentUsdRate();
+        $receptorIds = array_map('strval', $clientIds);
 
-        return DB::connection(self::CONNECTION)
-            ->table(self::COMPROBANTES_TABLE)
-            ->whereIn('receptorId', $clientIds)
-            ->where('serie', '')
+        return ForecastComprobante::whereIn('receptorId', $receptorIds)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
             ->selectRaw('receptorId, MONTH(fechaEmision) as month, total, moneda')

@@ -29,6 +29,7 @@ require __DIR__.'/api/requestReasonType.php';
 require __DIR__.'/api/emailConfig.php';
 require __DIR__.'/api/exports.php';
 require __DIR__.'/api/forecast.php';
+require __DIR__.'/api/clientGroups.php';
 require __DIR__.'/api/forecastApproval.php';
 require __DIR__.'/api/salesEngineerAssignment.php';
 require __DIR__.'/api/distributors.php';
