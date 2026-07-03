@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\SendPendingApprovalReminders;
+use App\Console\Commands\SyncForecastSales;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -13,4 +14,8 @@ Schedule::command(SendPendingApprovalReminders::class)
     ->dailyAt('15:56')
     ->timezone('America/Mexico_City');
 
-
+Schedule::command(SyncForecastSales::class)
+    ->dailyAt('02:00')
+    ->timezone('America/Mexico_City')
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/sync-forecast.log'));
