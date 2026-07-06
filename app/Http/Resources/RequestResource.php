@@ -16,6 +16,7 @@ class RequestResource extends JsonResource
             'userId' => $this->userId,
             'customerId' => $this->customerId,
             'razonSocial' => $this->razonSocial ?? null,
+            'returnOrderTotal' => $this->returnOrderTotal ?? null,
             'status' => $this->status,
             'orderNumber' => $this->orderNumber,
             'requestDate' => $this->requestDate,

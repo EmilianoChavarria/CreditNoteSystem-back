@@ -40,52 +40,64 @@ class ReturnOrderService
     public function searchOrders(string $search): array
     {
         $clientTable = 'clientes_TME700618RC7';
-        $hasClientTable = Schema::hasTable($clientTable);
+        $hasClientTable = Schema::connection('invoices')->hasTable($clientTable);
 
-        $query = ReturnOrder::
-        with('items')->
-        orderByDesc('createdAt');
+        $matchedClientIds = [];
+        $razonSocialMap = collect();
 
         if ($hasClientTable) {
-            $columns = Schema::getColumnListing($clientTable);
+            $columns = Schema::connection('invoices')->getColumnListing($clientTable);
             $hasRazonSocial = in_array('razonSocial', $columns, true);
             $hasIdCliente   = in_array('idCliente', $columns, true);
 
-            $query->leftJoin(
-                $clientTable . ' as cl',
-                'cl.idCliente',
-                '=',
-                'returnorders.clientId'
-            );
+            $clientQuery = DB::connection('invoices')->table($clientTable);
 
-            $query->where(function ($q) use ($search, $hasRazonSocial, $hasIdCliente) {
+            $clientQuery->where(function ($q) use ($search, $hasRazonSocial, $hasIdCliente, &$hasAnyCondition) {
+                $hasAnyCondition = false;
+
                 if ($hasRazonSocial) {
-                    $q->orWhere('cl.razonSocial', 'LIKE', "%{$search}%");
+                    $q->orWhere('razonSocial', 'LIKE', "%{$search}%");
+                    $hasAnyCondition = true;
                 }
 
                 if ($hasIdCliente && is_numeric($search)) {
-                    $q->orWhere('returnorders.clientId', (int) $search);
+                    $q->orWhere('idCliente', $search);
+                    $hasAnyCondition = true;
+                }
+
+                if (!$hasAnyCondition) {
+                    $q->whereRaw('1 = 0');
                 }
             });
 
-            $query->select(
-                'returnorders.*',
-                $hasRazonSocial ? 'cl.razonSocial' : DB::raw('NULL as razonSocial')
-            )->where('orderStatus', '0');
-            ;
-        } else {
-            if (is_numeric($search)) {
-                $query->where('clientId', (int) $search);
+            $clients = $clientQuery->get(['idCliente', 'razonSocial']);
+            $matchedClientIds = $clients->pluck('idCliente')->all();
+            $razonSocialMap   = $clients->pluck('razonSocial', 'idCliente');
+        }
+
+        $query = ReturnOrder::with('items')
+            ->orderByDesc('createdAt')
+            ->where('orderStatus', '0');
+
+        $query->where(function ($q) use ($search, $matchedClientIds) {
+            if (!empty($matchedClientIds)) {
+                $q->orWhereIn('clientId', $matchedClientIds);
             }
 
-            $query->select('returnorders.*', DB::raw('NULL as razonSocial'));
+            if (is_numeric($search)) {
+                $q->orWhere('clientId', (int) $search);
+            }
+        });
+
+        if (empty($matchedClientIds) && !is_numeric($search)) {
+            return [];
         }
 
         $orders = $query->get();
 
-        return $orders->map(function (ReturnOrder $order) {
+        return $orders->map(function (ReturnOrder $order) use ($razonSocialMap) {
             return array_merge($order->toArray(), [
-                'razonSocial' => $order->razonSocial ?? null,
+                'razonSocial' => $razonSocialMap[(string) $order->clientId] ?? null,
             ]);
         })->values()->all();
     }
@@ -128,7 +140,7 @@ class ReturnOrderService
             $returnOrder = ReturnOrder::create([
                 'clientId'     => $clientId,
                 'userId'       => $userId,
-                'status'       => 'in process',
+                'status'       => 'pending',
                 'notes'        => $notes,
                 'chargeTypeId' => $chargeTypeId,
                 'customRate'   => $customRate,

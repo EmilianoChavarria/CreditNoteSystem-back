@@ -19,6 +19,8 @@ Route::middleware(['jwt'])->group(function () {
     Route::put('users/assignments', [UserAssignmentController::class, 'upsert']);
     Route::delete('users/{leaderUserId}/assignments/{assignedUserId}', [UserAssignmentController::class, 'destroy']);
     Route::post('users/{id}/resend-welcome-email', [UserController::class, 'resendWelcomeEmail']);
+    Route::post('users/reset-all-passwords', [UserController::class, 'resetAllPasswords']);
+    Route::post('users/{id}/reset-password', [UserController::class, 'resetPasswordById']);
     Route::get('users/{id}', [UserController::class, 'show']);
     Route::post('users', [UserController::class, 'store']);
     Route::put('users/{id}', [UserController::class, 'update']);

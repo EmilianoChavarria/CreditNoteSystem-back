@@ -110,11 +110,13 @@
                                     {{ __('emails.footer_notice_non_timken') }}
                                 </p>
                             @endif
+                            {{--
                             @if (!empty($isOverride) && !empty($originalRecipient))
                             <p style="margin: 12px 0 0; color: #FFFFFF; font-size: 12px; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.4); padding-top: 12px;">
                                 Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a <strong>{{ $originalRecipient }}</strong>
                             </p>
                             @endif
+                            --}}
                             <p style="margin: 16px 0 0; color: #FFFFFF; font-size: 13px;">
                                 © {{ now()->year }}
                                 <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> {{ __('emails.footer_rights') }}
