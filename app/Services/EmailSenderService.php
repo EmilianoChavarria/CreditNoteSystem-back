@@ -38,6 +38,13 @@ class EmailSenderService
             $mailer->cc($ccEmail);
         }
 
+        Log::info('[EmailSender] correo enviado a', [
+            'class' => get_class($mailable),
+            'to'    => [$recipientEmail],
+            'cc'    => ($ccEmail !== null && $ccEmail !== $recipientEmail) ? [$ccEmail] : [],
+            'bcc'   => [],
+        ]);
+
         $mailer->send($mailable);
     }
 
@@ -90,6 +97,13 @@ class EmailSenderService
         if (!empty($filteredBcc)) {
             $mailer->bcc($filteredBcc);
         }
+
+        Log::info('[EmailSender] correo enviado a', [
+            'class' => get_class($mailable),
+            'to'    => $toList,
+            'cc'    => $filteredCc,
+            'bcc'   => $filteredBcc,
+        ]);
 
         $mailer->send($mailable);
     }
