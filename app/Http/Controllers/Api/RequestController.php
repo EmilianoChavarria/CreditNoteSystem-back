@@ -40,7 +40,6 @@ use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 class RequestController extends Controller
 {
@@ -108,11 +107,7 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
         }
 
-        $publicUrl = URL::temporarySignedRoute(
-            'attachments.preview',
-            now()->addMinutes(15),
-            ['attachmentId' => (int) $attachment->id]
-        );
+        $publicUrl = $this->requestAttachmentService->resolveFileUrl($attachment);
 
         return response()->json(ApiResponse::success('Adjunto', [
             'attachment' => RequestAttachmentResource::make($attachment),
@@ -128,11 +123,7 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
         }
 
-        $previewUrl = URL::temporarySignedRoute(
-            'attachments.preview',
-            now()->addMinutes(15),
-            ['attachmentId' => (int) $attachment->id]
-        );
+        $previewUrl = $this->requestAttachmentService->resolveFileUrl($attachment);
 
         return response()->json(ApiResponse::success('Link de vista previa del adjunto', [
             'attachmentId' => (int) $attachment->id,
@@ -152,6 +143,14 @@ class RequestController extends Controller
         $path = (string) ($attachment->filePath ?? '');
         if ($path === '') {
             return response()->json(ApiResponse::error('Adjunto sin ruta de archivo', null, 422), 422);
+        }
+
+        if ($this->requestAttachmentService->resolveDiskForAttachment($attachment) === 's3'
+            && Storage::disk('s3')->exists($path)
+        ) {
+            return redirect()->away(
+                Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(15))
+            );
         }
 
         foreach (['public', 'local'] as $disk) {
