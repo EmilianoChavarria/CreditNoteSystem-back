@@ -78,7 +78,7 @@ class RequestCrudService
                 $this->requestWorkflowService->assignRequestToWorkflow($createdRequest, (int) $authUser->id);
             }
 
-            // $this->requestWorkflowService->notifyAssignedUser($createdRequest->id);
+            $this->requestWorkflowService->notifyAssignedUser($createdRequest->id);
 
             return $createdRequest;
         });
