@@ -618,4 +618,32 @@ class RequestController extends Controller
         return response()->json(ApiResponse::success('Borradores', $drafts));
     }
 
+    /**
+     * Todos los borradores del sistema (de cualquier usuario), incluyendo los eliminados.
+     * Solo administradores — para rastrear consecutivos de requestNumber que se saltaron.
+     * GET /requests/drafts/all?search=&requestTypeId=&per_page=&page=
+     */
+    public function getAllDrafts(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->isAdminUser($authUser)) {
+            return response()->json(ApiResponse::error('No tienes permisos para ver todos los borradores', null, 403), 403);
+        }
+
+        $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
+        $search = trim((string) $request->query('search', ''));
+        $perPage = max(1, (int) $request->query('per_page', $request->query('perPage', 15)));
+        $page = max(1, (int) $request->query('page', 1));
+
+        $drafts = $this->requestCrudService->getAllDrafts($requestTypeId, $search, $perPage, $page);
+        $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
+
+        return response()->json(ApiResponse::success('Todos los borradores', $drafts));
+    }
+
 }

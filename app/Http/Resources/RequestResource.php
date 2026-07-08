@@ -46,6 +46,8 @@ class RequestResource extends JsonResource
             'warehouseTotal' => $this->warehouseTotal,
             'createdAt' => $this->createdAt,
             'updatedAt' => $this->updatedAt,
+            'deletedAt' => $this->deletedAt,
+            'deletedBy' => $this->deletedBy,
             'requestType' => $this->whenLoaded('requestType'),
             'user' => $this->whenLoaded('user'),
             'reason' => $this->whenLoaded('reason'),

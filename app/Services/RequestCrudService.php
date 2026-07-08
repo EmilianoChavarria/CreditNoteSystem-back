@@ -259,6 +259,17 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
+    /**
+     * Todos los borradores del sistema (de cualquier usuario), incluyendo los eliminados
+     * (soft-delete). Para uso administrativo: rastrear qué pasó con un requestNumber
+     * reservado que se saltó el consecutivo.
+     */
+    public function getAllDrafts(?int $requestTypeId, string $search, int $perPage, int $page)
+    {
+        return $this->buildAllDraftsQuery($requestTypeId, $search)
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
     public function deleteDraft(int $draftId, mixed $authUser): array
     {
         $draft = RequestModel::query()
@@ -533,6 +544,28 @@ class RequestCrudService
             ->where('status', 'draft')
             ->whereNull('deletedAt')
             ->orderByDesc('updatedAt');
+
+        if ($search !== '') {
+            $this->applySearchFilter($query, $search);
+        }
+
+        return $query;
+    }
+
+    private function buildAllDraftsQuery(?int $requestTypeId, string $search)
+    {
+        $query = RequestModel::with([
+            'requestType',
+            'user',
+            'reason',
+            'classification',
+        ])
+            ->where('status', 'draft')
+            ->orderByDesc('createdAt');
+
+        if ($requestTypeId !== null) {
+            $query->where('requestTypeId', $requestTypeId);
+        }
 
         if ($search !== '') {
             $this->applySearchFilter($query, $search);
