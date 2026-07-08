@@ -106,4 +106,9 @@ class Request extends Model
     {
         return $this->hasMany(RequestAttachment::class, 'requestId')->where('isActive', true);
     }
+
+    public function isFinalized(): bool
+    {
+        return in_array((string) $this->status, ['released', 'rejected', 'cancelled'], true);
+    }
 }

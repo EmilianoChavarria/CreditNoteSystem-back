@@ -44,4 +44,14 @@ class ReturnOrderRequestItem extends Model
     {
         return $this->belongsTo(ReturnOrderItem::class, 'returnOrderItemId');
     }
+
+    /**
+     * true si el revisor (replenishment/almacén) ya capturó alguna cantidad para este producto.
+     */
+    public function hasReviewData(): bool
+    {
+        return $this->replenishmentAccepted !== null
+            || $this->warehouseReceived !== null
+            || $this->warehouseAccepted !== null;
+    }
 }
