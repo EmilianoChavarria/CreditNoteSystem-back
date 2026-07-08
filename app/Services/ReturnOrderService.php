@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\ReturnOrder;
 use App\Models\ReturnOrderItem;
 use App\Models\ReturnOrderItemHistory;
+use App\Models\ReturnOrderRequest;
+use App\Models\ReturnOrderRequestItem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -40,52 +42,63 @@ class ReturnOrderService
     public function searchOrders(string $search): array
     {
         $clientTable = 'clientes_TME700618RC7';
-        $hasClientTable = Schema::hasTable($clientTable);
+        $hasClientTable = Schema::connection('invoices')->hasTable($clientTable);
 
-        $query = ReturnOrder::
-        with('items')->
-        orderByDesc('createdAt');
+        $matchedClientIds = [];
+        $razonSocialMap = collect();
 
         if ($hasClientTable) {
-            $columns = Schema::getColumnListing($clientTable);
+            $columns = Schema::connection('invoices')->getColumnListing($clientTable);
             $hasRazonSocial = in_array('razonSocial', $columns, true);
             $hasIdCliente   = in_array('idCliente', $columns, true);
 
-            $query->leftJoin(
-                $clientTable . ' as cl',
-                'cl.idCliente',
-                '=',
-                'returnorders.clientId'
-            );
+            $clientQuery = DB::connection('invoices')->table($clientTable);
 
-            $query->where(function ($q) use ($search, $hasRazonSocial, $hasIdCliente) {
+            $clientQuery->where(function ($q) use ($search, $hasRazonSocial, $hasIdCliente, &$hasAnyCondition) {
+                $hasAnyCondition = false;
+
                 if ($hasRazonSocial) {
-                    $q->orWhere('cl.razonSocial', 'LIKE', "%{$search}%");
+                    $q->orWhere('razonSocial', 'LIKE', "%{$search}%");
+                    $hasAnyCondition = true;
                 }
 
                 if ($hasIdCliente && is_numeric($search)) {
-                    $q->orWhere('returnorders.clientId', (int) $search);
+                    $q->orWhere('idCliente', $search);
+                    $hasAnyCondition = true;
+                }
+
+                if (!$hasAnyCondition) {
+                    $q->whereRaw('1 = 0');
                 }
             });
 
-            $query->select(
-                'returnorders.*',
-                $hasRazonSocial ? 'cl.razonSocial' : DB::raw('NULL as razonSocial')
-            )->where('orderStatus', '0');
-            ;
-        } else {
-            if (is_numeric($search)) {
-                $query->where('clientId', (int) $search);
+            $clients = $clientQuery->get(['idCliente', 'razonSocial']);
+            $matchedClientIds = $clients->pluck('idCliente')->all();
+            $razonSocialMap   = $clients->pluck('razonSocial', 'idCliente');
+        }
+
+        $query = ReturnOrder::with('items')
+            ->orderByDesc('createdAt');
+
+        $query->where(function ($q) use ($search, $matchedClientIds) {
+            if (!empty($matchedClientIds)) {
+                $q->orWhereIn('clientId', $matchedClientIds);
             }
 
-            $query->select('returnorders.*', DB::raw('NULL as razonSocial'));
+            if (is_numeric($search)) {
+                $q->orWhere('clientId', (int) $search);
+            }
+        });
+
+        if (empty($matchedClientIds) && !is_numeric($search)) {
+            return [];
         }
 
         $orders = $query->get();
 
-        return $orders->map(function (ReturnOrder $order) {
+        return $orders->map(function (ReturnOrder $order) use ($razonSocialMap) {
             return array_merge($order->toArray(), [
-                'razonSocial' => $order->razonSocial ?? null,
+                'razonSocial' => $razonSocialMap[(string) $order->clientId] ?? null,
             ]);
         })->values()->all();
     }
@@ -95,7 +108,7 @@ class ReturnOrderService
      */
     public function getReturnOrdersByClientId(int $clientId): Collection
     {
-        return ReturnOrder::with('items')
+        return ReturnOrder::with(['items.requestItem', 'returnOrderRequest.request'])
             ->where('clientId', $clientId)
             ->orderByDesc('createdAt')
             ->get();
@@ -106,7 +119,7 @@ class ReturnOrderService
      */
     public function getReturnOrderById(int $returnOrderId): ReturnOrder
     {
-        return ReturnOrder::with('items')->findOrFail($returnOrderId);
+        return ReturnOrder::with(['items.requestItem', 'returnOrderRequest.request'])->findOrFail($returnOrderId);
     }
 
     /**
@@ -128,7 +141,7 @@ class ReturnOrderService
             $returnOrder = ReturnOrder::create([
                 'clientId'     => $clientId,
                 'userId'       => $userId,
-                'status'       => 'in process',
+                'status'       => 'pending',
                 'notes'        => $notes,
                 'chargeTypeId' => $chargeTypeId,
                 'customRate'   => $customRate,
@@ -136,37 +149,112 @@ class ReturnOrderService
             ]);
 
             foreach ($items as $itemData) {
-                $concepto = $this->getConceptoByIndex(
-                    $itemData['invoiceFolio'],
-                    $itemData['invoiceClientId'],
-                    $itemData['conceptoIndex']
-                );
-
-                $returnOrderItem = ReturnOrderItem::create([
-                    'returnOrderId'     => $returnOrder->id,
-                    'invoiceFolio'      => $itemData['invoiceFolio'],
-                    'invoiceClientId'   => $itemData['invoiceClientId'],
-                    'conceptoIndex'     => $itemData['conceptoIndex'],
-                    'claveProdServ'     => $concepto['claveProdServ'],
-                    'descripcion'       => ltrim(strtok($concepto['descripcion'], ';'), '^') . ';',
-                    'claveUnidad'       => $concepto['claveUnidad'],
-                    'unidad'            => $concepto['unidad'],
-                    'valorUnitario'     => $concepto['valorUnitario'],
-                    'originalQuantity'  => $concepto['cantidad'],
-                    'requestedQuantity' => $itemData['requestedQuantity'],
-                ]);
-
-                ReturnOrderItemHistory::create([
-                    'invoiceFolio'      => $itemData['invoiceFolio'],
-                    'invoiceClientId'   => $itemData['invoiceClientId'],
-                    'conceptoIndex'     => $itemData['conceptoIndex'],
-                    'returnOrderItemId' => $returnOrderItem->id,
-                    'returnedQuantity'  => $itemData['requestedQuantity'],
-                ]);
+                $this->addOrMergeItem($returnOrder, $itemData, null);
             }
 
-            return $returnOrder->load('items');
+            return $returnOrder->load(['items.requestItem', 'returnOrderRequest.request']);
         });
+    }
+
+    /**
+     * Agrega materiales (de la misma factura o de otra) a una orden ya existente.
+     * Si la orden ya está vinculada a una request, también crea el ReturnOrderRequestItem
+     * correspondiente para que el nuevo material entre al flujo de revisión.
+     *
+     * @throws RuntimeException si la orden no existe, la solicitud vinculada ya está finalizada,
+     *                          o la cantidad solicitada excede la disponible.
+     */
+    public function addItems(int $returnOrderId, array $items): ReturnOrder
+    {
+        $returnOrder = ReturnOrder::findOrFail($returnOrderId);
+
+        $this->assertOrderEditable($returnOrder);
+        $this->validateItems($items);
+
+        return DB::transaction(function () use ($returnOrder, $items) {
+            $returnOrderRequest = $returnOrder->orderStatus
+                ? ReturnOrderRequest::where('returnOrderId', $returnOrder->id)->first()
+                : null;
+
+            foreach ($items as $itemData) {
+                $this->addOrMergeItem($returnOrder, $itemData, $returnOrderRequest);
+            }
+
+            return $returnOrder->fresh(['items.requestItem', 'returnOrderRequest.request']);
+        });
+    }
+
+    /**
+     * Modifica la cantidad solicitada de un material ya agregado a la orden.
+     * Ajusta también el ReturnOrderItemHistory para que la diferencia (si se redujo)
+     * quede disponible de nuevo para futuras órdenes.
+     *
+     * @throws RuntimeException si el producto ya tiene información de replenishment/almacén
+     *                          capturada, la solicitud vinculada está finalizada, o la nueva
+     *                          cantidad excede la disponible.
+     */
+    public function updateItemQuantity(int $returnOrderId, int $itemId, float $newQuantity): ReturnOrder
+    {
+        $returnOrder = ReturnOrder::findOrFail($returnOrderId);
+        $item        = ReturnOrderItem::where('returnOrderId', $returnOrderId)->findOrFail($itemId);
+
+        $this->assertOrderEditable($returnOrder);
+        $this->assertItemNotReviewed($item, 'modificar la cantidad de');
+
+        if ($newQuantity <= 0) {
+            throw new RuntimeException('La cantidad a devolver debe ser mayor a 0.');
+        }
+
+        $concepto = $this->getConceptoByIndex($item->invoiceFolio, $item->invoiceClientId, $item->conceptoIndex);
+
+        if ($concepto === null) {
+            throw new RuntimeException("Concepto índice {$item->conceptoIndex} no encontrado en la factura {$item->invoiceFolio}.");
+        }
+
+        $returnedByOthers = $this->getTotalReturnedForProduct($item->invoiceFolio, $item->invoiceClientId, $item->conceptoIndex)
+            - $item->requestedQuantity;
+        $available = $concepto['cantidad'] - $returnedByOthers;
+
+        if ($newQuantity > $available) {
+            throw new RuntimeException("Cantidad solicitada {$newQuantity} excede la disponible {$available}.");
+        }
+
+        DB::transaction(function () use ($item, $newQuantity) {
+            $item->update(['requestedQuantity' => $newQuantity]);
+
+            ReturnOrderItemHistory::where('returnOrderItemId', $item->id)
+                ->update(['returnedQuantity' => $newQuantity]);
+        });
+
+        return $returnOrder->fresh(['items.requestItem', 'returnOrderRequest.request']);
+    }
+
+    /**
+     * Elimina (soft-delete) un material de la orden y libera su cantidad reservada
+     * en el historial para que vuelva a estar disponible en futuras órdenes.
+     *
+     * @throws RuntimeException si el producto ya tiene información de replenishment/almacén
+     *                          capturada, o la solicitud vinculada está finalizada.
+     */
+    public function removeItem(int $returnOrderId, int $itemId, ?int $userId): ReturnOrder
+    {
+        $returnOrder = ReturnOrder::findOrFail($returnOrderId);
+        $item        = ReturnOrderItem::where('returnOrderId', $returnOrderId)->findOrFail($itemId);
+
+        $this->assertOrderEditable($returnOrder);
+        $this->assertItemNotReviewed($item, 'eliminar');
+
+        DB::transaction(function () use ($item, $userId) {
+            ReturnOrderItemHistory::where('returnOrderItemId', $item->id)
+                ->update(['returnedQuantity' => 0]);
+
+            ReturnOrderRequestItem::where('returnOrderItemId', $item->id)->delete();
+
+            $item->update(['deletedBy' => $userId]);
+            $item->delete();
+        });
+
+        return $returnOrder->fresh(['items.requestItem', 'returnOrderRequest.request']);
     }
 
     /**
@@ -349,5 +437,116 @@ class ReturnOrderService
         $conceptos = $this->getConceptosFromFesa($invoiceFolio, $clientId);
 
         return $conceptos[$conceptoIndex] ?? null;
+    }
+
+    /**
+     * Si la orden ya tiene una línea activa para el mismo folio+clientId+conceptoIndex,
+     * suma la cantidad a esa línea existente en vez de crear una duplicada.
+     * Si no existe, crea una línea nueva (y su ReturnOrderRequestItem si la orden está vinculada).
+     *
+     * @throws RuntimeException si la línea existente ya tiene información de replenishment/almacén capturada.
+     */
+    private function addOrMergeItem(ReturnOrder $returnOrder, array $itemData, ?ReturnOrderRequest $returnOrderRequest): ReturnOrderItem
+    {
+        $existing = ReturnOrderItem::where('returnOrderId', $returnOrder->id)
+            ->where('invoiceFolio', $itemData['invoiceFolio'])
+            ->where('invoiceClientId', $itemData['invoiceClientId'])
+            ->where('conceptoIndex', $itemData['conceptoIndex'])
+            ->first();
+
+        if ($existing !== null) {
+            $this->assertItemNotReviewed($existing, 'modificar la cantidad de');
+
+            $newQuantity = $existing->requestedQuantity + $itemData['requestedQuantity'];
+
+            $existing->update(['requestedQuantity' => $newQuantity]);
+
+            ReturnOrderItemHistory::where('returnOrderItemId', $existing->id)
+                ->update(['returnedQuantity' => $newQuantity]);
+
+            return $existing;
+        }
+
+        $returnOrderItem = $this->createItemWithHistory($returnOrder->id, $itemData);
+
+        if ($returnOrderRequest !== null) {
+            ReturnOrderRequestItem::create([
+                'returnOrderRequestId' => $returnOrderRequest->id,
+                'returnOrderItemId'    => $returnOrderItem->id,
+                'partNumber'           => ReturnOrderRequestService::extractPartNumber($returnOrderItem->descripcion),
+                'sapId'                => null,
+            ]);
+        }
+
+        return $returnOrderItem;
+    }
+
+    /**
+     * Crea un ReturnOrderItem (snapshot del producto de la factura) y su
+     * ReturnOrderItemHistory correspondiente, que "reserva" la cantidad solicitada.
+     */
+    private function createItemWithHistory(int $returnOrderId, array $itemData): ReturnOrderItem
+    {
+        $concepto = $this->getConceptoByIndex(
+            $itemData['invoiceFolio'],
+            $itemData['invoiceClientId'],
+            $itemData['conceptoIndex']
+        );
+
+        $returnOrderItem = ReturnOrderItem::create([
+            'returnOrderId'     => $returnOrderId,
+            'invoiceFolio'      => $itemData['invoiceFolio'],
+            'invoiceClientId'   => $itemData['invoiceClientId'],
+            'conceptoIndex'     => $itemData['conceptoIndex'],
+            'claveProdServ'     => $concepto['claveProdServ'],
+            'descripcion'       => ltrim(strtok($concepto['descripcion'], ';'), '^') . ';',
+            'claveUnidad'       => $concepto['claveUnidad'],
+            'unidad'            => $concepto['unidad'],
+            'valorUnitario'     => $concepto['valorUnitario'],
+            'originalQuantity'  => $concepto['cantidad'],
+            'requestedQuantity' => $itemData['requestedQuantity'],
+        ]);
+
+        ReturnOrderItemHistory::create([
+            'invoiceFolio'      => $itemData['invoiceFolio'],
+            'invoiceClientId'   => $itemData['invoiceClientId'],
+            'conceptoIndex'     => $itemData['conceptoIndex'],
+            'returnOrderItemId' => $returnOrderItem->id,
+            'returnedQuantity'  => $itemData['requestedQuantity'],
+        ]);
+
+        return $returnOrderItem;
+    }
+
+    /**
+     * Bloquea la edición de una orden cuando ya está vinculada a una request
+     * y esa request quedó finalizada (released, rejected o cancelled).
+     */
+    private function assertOrderEditable(ReturnOrder $returnOrder): void
+    {
+        if (!$returnOrder->orderStatus) {
+            return;
+        }
+
+        $returnOrderRequest = ReturnOrderRequest::with('request')
+            ->where('returnOrderId', $returnOrder->id)
+            ->first();
+
+        if ($returnOrderRequest?->request !== null && $returnOrderRequest->request->isFinalized()) {
+            throw new RuntimeException('No se puede editar: la solicitud vinculada ya está finalizada.');
+        }
+    }
+
+    /**
+     * Bloquea modificar/eliminar un item cuando el revisor (replenishment/almacén)
+     * ya capturó alguna cantidad para él.
+     */
+    private function assertItemNotReviewed(ReturnOrderItem $item, string $action): void
+    {
+        $requestItem = ReturnOrderRequestItem::where('returnOrderItemId', $item->id)->first();
+
+        if ($requestItem !== null && $requestItem->hasReviewData()) {
+            throw new RuntimeException("No se puede {$action} este producto: ya tiene información de replenishment/almacén capturada.");
+        }
     }
 }

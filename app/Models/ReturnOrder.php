@@ -44,4 +44,9 @@ class ReturnOrder extends Model
     {
         return $this->belongsTo(ChargeType::class, 'chargeTypeId');
     }
+
+    public function returnOrderRequest()
+    {
+        return $this->hasOne(ReturnOrderRequest::class, 'returnOrderId');
+    }
 }

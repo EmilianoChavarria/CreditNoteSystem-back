@@ -226,15 +226,15 @@ class RequestWorkflowService
 
                 $ccEmail = ($creatorId > 0 && $creatorId !== (int) $user->id) ? $creatorEmail : null;
 
-                $mail = new RequestPendingApprovalMail(
-                    fullName: $user->fullName,
-                    requestNumber: (string) $requestModel->requestNumber,
-                    requestType: (string) ($requestModel->requestType?->name ?? ''),
-                    classification: (string) ($requestModel->classification?->name ?? ''),
-                    locale: (string) ($user->preferredLanguage ?? 'es'),
-                );
+                // $mail = new RequestPendingApprovalMail(
+                //     fullName: $user->fullName,
+                //     requestNumber: (string) $requestModel->requestNumber,
+                //     requestType: (string) ($requestModel->requestType?->name ?? ''),
+                //     classification: (string) ($requestModel->classification?->name ?? ''),
+                //     locale: (string) ($user->preferredLanguage ?? 'es'),
+                // );
 
-                $this->emailSender->send($mail, $user->email, $ccEmail);
+                // $this->emailSender->send($mail, $user->email, $ccEmail);
             }
 
             return;

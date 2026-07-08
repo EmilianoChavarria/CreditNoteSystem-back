@@ -76,9 +76,8 @@ class DataExportService
         return [
             'filename' => 'users_' . now()->format('Ymd_His') . '.xls',
             'sheetName' => 'Users',
-            'headers' => ['ID', 'Name', 'Email', 'Role', 'Supervisor', 'Language', 'Customer Number'],
+            'headers' => ['Name', 'Email', 'Role', 'Supervisor', 'Language', 'Customer Number'],
             'rows' => $users->map(fn (User $user) => [
-                $user->id,
                 $user->fullName,
                 $user->email,
                 $user->role?->roleName,
@@ -223,7 +222,6 @@ class DataExportService
             'filename' => ($onlyMyApprovals ? 'my_approvals_' : 'requests_') . now()->format('Ymd_His') . '.xls',
             'sheetName' => $onlyMyApprovals ? 'My Approvals' : 'Requests',
             'headers' => [
-                'ID',
                 'Request Number',
                 'Request Type',
                 'Customer Number',
@@ -241,7 +239,6 @@ class DataExportService
                 'Comments',
             ],
             'rows' => $requests->map(fn (RequestModel $request) => [
-                $request->id,
                 $request->requestNumber,
                 $request->requestType?->name ?? $request->requestType?->typeName,
                 $request->customerId,

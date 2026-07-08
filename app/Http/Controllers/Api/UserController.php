@@ -212,6 +212,47 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Usuario desactivado', null, 201));
     }
 
+    public function resetAllPasswords(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $actor = User::with('role')->find((int) $authUser->id);
+        if (!$actor || !$this->userService->isSuperAdmin($actor)) {
+            return response()->json(ApiResponse::error('No tienes permisos para reiniciar las contraseñas de todos los usuarios', null, 403), 403);
+        }
+
+        $result = $this->userService->resetAllPasswordsToDefault();
+
+        return response()->json(ApiResponse::success('Contraseñas reiniciadas y credenciales enviadas', $result));
+    }
+
+    public function resetPasswordById(Request $request, int $id)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $actor = User::with('role')->find((int) $authUser->id);
+        if (!$actor || !$this->userService->isSuperAdmin($actor)) {
+            return response()->json(ApiResponse::error('No tienes permisos para reiniciar la contraseña de este usuario', null, 403), 403);
+        }
+
+        $user = User::find($id);
+        if (!$user) {
+            return response()->json(ApiResponse::error('Usuario no encontrado', null, 404), 404);
+        }
+
+        $result = $this->userService->resetPasswordToDefault($user);
+
+        return response()->json(ApiResponse::success('Contraseña reiniciada y credenciales enviadas', $result));
+    }
+
     public function resendWelcomeEmail(Request $request, int $id)
     {
         $user = User::find($id);

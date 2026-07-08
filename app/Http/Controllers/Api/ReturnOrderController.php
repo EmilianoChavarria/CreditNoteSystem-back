@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Actions\ReturnOrders\CreateReturnOrderAction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ReturnOrders\AddReturnOrderItemsInput;
 use App\Http\Requests\ReturnOrders\CreateReturnOrderInput;
 use App\Http\Requests\ReturnOrders\UpdateReturnOrderChargeInput;
+use App\Http\Requests\ReturnOrders\UpdateReturnOrderItemQuantityInput;
 use App\Http\Resources\ReturnOrderResource;
 use App\Services\ReturnOrderService;
 use App\Support\ApiResponse;
@@ -153,6 +155,57 @@ class ReturnOrderController extends Controller
             return response()->json(ApiResponse::success('Cargo actualizado', new ReturnOrderResource($order)));
         } catch (ModelNotFoundException) {
             return response()->json(ApiResponse::error('Orden no encontrada', null, 404), 404);
+        }
+    }
+
+    /**
+     * Agrega materiales (de la misma factura o de otra) a una orden existente.
+     * POST /return-orders/{id}/items
+     */
+    public function addItems(AddReturnOrderItemsInput $request, int $id)
+    {
+        try {
+            $order = $this->returnOrderService->addItems($id, $request->input('items'));
+
+            return response()->json(ApiResponse::success('Productos agregados', new ReturnOrderResource($order)));
+        } catch (ModelNotFoundException) {
+            return response()->json(ApiResponse::error('Orden no encontrada', null, 404), 404);
+        } catch (RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
+    }
+
+    /**
+     * Modifica la cantidad solicitada de un material de la orden.
+     * PATCH /return-orders/{id}/items/{itemId}
+     */
+    public function updateItemQuantity(UpdateReturnOrderItemQuantityInput $request, int $id, int $itemId)
+    {
+        try {
+            $order = $this->returnOrderService->updateItemQuantity($id, $itemId, (float) $request->input('requestedQuantity'));
+
+            return response()->json(ApiResponse::success('Cantidad actualizada', new ReturnOrderResource($order)));
+        } catch (ModelNotFoundException) {
+            return response()->json(ApiResponse::error('Orden o producto no encontrado', null, 404), 404);
+        } catch (RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
+    }
+
+    /**
+     * Elimina (soft-delete) un material de la orden y libera su cantidad reservada.
+     * DELETE /return-orders/{id}/items/{itemId}
+     */
+    public function removeItem(Request $request, int $id, int $itemId)
+    {
+        try {
+            $order = $this->returnOrderService->removeItem($id, $itemId, $request->user()?->id);
+
+            return response()->json(ApiResponse::success('Producto eliminado', new ReturnOrderResource($order)));
+        } catch (ModelNotFoundException) {
+            return response()->json(ApiResponse::error('Orden o producto no encontrado', null, 404), 404);
+        } catch (RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
         }
     }
 }
