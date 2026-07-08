@@ -17,6 +17,9 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('return-orders/{id}', [ReturnOrderController::class, 'show']);
     Route::post('return-orders', [ReturnOrderController::class, 'store']);
     Route::patch('return-orders/{id}/charge', [ReturnOrderController::class, 'updateCharge']);
+    Route::post('return-orders/{id}/items', [ReturnOrderController::class, 'addItems']);
+    Route::patch('return-orders/{id}/items/{itemId}', [ReturnOrderController::class, 'updateItemQuantity']);
+    Route::delete('return-orders/{id}/items/{itemId}', [ReturnOrderController::class, 'removeItem']);
 
     // Vínculo orden de devolución ↔ request (material return)
     Route::post('return-order-requests', [ReturnOrderRequestController::class, 'store']);

@@ -14,6 +14,7 @@ class ReturnOrderResource extends JsonResource
             'clientId'     => $this->clientId,
             'userId'       => $this->userId,
             'status'       => $this->status,
+            'orderStatus'  => $this->orderStatus,
             'notes'        => $this->notes,
             'chargeTypeId' => $this->chargeTypeId,
             'customRate'   => $this->customRate,
@@ -22,6 +23,20 @@ class ReturnOrderResource extends JsonResource
             'createdAt'    => $this->createdAt,
             'updatedAt'    => $this->updatedAt,
             'items'        => ReturnOrderItemResource::collection($this->whenLoaded('items')),
+            'linkedRequest' => $this->whenLoaded('returnOrderRequest', function () {
+                $link = $this->returnOrderRequest;
+
+                if ($link === null) {
+                    return null;
+                }
+
+                return [
+                    'returnOrderRequestId' => $link->id,
+                    'requestId'            => $link->requestId,
+                    'requestStatus'        => $link->request?->status,
+                    'isFinalized'          => (bool) $link->request?->isFinalized(),
+                ];
+            }),
         ];
     }
 }

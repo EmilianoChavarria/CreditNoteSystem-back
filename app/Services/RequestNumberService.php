@@ -50,7 +50,7 @@ class RequestNumberService
      * Usar solo cuando no hay riesgo de concurrencia (reportes, seeds, etc.).
      *
      * @param int $requestTypeId Identificador del tipo de solicitud
-     * @return string Número formateado (ej: CR00001, DB00002, etc.)
+     * @return string Número formateado (ej: CR000001, DB000002, etc.)
      */
     public function generateRequestNumber(int $requestTypeId): string
     {
@@ -74,7 +74,7 @@ class RequestNumberService
             $nextSequence = $number + 1;
         }
 
-        return $prefix . str_pad((string) $nextSequence, 5, '0', STR_PAD_LEFT);
+        return $prefix . str_pad((string) $nextSequence, 6, '0', STR_PAD_LEFT);
     }
 
     /**

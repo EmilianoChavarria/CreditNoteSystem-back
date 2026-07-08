@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class RequestAttachmentService
@@ -94,6 +95,31 @@ class RequestAttachmentService
                 'deletedAt'     => null,
             ]);
         }
+    }
+
+    public function resolveDiskForAttachment(RequestAttachment $attachment): string
+    {
+        $configKey = $attachment->fileType === 'sapScreen' ? 'sap_screen' : 'upload_support';
+
+        return (string) Config::get("bulk_upload.{$configKey}.disk", 'public');
+    }
+
+    public function resolveFileUrl(RequestAttachment $attachment, int $expiresInMinutes = 15): string
+    {
+        $disk = $this->resolveDiskForAttachment($attachment);
+
+        if ($disk === 's3') {
+            return (string) Storage::disk('s3')->temporaryUrl(
+                $attachment->filePath,
+                now()->addMinutes($expiresInMinutes)
+            );
+        }
+
+        return URL::temporarySignedRoute(
+            'attachments.preview',
+            now()->addMinutes($expiresInMinutes),
+            ['attachmentId' => (int) $attachment->id]
+        );
     }
 
     public function deleteAttachment(int $requestId, int $attachmentId): array

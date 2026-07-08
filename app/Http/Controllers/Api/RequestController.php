@@ -40,7 +40,6 @@ use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 class RequestController extends Controller
 {
@@ -108,11 +107,7 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
         }
 
-        $publicUrl = URL::temporarySignedRoute(
-            'attachments.preview',
-            now()->addMinutes(15),
-            ['attachmentId' => (int) $attachment->id]
-        );
+        $publicUrl = $this->requestAttachmentService->resolveFileUrl($attachment);
 
         return response()->json(ApiResponse::success('Adjunto', [
             'attachment' => RequestAttachmentResource::make($attachment),
@@ -128,11 +123,7 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error('Adjunto no encontrado', null, 404), 404);
         }
 
-        $previewUrl = URL::temporarySignedRoute(
-            'attachments.preview',
-            now()->addMinutes(15),
-            ['attachmentId' => (int) $attachment->id]
-        );
+        $previewUrl = $this->requestAttachmentService->resolveFileUrl($attachment);
 
         return response()->json(ApiResponse::success('Link de vista previa del adjunto', [
             'attachmentId' => (int) $attachment->id,
@@ -152,6 +143,14 @@ class RequestController extends Controller
         $path = (string) ($attachment->filePath ?? '');
         if ($path === '') {
             return response()->json(ApiResponse::error('Adjunto sin ruta de archivo', null, 422), 422);
+        }
+
+        if ($this->requestAttachmentService->resolveDiskForAttachment($attachment) === 's3'
+            && Storage::disk('s3')->exists($path)
+        ) {
+            return redirect()->away(
+                Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(15))
+            );
         }
 
         foreach (['public', 'local'] as $disk) {
@@ -617,6 +616,34 @@ class RequestController extends Controller
         $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Borradores', $drafts));
+    }
+
+    /**
+     * Todos los borradores del sistema (de cualquier usuario), incluyendo los eliminados.
+     * Solo administradores — para rastrear consecutivos de requestNumber que se saltaron.
+     * GET /requests/drafts/all?search=&requestTypeId=&per_page=&page=
+     */
+    public function getAllDrafts(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->isAdminUser($authUser)) {
+            return response()->json(ApiResponse::error('No tienes permisos para ver todos los borradores', null, 403), 403);
+        }
+
+        $requestTypeId = $request->filled('requestTypeId') ? (int) $request->input('requestTypeId') : null;
+        $search = trim((string) $request->query('search', ''));
+        $perPage = max(1, (int) $request->query('per_page', $request->query('perPage', 15)));
+        $page = max(1, (int) $request->query('page', 1));
+
+        $drafts = $this->requestCrudService->getAllDrafts($requestTypeId, $search, $perPage, $page);
+        $drafts->setCollection(RequestResource::collection($drafts->getCollection())->collection);
+
+        return response()->json(ApiResponse::success('Todos los borradores', $drafts));
     }
 
 }

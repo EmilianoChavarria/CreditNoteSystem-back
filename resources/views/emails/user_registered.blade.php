@@ -73,7 +73,7 @@
                             <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 10px;">
                                 <tr>
                                     <td align="center">
-                                        <a href="https://qa.timken.ittec.mx/"
+                                        <a href="https://timken.ittec.mx/"
                                             style="display: inline-block; background-color: #ff8200; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600; padding: 14px 40px; border-radius: 6px;">
                                             {{ __('emails.login_button') }}
                                         </a>
@@ -83,7 +83,7 @@
                                     <td align="center" style="padding-top: 12px;">
                                         <p style="margin: 0; color: #718096; font-size: 13px;">
                                             {{ __('emails.login_url_label') }}
-                                            <a href="https://qa.timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://qa.timken.ittec.mx/</a>
+                                            <a href="https://timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://timken.ittec.mx/</a>
                                         </p>
                                     </td>
                                 </tr>
@@ -110,11 +110,13 @@
                                     {{ __('emails.footer_notice_non_timken') }}
                                 </p>
                             @endif
+                            {{--
                             @if (!empty($isOverride) && !empty($originalRecipient))
                             <p style="margin: 12px 0 0; color: #FFFFFF; font-size: 12px; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.4); padding-top: 12px;">
                                 Este correo se generó desde el ambiente de pruebas. En ambiente productivo este correo hubiese sido enviado a <strong>{{ $originalRecipient }}</strong>
                             </p>
                             @endif
+                            --}}
                             <p style="margin: 16px 0 0; color: #FFFFFF; font-size: 13px;">
                                 © {{ now()->year }}
                                 <span style="text-decoration: underline;">ITTEC. Tecnología Inteligente.</span> {{ __('emails.footer_rights') }}

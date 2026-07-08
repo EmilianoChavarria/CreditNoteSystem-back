@@ -3,11 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ReturnOrderItem extends Model
 {
+    use SoftDeletes;
+
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = 'updatedAt';
+    const DELETED_AT = 'deletedAt';
 
     protected $table = 'returnorderitems';
 
@@ -23,6 +27,7 @@ class ReturnOrderItem extends Model
         'valorUnitario',
         'originalQuantity',
         'requestedQuantity',
+        'deletedBy',
     ];
 
     protected $casts = [
@@ -31,6 +36,8 @@ class ReturnOrderItem extends Model
         'requestedQuantity' => 'float',
         'createdAt'         => 'datetime',
         'updatedAt'         => 'datetime',
+        'deletedAt'         => 'datetime',
+        'deletedBy'         => 'integer',
     ];
 
     public function returnOrder()
@@ -41,5 +48,10 @@ class ReturnOrderItem extends Model
     public function history()
     {
         return $this->hasMany(ReturnOrderItemHistory::class, 'returnOrderItemId');
+    }
+
+    public function requestItem()
+    {
+        return $this->hasOne(ReturnOrderRequestItem::class, 'returnOrderItemId');
     }
 }

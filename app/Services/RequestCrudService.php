@@ -78,10 +78,10 @@ class RequestCrudService
                 $this->requestWorkflowService->assignRequestToWorkflow($createdRequest, (int) $authUser->id);
             }
 
+            $this->requestWorkflowService->notifyAssignedUser($createdRequest->id);
+
             return $createdRequest;
         });
-
-        $this->requestWorkflowService->notifyAssignedUser($created->id);
 
         return $created->refresh();
     }
@@ -259,6 +259,17 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
+    /**
+     * Todos los borradores del sistema (de cualquier usuario), incluyendo los eliminados
+     * (soft-delete). Para uso administrativo: rastrear qué pasó con un requestNumber
+     * reservado que se saltó el consecutivo.
+     */
+    public function getAllDrafts(?int $requestTypeId, string $search, int $perPage, int $page)
+    {
+        return $this->buildAllDraftsQuery($requestTypeId, $search)
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
     public function deleteDraft(int $draftId, mixed $authUser): array
     {
         $draft = RequestModel::query()
@@ -291,6 +302,10 @@ class RequestCrudService
             ->paginate($perPage, ['*'], 'page', $page);
         $this->enrichWithRazonSocial($paginator);
 
+        if ($requestTypeId === 6) {
+            $this->enrichWithReturnOrderTotal($paginator);
+        }
+
         return $paginator;
     }
 
@@ -299,6 +314,10 @@ class RequestCrudService
         $results = $this->buildMyPendingQuery($authUser, $isAdmin, $requestTypeId, $search, $roleName, $requesterId, $classificationType, $dateFrom, $dateTo)
             ->get();
         $this->enrichWithRazonSocial($results);
+
+        if ($requestTypeId === 6) {
+            $this->enrichWithReturnOrderTotal($results);
+        }
 
         return $results;
     }
@@ -441,6 +460,10 @@ class RequestCrudService
 
         if ($requestTypeId !== null) {
             $query->where('requestTypeId', $requestTypeId);
+
+            if ($requestTypeId === 6) {
+                $query->with('returnOrderRequest.returnOrder.items');
+            }
         }
 
         if ($requesterId !== null) {
@@ -529,6 +552,28 @@ class RequestCrudService
         return $query;
     }
 
+    private function buildAllDraftsQuery(?int $requestTypeId, string $search)
+    {
+        $query = RequestModel::with([
+            'requestType',
+            'user',
+            'reason',
+            'classification',
+        ])
+            ->where('status', 'draft')
+            ->orderByDesc('createdAt');
+
+        if ($requestTypeId !== null) {
+            $query->where('requestTypeId', $requestTypeId);
+        }
+
+        if ($search !== '') {
+            $this->applySearchFilter($query, $search);
+        }
+
+        return $query;
+    }
+
     private function applySearchFilter($query, string $search): void
     {
         $query->where(function ($subQuery) use ($search) {
@@ -585,6 +630,19 @@ class RequestCrudService
         } catch (\Throwable) {
             // invoices DB unavailable — requests still returned without razonSocial
         }
+    }
+
+    private function enrichWithReturnOrderTotal(LengthAwarePaginator|\Illuminate\Support\Collection $source): void
+    {
+        $collection = $source instanceof LengthAwarePaginator ? $source->getCollection() : $source;
+
+        $collection->each(function ($request) {
+            $returnOrder = $request->returnOrderRequest?->returnOrder;
+
+            $request->returnOrderTotal = $returnOrder
+                ? round($returnOrder->items->sum(fn ($item) => $item->valorUnitario * $item->requestedQuantity), 2)
+                : null;
+        });
     }
 
     private function buildEditableRequestData(array $data): array
