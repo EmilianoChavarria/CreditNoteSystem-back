@@ -23,6 +23,10 @@ class ReturnOrderItemResource extends JsonResource
             'originalQuantity'  => $this->originalQuantity,
             'requestedQuantity' => $this->requestedQuantity,
             'createdAt'         => $this->createdAt,
+            'isEditable'        => $this->when(
+                $this->relationLoaded('requestItem'),
+                fn () => $this->requestItem === null || !$this->requestItem->hasReviewData()
+            ),
         ];
     }
 }
