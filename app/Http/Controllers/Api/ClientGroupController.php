@@ -68,7 +68,7 @@ class ClientGroupController extends Controller
         return response()->json(ApiResponse::success('Miembros agregados'));
     }
 
-    public function removeMember(int $id, int $clientId)
+    public function removeMember(int $id, string $clientId)
     {
         $this->service->removeMember($id, $clientId);
 

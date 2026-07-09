@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Resources\UserResource;
 use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
 use App\Models\ForecastComprobante;
@@ -78,7 +79,7 @@ class ClientGroupService
         ClientGroupMember::upsert($records, ['groupId', 'clientId'], ['deletedAt']);
     }
 
-    public function removeMember(int $groupId, int $clientId): void
+    public function removeMember(int $groupId, string $clientId): void
     {
         ClientGroupMember::where('groupId', $groupId)->where('clientId', $clientId)->delete();
     }
@@ -212,7 +213,7 @@ class ClientGroupService
             'description'       => $group->description,
             'memberCount'       => $group->members->count(),
             'responsibleUserId' => $group->responsibleUserId,
-            'responsibleName'   => $group->responsible?->fullName,
+            'responsible'       => $group->responsible ? new UserResource($group->responsible) : null,
             'createdAt'         => $group->createdAt,
         ];
     }
