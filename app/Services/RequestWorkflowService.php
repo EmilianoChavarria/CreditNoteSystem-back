@@ -211,6 +211,14 @@ class RequestWorkflowService
         $roleName = mb_strtoupper((string) ($currentStep->assignedRole?->roleName ?? ''));
         $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true);
 
+        Log::info('[notifyAssignedUser] paso actual', [
+            'requestId'       => $requestId,
+            'roleName'        => $roleName,
+            'isBroadcastRole' => $isBroadcastRole,
+            'assignedRoleId'  => $currentStep->assignedRoleId,
+            'assignedUserId'  => $currentStep->assignedUserId,
+        ]);
+
         if ($isBroadcastRole && $currentStep->assignedRoleId) {
             $users = User::query()
                 ->where('roleId', (int) $currentStep->assignedRoleId)
@@ -218,10 +226,23 @@ class RequestWorkflowService
                 ->whereNull('deletedAt')
                 ->get();
 
+            Log::info('[notifyAssignedUser] usuarios encontrados para rol broadcast', [
+                'requestId' => $requestId,
+                'roleName'  => $roleName,
+                'roleId'    => $currentStep->assignedRoleId,
+                'count'     => $users->count(),
+                'userIds'   => $users->pluck('id')->all(),
+            ]);
+
             foreach ($users as $user) {
                 $this->notificationService->createAssignedRequestNotification($requestModel, (int) $user->id);
 
                 if (empty($user->email)) {
+                    Log::warning('[notifyAssignedUser] usuario sin email, correo omitido', [
+                        'requestId' => $requestId,
+                        'userId'    => $user->id,
+                        'roleName'  => $roleName,
+                    ]);
                     continue;
                 }
 
@@ -242,6 +263,7 @@ class RequestWorkflowService
         }
 
         if ($currentStep->assignedUserId === null) {
+            Log::info('[notifyAssignedUser] sin assignedUserId, no se envia correo', ['requestId' => $requestId]);
             return;
         }
 
@@ -254,6 +276,11 @@ class RequestWorkflowService
             ->first();
 
         if (!$assignedUser || empty($assignedUser->email)) {
+            Log::warning('[notifyAssignedUser] usuario asignado no disponible o sin email, correo omitido', [
+                'requestId'      => $requestId,
+                'assignedUserId' => $currentStep->assignedUserId,
+                'found'          => (bool) $assignedUser,
+            ]);
             return;
         }
 
