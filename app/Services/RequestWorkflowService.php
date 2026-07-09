@@ -18,6 +18,7 @@ use App\Models\ReturnOrder;
 use App\Models\ReturnOrderRequest;
 use App\Models\WorkflowStepTransition;
 use App\Mail\RequestPendingApprovalMail;
+use App\Mail\PendingApprovalReminderMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -226,15 +227,15 @@ class RequestWorkflowService
 
                 $ccEmail = ($creatorId > 0 && $creatorId !== (int) $user->id) ? $creatorEmail : null;
 
-                // $mail = new RequestPendingApprovalMail(
-                //     fullName: $user->fullName,
-                //     requestNumber: (string) $requestModel->requestNumber,
-                //     requestType: (string) ($requestModel->requestType?->name ?? ''),
-                //     classification: (string) ($requestModel->classification?->name ?? ''),
-                //     locale: (string) ($user->preferredLanguage ?? 'es'),
-                // );
+                $mail = new RequestPendingApprovalMail(
+                    fullName: $user->fullName,
+                    requestNumber: (string) $requestModel->requestNumber,
+                    requestType: (string) ($requestModel->requestType?->name ?? ''),
+                    classification: (string) ($requestModel->classification?->name ?? ''),
+                    locale: (string) ($user->preferredLanguage ?? 'es'),
+                );
 
-                // $this->emailSender->send($mail, $user->email, $ccEmail);
+                $this->emailSender->send($mail, $user->email, $ccEmail);
             }
 
             return;
@@ -267,6 +268,41 @@ class RequestWorkflowService
         );
 
         $this->emailSender->send($mail, $assignedUser->email, $ccEmail);
+    }
+
+    /**
+     * Crea la notificación in-app resumida y envía el correo con la tabla de solicitudes
+     * pendientes a cada usuario afectado por una acción masiva (aprobación, rechazo o regreso).
+     *
+     * @param array<int, array<int, array{requestNumber: string, requestType: string, classification: string}>> $requestDetailsByUser
+     * @param string $action uno de 'approve', 'reject', 'sendBack' — controla el asunto del correo
+     */
+    private function notifyMassAssignedUsers(array $requestDetailsByUser, string $action = 'approve'): void
+    {
+        foreach ($requestDetailsByUser as $userId => $requests) {
+            $requestNumbers = array_column($requests, 'requestNumber');
+            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
+
+            $user = User::query()
+                ->where('id', $userId)
+                ->where('isActive', true)
+                ->whereNull('deletedAt')
+                ->first();
+
+            if (!$user || empty($user->email)) {
+                continue;
+            }
+
+            $this->emailSender->send(
+                new PendingApprovalReminderMail(
+                    fullName: (string) $user->fullName,
+                    requests: $requests,
+                    locale: (string) ($user->preferredLanguage ?? 'es'),
+                    action: $action,
+                ),
+                (string) $user->email
+            );
+        }
     }
 
     public function approve(int $requestId, mixed $authUser, bool $isAdmin, ?string $comments): array
@@ -717,12 +753,13 @@ class RequestWorkflowService
 
         $approvedIds = [];
         $failed = [];
-        $notificationsByUser = [];
+        $requestDetailsByUser = [];
         Log::error('Array de solicitudes', [
             'id´s' => $requestIds,
         ]);
         foreach ($requestIds as $requestId) {
-            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
+            $requestModel = RequestModel::query()->with(['requestType', 'classification'])->find($requestId);
+            $requestNumber = (string) ($requestModel->requestNumber ?? $requestId);
 
             try {
                 $result = $this->approve((int) $requestId, $authUser, $isAdmin, $comments);
@@ -737,7 +774,11 @@ class RequestWorkflowService
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
+                    $requestDetailsByUser[(int) $notifyUserId][] = [
+                        'requestNumber' => $requestNumber,
+                        'requestType' => (string) ($requestModel->requestType?->name ?? ''),
+                        'classification' => (string) ($requestModel->classification?->name ?? ''),
+                    ];
                 }
 
                 continue;
@@ -746,9 +787,7 @@ class RequestWorkflowService
             $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
-        foreach ($notificationsByUser as $userId => $requestNumbers) {
-            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
-        }
+        $this->notifyMassAssignedUsers($requestDetailsByUser, 'approve');
 
         return [
             'totalReceived' => count($requestIds),
@@ -765,10 +804,11 @@ class RequestWorkflowService
 
         $rejectedIds = [];
         $failed = [];
-        $notificationsByUser = [];
+        $requestDetailsByUser = [];
 
         foreach ($requestIds as $requestId) {
-            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
+            $requestModel = RequestModel::query()->with(['requestType', 'classification'])->find($requestId);
+            $requestNumber = (string) ($requestModel->requestNumber ?? $requestId);
 
             try {
                 $result = $this->reject((int) $requestId, $authUser, $isAdmin, $comments);
@@ -783,7 +823,11 @@ class RequestWorkflowService
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
+                    $requestDetailsByUser[(int) $notifyUserId][] = [
+                        'requestNumber' => $requestNumber,
+                        'requestType' => (string) ($requestModel->requestType?->name ?? ''),
+                        'classification' => (string) ($requestModel->classification?->name ?? ''),
+                    ];
                 }
 
                 continue;
@@ -792,9 +836,7 @@ class RequestWorkflowService
             $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
-        foreach ($notificationsByUser as $userId => $requestNumbers) {
-            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
-        }
+        $this->notifyMassAssignedUsers($requestDetailsByUser, 'reject');
 
         return [
             'totalReceived' => count($requestIds),
@@ -847,10 +889,11 @@ class RequestWorkflowService
 
         $sentBackIds = [];
         $failed = [];
-        $notificationsByUser = [];
+        $requestDetailsByUser = [];
 
         foreach ($requestIds as $requestId) {
-            $requestNumber = (string) (RequestModel::query()->where('id', $requestId)->value('requestNumber') ?? $requestId);
+            $requestModel = RequestModel::query()->with(['requestType', 'classification'])->find($requestId);
+            $requestNumber = (string) ($requestModel->requestNumber ?? $requestId);
 
             try {
                 $result = $this->sendBack((int) $requestId, $targetWorkflowStepId, $authUser, $isAdmin, (string) ($comments ?? ''));
@@ -865,7 +908,11 @@ class RequestWorkflowService
 
                 $notifyUserId = $result['notifyUserId'] ?? null;
                 if (!empty($notifyUserId)) {
-                    $notificationsByUser[(int) $notifyUserId][] = $requestNumber;
+                    $requestDetailsByUser[(int) $notifyUserId][] = [
+                        'requestNumber' => $requestNumber,
+                        'requestType' => (string) ($requestModel->requestType?->name ?? ''),
+                        'classification' => (string) ($requestModel->classification?->name ?? ''),
+                    ];
                 }
 
                 continue;
@@ -874,9 +921,7 @@ class RequestWorkflowService
             $failed[] = ['requestId' => (int) $requestId, 'requestNumber' => $requestNumber, 'reason' => (string) ($result['payload']['message'] ?? 'Error')];
         }
 
-        foreach ($notificationsByUser as $userId => $requestNumbers) {
-            $this->notificationService->createAssignedRequestsSummaryNotification((int) $userId, $requestNumbers);
-        }
+        $this->notifyMassAssignedUsers($requestDetailsByUser, 'sendBack');
 
         return [
             'totalReceived' => count($requestIds),
