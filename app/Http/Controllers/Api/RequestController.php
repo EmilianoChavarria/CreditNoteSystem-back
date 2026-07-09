@@ -412,6 +412,10 @@ class RequestController extends Controller
             return response()->json(ApiResponse::error($result['payload']['message'], null, $result['status']), $result['status']);
         }
 
+        if (!empty($result['notifyUserId'])) {
+            $this->requestWorkflowService->notifyAssignedUser($requestId);
+        }
+
         return response()->json(ApiResponse::success($result['payload']['message'], RequestResource::make($result['payload']['data'])), $result['status']);
     }
 

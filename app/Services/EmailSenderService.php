@@ -38,14 +38,22 @@ class EmailSenderService
             $mailer->cc($ccEmail);
         }
 
-        Log::info('[EmailSender] correo enviado a', [
+        $context = [
             'class' => get_class($mailable),
             'to'    => [$recipientEmail],
             'cc'    => ($ccEmail !== null && $ccEmail !== $recipientEmail) ? [$ccEmail] : [],
             'bcc'   => [],
-        ]);
+        ];
 
-        $mailer->send($mailable);
+        Log::info('[EmailSender] intentando enviar correo', $context);
+
+        try {
+            $mailer->send($mailable);
+            Log::info('[EmailSender] correo enviado exitosamente', $context);
+        } catch (\Throwable $e) {
+            Log::error('[EmailSender] fallo al enviar correo', $context + ['error' => $e->getMessage()]);
+            throw $e;
+        }
     }
 
     /**
@@ -98,13 +106,21 @@ class EmailSenderService
             $mailer->bcc($filteredBcc);
         }
 
-        Log::info('[EmailSender] correo enviado a', [
+        $context = [
             'class' => get_class($mailable),
             'to'    => $toList,
             'cc'    => $filteredCc,
             'bcc'   => $filteredBcc,
-        ]);
+        ];
 
-        $mailer->send($mailable);
+        Log::info('[EmailSender] intentando enviar correo (sendWithCopies)', $context);
+
+        try {
+            $mailer->send($mailable);
+            Log::info('[EmailSender] correo enviado exitosamente (sendWithCopies)', $context);
+        } catch (\Throwable $e) {
+            Log::error('[EmailSender] fallo al enviar correo (sendWithCopies)', $context + ['error' => $e->getMessage()]);
+            throw $e;
+        }
     }
 }

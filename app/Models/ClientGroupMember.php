@@ -18,7 +18,7 @@ class ClientGroupMember extends Model
 
     protected $fillable = ['groupId', 'clientId'];
 
-    protected $casts = ['clientId' => 'integer'];
+    protected $casts = ['clientId' => 'string'];
 
     public function group(): BelongsTo
     {
