@@ -18,16 +18,24 @@ class ClientGroupController extends Controller
 
     public function store(Request $request)
     {
-        $data  = $request->validate(['name' => 'required|string|max:150', 'description' => 'nullable|string|max:255']);
-        $group = $this->service->create($data['name'], $data['description'] ?? null);
+        $data  = $request->validate([
+            'name' => 'required|string|max:150',
+            'description' => 'nullable|string|max:255',
+            'responsibleUserId' => 'nullable|integer|exists:users,id',
+        ]);
+        $group = $this->service->create($data['name'], $data['description'] ?? null, $data['responsibleUserId'] ?? null);
 
         return response()->json(ApiResponse::success('Grupo creado', $group), 201);
     }
 
     public function update(Request $request, int $id)
     {
-        $data  = $request->validate(['name' => 'required|string|max:150', 'description' => 'nullable|string|max:255']);
-        $group = $this->service->update($id, $data['name'], $data['description'] ?? null);
+        $data  = $request->validate([
+            'name' => 'required|string|max:150',
+            'description' => 'nullable|string|max:255',
+            'responsibleUserId' => 'nullable|integer|exists:users,id',
+        ]);
+        $group = $this->service->update($id, $data['name'], $data['description'] ?? null, $data['responsibleUserId'] ?? null);
 
         return response()->json(ApiResponse::success('Grupo actualizado', $group));
     }
@@ -60,7 +68,7 @@ class ClientGroupController extends Controller
         return response()->json(ApiResponse::success('Miembros agregados'));
     }
 
-    public function removeMember(int $id, int $clientId)
+    public function removeMember(int $id, string $clientId)
     {
         $this->service->removeMember($id, $clientId);
 

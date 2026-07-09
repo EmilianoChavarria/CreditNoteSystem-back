@@ -128,81 +128,83 @@ class ForecastService
 
     public function getBySalesEngineer(int $salesEngineerId, int $year): Collection
     {
+        // Groups whose responsible is this sales engineer — always show ALL their members,
+        // regardless of each individual member's own salesEngineerId/country in the ext table.
+        $myGroups = ClientGroup::where('responsibleUserId', $salesEngineerId)
+            ->with('members')
+            ->get();
+
+        $myGroupClientIds = $myGroups->flatMap(fn($g) => $g->members->pluck('clientId'))->unique()->values();
+
+        // Clients belonging to ANY group (any responsible) are never listed as individual entries.
+        $allGroupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values();
+
         $extClients = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_EXT_TABLE . ' as cle')
             ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
             ->where('cle.salesEngineerId', $salesEngineerId)
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', ['BLZ', 'CRI', 'SLV', 'GTM', 'HND', 'NIC', 'PAN', 'ARG'])
+                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
                   ->orWhere('cl.ResidenciaFiscal', '=', '');
             })
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
-        if ($extClients->isEmpty()) {
+        if ($extClients->isEmpty() && $myGroupClientIds->isEmpty()) {
             return collect();
         }
 
-        $clientIds       = $extClients->pluck('idCliente')->toArray();
-        $forecastMap     = $this->fetchForecast($clientIds, $year);
-        $modificationMap = $this->fetchModifications($clientIds, $year);
-        $salesMap        = $this->fetchSales($clientIds, $year);
+        $groupClientNames = $myGroupClientIds->isEmpty() ? [] : $this->fetchClientNames($myGroupClientIds->all());
 
-        // Map clientId → group (only groups that have members in this SE's client list)
-        $membershipMap = ClientGroupMember::whereIn('clientId', $clientIds)
-            ->with('group')
-            ->get()
-            ->keyBy('clientId');
+        $allClientIds = $extClients->pluck('idCliente')->merge($myGroupClientIds)->unique()->values()->all();
 
-        $usedGroupIds  = collect();
-        $result        = collect();
+        $forecastMap     = $this->fetchForecast($allClientIds, $year);
+        $modificationMap = $this->fetchModifications($allClientIds, $year);
+        $salesMap        = $this->fetchSales($allClientIds, $year);
+
+        $result = collect();
+
+        foreach ($myGroups as $group) {
+            $memberIds = $group->members->pluck('clientId')->unique()->values();
+
+            if ($memberIds->isEmpty()) {
+                continue;
+            }
+
+            $groupClients = $memberIds->map(function ($cid) use ($extClients, $groupClientNames) {
+                $known = $extClients->firstWhere('idCliente', $cid);
+
+                return (object) [
+                    'idCliente'   => $cid,
+                    'razonSocial' => $known->razonSocial ?? ($groupClientNames[$cid] ?? (string) $cid),
+                ];
+            });
+
+            $result->push($this->buildGroupEntry($group, $groupClients, $year, $salesMap));
+        }
 
         foreach ($extClients as $client) {
-            $membership = $membershipMap->get($client->idCliente);
-
-            if ($membership) {
-                $groupId = $membership->group->id;
-
-                // Already added this group — skip individual client
-                if ($usedGroupIds->contains($groupId)) {
-                    continue;
-                }
-
-                $usedGroupIds->push($groupId);
-
-                // All members of this group that belong to this SE's clients
-                $groupClientIds = $membershipMap
-                    ->filter(fn($m) => $m->group->id === $groupId)
-                    ->keys()
-                    ->all();
-
-                $groupClients = $extClients->whereIn('idCliente', $groupClientIds);
-
-                $result->push($this->buildGroupEntry(
-                    $membership->group,
-                    $groupClients,
-                    $year,
-                    $salesMap,
-                ));
-            } else {
-                $key           = (string) $client->idCliente;
-                $forecast      = $forecastMap->get($key, collect());
-                $modifications = $modificationMap->get($key, collect());
-                $sales         = $salesMap->get($key, collect());
-
-                $months = $forecast->keys()
-                    ->merge($modifications->keys())
-                    ->merge($sales->keys())
-                    ->unique()->sort()->values();
-
-                $result->push([
-                    'isGroup'     => false,
-                    'idCliente'   => $client->idCliente,
-                    'razonSocial' => $client->razonSocial,
-                    'year'        => $year,
-                    'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
-                ]);
+            if ($allGroupedClientIds->contains($client->idCliente)) {
+                continue; // belongs to a group — shown above (or under another engineer's group)
             }
+
+            $key           = (string) $client->idCliente;
+            $forecast      = $forecastMap->get($key, collect());
+            $modifications = $modificationMap->get($key, collect());
+            $sales         = $salesMap->get($key, collect());
+
+            $months = $forecast->keys()
+                ->merge($modifications->keys())
+                ->merge($sales->keys())
+                ->unique()->sort()->values();
+
+            $result->push([
+                'isGroup'     => false,
+                'idCliente'   => $client->idCliente,
+                'razonSocial' => $client->razonSocial,
+                'year'        => $year,
+                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
+            ]);
         }
 
         return $result;
@@ -385,6 +387,16 @@ class ForecastService
                 }
                 return $invoice;
             });
+    }
+
+    /** [idCliente => razonSocial] fetched from the external clients table in one query. */
+    private function fetchClientNames(array $clientIds): array
+    {
+        return DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->whereIn('idCliente', $clientIds)
+            ->pluck('razonSocial', 'idCliente')
+            ->all();
     }
 
     /** Retorna ventas reales (suma de total en USD) indexado por [idClient][month]. */

@@ -51,6 +51,9 @@ return [
 
     // Pending approval reminder (multiple requests)
     'reminder_subject'         => 'Reminder: you have pending requests awaiting approval',
+    'reminder_subject_approve'  => 'You have pending approval requests',
+    'reminder_subject_reject'   => 'You have rejected requests awaiting review',
+    'reminder_subject_sendback' => 'You have returned requests awaiting review',
     'reminder_title'           => 'Pending Approval Requests',
     'reminder_greeting'        => 'Hi, :name',
     'reminder_intro'           => 'This is a reminder that you have the following requests pending your approval:',

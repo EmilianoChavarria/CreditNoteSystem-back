@@ -51,6 +51,9 @@ return [
 
     // Pending approval reminder (multiple requests)
     'reminder_subject'         => 'Recordatorio: tienes solicitudes pendientes por aprobar',
+    'reminder_subject_approve'  => 'Tienes solicitudes pendientes de aprobación',
+    'reminder_subject_reject'   => 'Tienes solicitudes rechazadas pendientes de revisión',
+    'reminder_subject_sendback' => 'Tienes solicitudes regresadas pendientes de revisión',
     'reminder_title'           => 'Solicitudes pendientes de aprobación',
     'reminder_greeting'        => 'Hola, :name',
     'reminder_intro'           => 'Te recordamos que tienes las siguientes solicitudes pendientes por aprobar:',

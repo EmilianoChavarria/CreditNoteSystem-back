@@ -11,15 +11,23 @@ class PendingApprovalReminderMail extends Mailable
 {
     use Queueable, SerializesModels, HasOverrideNotice;
 
+    private const SUBJECT_KEYS = [
+        'approve'  => 'reminder_subject_approve',
+        'reject'   => 'reminder_subject_reject',
+        'sendBack' => 'reminder_subject_sendback',
+    ];
+
     private string $mailLocale;
 
     /**
      * @param array<int, array{requestNumber: string, requestType: string, classification: string}> $requests
+     * @param string $action one of 'approve', 'reject', 'sendBack' — controls the email subject
      */
     public function __construct(
         public string $fullName,
         public array $requests,
         string $locale = 'es',
+        public string $action = 'approve',
     ) {
         $this->mailLocale = in_array(strtolower(trim($locale)), ['en', 'es'], true)
             ? strtolower(trim($locale))
@@ -30,7 +38,9 @@ class PendingApprovalReminderMail extends Mailable
     {
         app()->setLocale($this->mailLocale);
 
-        return $this->subject(__('emails.reminder_subject'))
+        $subjectKey = self::SUBJECT_KEYS[$this->action] ?? self::SUBJECT_KEYS['approve'];
+
+        return $this->subject(__('emails.' . $subjectKey))
             ->view('emails.pending_approval_reminder');
     }
 }
