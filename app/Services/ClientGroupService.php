@@ -19,18 +19,26 @@ class ClientGroupService
 
     public function all(): Collection
     {
-        return ClientGroup::with('members')->get()->map(fn($g) => $this->formatGroup($g));
+        return ClientGroup::with(['members', 'responsible'])->get()->map(fn($g) => $this->formatGroup($g));
     }
 
-    public function create(string $name, ?string $description): ClientGroup
+    public function create(string $name, ?string $description, ?int $responsibleUserId = null): ClientGroup
     {
-        return ClientGroup::create(['name' => $name, 'description' => $description]);
+        return ClientGroup::create([
+            'name' => $name,
+            'description' => $description,
+            'responsibleUserId' => $responsibleUserId,
+        ]);
     }
 
-    public function update(int $groupId, string $name, ?string $description): ClientGroup
+    public function update(int $groupId, string $name, ?string $description, ?int $responsibleUserId = null): ClientGroup
     {
         $group = ClientGroup::findOrFail($groupId);
-        $group->update(['name' => $name, 'description' => $description]);
+        $group->update([
+            'name' => $name,
+            'description' => $description,
+            'responsibleUserId' => $responsibleUserId,
+        ]);
         return $group;
     }
 
@@ -199,10 +207,13 @@ class ClientGroupService
     private function formatGroup(ClientGroup $group): array
     {
         return [
-            'id'          => $group->id,
-            'name'        => $group->name,
-            'memberCount' => $group->members->count(),            
-            'createdAt'   => $group->createdAt
+            'id'                => $group->id,
+            'name'              => $group->name,
+            'description'       => $group->description,
+            'memberCount'       => $group->members->count(),
+            'responsibleUserId' => $group->responsibleUserId,
+            'responsibleName'   => $group->responsible?->fullName,
+            'createdAt'         => $group->createdAt,
         ];
     }
 
