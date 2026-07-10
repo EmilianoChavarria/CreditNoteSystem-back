@@ -13,6 +13,14 @@ return [
         'path' => env('BULK_UPLOAD_SUPPORT_PATH', 'request-support'),
     ],
 
+    'attachments' => [
+        // 'url'   = fileUrl/previewUrl apuntan directo a S3 (menos ancho de banda, pero algunos firewalls
+        //           corporativos bloquean el dominio de S3 y el cliente no puede abrir el archivo).
+        // 'proxy' = el backend descarga de S3 y sirve el archivo en su propia response (mismo dominio del
+        //           back, evita el bloqueo de firewall, pero consume más ancho de banda del servidor).
+        'delivery_mode' => env('ATTACHMENT_DELIVERY_MODE', 'url'),
+    ],
+
     'new_request' => [
         'modules' => [
             1 => [

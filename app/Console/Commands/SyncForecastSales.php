@@ -3,8 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\ForecastComprobante;
+use App\Models\ForecastComprobanteProducto;
 use App\Models\ForecastSyncLog;
 use App\Services\BanxicoService;
+use App\Services\FesaWsService;
+use App\Services\XmlInvoiceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -22,8 +25,11 @@ class SyncForecastSales extends Command
     private const LOG_RETENTION_DAYS = 10;
     private const CHUNK_SIZE         = 500;
 
-    public function __construct(private readonly BanxicoService $banxico)
-    {
+    public function __construct(
+        private readonly BanxicoService $banxico,
+        private readonly FesaWsService $fesaWsService,
+        private readonly XmlInvoiceService $xmlInvoiceService,
+    ) {
         parent::__construct();
     }
 
@@ -116,9 +122,76 @@ class SyncForecastSales extends Command
 
                 $total += \count($records);
                 $this->line("  Processed {$total} rows...");
+
+                $this->syncProductsForRecords($records);
             });
 
         return $total;
+    }
+
+    /**
+     * Para cada comprobante del chunk aún sin productos guardados, abre su XML
+     * (mismo proceso que usa el módulo de invoices/devoluciones vía FESA) y
+     * guarda sus conceptos en forecastcomprobanteproductos.
+     */
+    private function syncProductsForRecords(array $records): void
+    {
+        if (empty($records)) {
+            return;
+        }
+
+        $receptorIds = array_values(array_unique(array_column($records, 'receptorId')));
+        $folios      = array_values(array_unique(array_column($records, 'folio')));
+
+        $existing = ForecastComprobanteProducto::query()
+            ->whereIn('receptorId', $receptorIds)
+            ->whereIn('folio', $folios)
+            ->get(['receptorId', 'folio'])
+            ->map(fn ($p) => "{$p->receptorId}|{$p->folio}")
+            ->flip();
+
+        $now = Carbon::now();
+
+        foreach ($records as $r) {
+            if ($r['folio'] === '' || isset($existing["{$r['receptorId']}|{$r['folio']}"])) {
+                continue;
+            }
+
+            try {
+                $xmlContent = $this->fesaWsService->fetchXmlString($r['folio']);
+                $conceptos  = $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent);
+            } catch (Throwable $e) {
+                $this->warn("  No se pudo obtener XML de folio {$r['folio']} (receptor {$r['receptorId']}): {$e->getMessage()}");
+
+                continue;
+            }
+
+            if (empty($conceptos)) {
+                continue;
+            }
+
+            $rows = array_map(static fn (array $c) => [
+                'receptorId'       => $r['receptorId'],
+                'folio'            => $r['folio'],
+                'conceptoIndex'    => $c['conceptoIndex'],
+                'claveProdServ'    => $c['claveProdServ'],
+                'noIdentificacion' => $c['noIdentificacion'],
+                'cantidad'         => $c['cantidad'],
+                'claveUnidad'      => $c['claveUnidad'],
+                'unidad'           => $c['unidad'],
+                'descripcion'      => $c['descripcion'],
+                'valorUnitario'    => $c['valorUnitario'],
+                'importe'          => $c['importe'],
+                'createdAt'        => $now,
+                'updatedAt'        => $now,
+            ], $conceptos);
+
+            ForecastComprobanteProducto::upsert(
+                $rows,
+                ['receptorId', 'folio', 'conceptoIndex'],
+                ['claveProdServ', 'noIdentificacion', 'cantidad', 'claveUnidad', 'unidad', 'descripcion', 'valorUnitario', 'importe', 'updatedAt']
+            );
+        }
     }
 
     private function pruneOldLogs(): void
