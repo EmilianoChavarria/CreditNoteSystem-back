@@ -148,6 +148,12 @@ class RequestController extends Controller
         if ($this->requestAttachmentService->resolveDiskForAttachment($attachment) === 's3'
             && Storage::disk('s3')->exists($path)
         ) {
+            if ($this->requestAttachmentService->shouldProxyS3Downloads()) {
+                return Storage::disk('s3')->response($path, basename($path), [
+                    'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+                ]);
+            }
+
             return redirect()->away(
                 Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(15))
             );

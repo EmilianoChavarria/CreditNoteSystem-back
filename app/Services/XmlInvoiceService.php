@@ -54,6 +54,7 @@ class XmlInvoiceService
             $conceptos[] = [
                 'conceptoIndex'     => $index,
                 'claveProdServ'     => (string) $attrs->ClaveProdServ,
+                'noIdentificacion'  => (string) $attrs->NoIdentificacion,
                 'cantidad'          => $cantidad,
                 'claveUnidad'       => (string) $attrs->ClaveUnidad,
                 'unidad'            => (string) $attrs->Unidad,
@@ -94,6 +95,7 @@ class XmlInvoiceService
             $conceptos[] = [
                 'conceptoIndex'     => $index,
                 'claveProdServ'     => (string) $attrs->ClaveProdServ,
+                'noIdentificacion'  => (string) $attrs->NoIdentificacion,
                 'cantidad'          => $cantidad,
                 'claveUnidad'       => (string) $attrs->ClaveUnidad,
                 'unidad'            => (string) $attrs->Unidad,
