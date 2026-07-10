@@ -108,7 +108,7 @@ class RequestAttachmentService
     {
         $disk = $this->resolveDiskForAttachment($attachment);
 
-        if ($disk === 's3') {
+        if ($disk === 's3' && !$this->shouldProxyS3Downloads()) {
             return (string) Storage::disk('s3')->temporaryUrl(
                 $attachment->filePath,
                 now()->addMinutes($expiresInMinutes)
@@ -120,6 +120,16 @@ class RequestAttachmentService
             now()->addMinutes($expiresInMinutes),
             ['attachmentId' => (int) $attachment->id]
         );
+    }
+
+    /**
+     * Bandera por .env (ATTACHMENT_DELIVERY_MODE) para alternar entre devolver la URL
+     * firmada de S3 directa o hacer que el propio back descargue y sirva el archivo
+     * como blob (útil cuando el firewall del cliente bloquea el dominio de S3).
+     */
+    public function shouldProxyS3Downloads(): bool
+    {
+        return (string) Config::get('bulk_upload.attachments.delivery_mode', 'url') === 'proxy';
     }
 
     public function deleteAttachment(int $requestId, int $attachmentId): array
