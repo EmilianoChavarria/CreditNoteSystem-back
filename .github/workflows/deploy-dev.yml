@@ -37,7 +37,7 @@ jobs:
             **/tests/**
             **/storage/logs/**
 
-      - name: Ejecutar migraciones y limpiar cache
+      - name: Limpiar cache
         run: |
           curl -X POST "https://dv.timken.ittec.mx/notasCreditos_back/public/deploy/finish" \
             -H "X-Deploy-Token: ${{ secrets.DEPLOY_TOKEN }}" \
