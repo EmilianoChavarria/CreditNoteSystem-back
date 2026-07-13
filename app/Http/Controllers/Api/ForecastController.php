@@ -42,7 +42,7 @@ class ForecastController extends Controller
         return response()->json(ApiResponse::success('Clientes con forecast', $result));
     }
 
-    public function invoicesByMonth(int $idClient, int $year, int $month)
+    public function invoicesByMonth(string $idClient, int $year, int $month)
     {
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
             $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);

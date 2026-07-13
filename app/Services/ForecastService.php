@@ -330,7 +330,7 @@ class ForecastService
         return $client ?? (string) $idClient;
     }
 
-    public function getGroupInvoicesByMonth(int $groupId, int $month, int $year): array
+    public function getGroupInvoicesByMonth(string $groupId, int $month, int $year): array
     {
         $group   = ClientGroup::with('members')->findOrFail($groupId);
         $members = $group->members->unique('clientId')->values();
@@ -357,7 +357,7 @@ class ForecastService
         ];
     }
 
-    public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
+    public function getInvoicesByMonth(string $idClient, int $month, int $year): Collection
     {
         $fallbackRate = null;
 
