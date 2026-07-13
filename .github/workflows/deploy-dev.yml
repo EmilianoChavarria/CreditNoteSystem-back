@@ -26,9 +26,10 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps          # usa FTPS si tu cPanel lo soporta, es más seguro
+          protocol: ftps
           local-dir: ./
           server-dir: /public_html/dv/notasCreditos_back/
+          log-level: verbose
           exclude: |
             **/.git*
             **/.git*/**
