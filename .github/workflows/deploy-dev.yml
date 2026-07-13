@@ -18,7 +18,7 @@ jobs:
           php-version: '8.3'
 
       - name: Instalar dependencias de Composer
-        run: composer install --no-dev --optimize-autoloader --no-interaction
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
 
       - name: Deploy por FTP (solo cambios)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
