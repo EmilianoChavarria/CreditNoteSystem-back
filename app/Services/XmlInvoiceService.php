@@ -51,14 +51,16 @@ class XmlInvoiceService
             $returnedQty     = (float) ($returnedByIndex[$index] ?? 0);
             $availableQty    = max(0, $cantidad - $returnedQty);
 
+            $descripcion = (string) $attrs->Descripcion;
+
             $conceptos[] = [
                 'conceptoIndex'     => $index,
                 'claveProdServ'     => (string) $attrs->ClaveProdServ,
-                'noIdentificacion'  => (string) $attrs->NoIdentificacion,
+                'noIdentificacion'  => $this->extractNoIdentificacion($descripcion),
                 'cantidad'          => $cantidad,
                 'claveUnidad'       => (string) $attrs->ClaveUnidad,
                 'unidad'            => (string) $attrs->Unidad,
-                'descripcion'       => (string) $attrs->Descripcion,
+                'descripcion'       => $descripcion,
                 'valorUnitario'     => (float) $attrs->ValorUnitario,
                 'importe'           => (float) $attrs->Importe,
                 'returnedQuantity'  => $returnedQty,
@@ -92,14 +94,16 @@ class XmlInvoiceService
             $returnedQty  = (float) ($returnedByIndex[$index] ?? 0);
             $availableQty = max(0, $cantidad - $returnedQty);
 
+            $descripcion = (string) $attrs->Descripcion;
+
             $conceptos[] = [
                 'conceptoIndex'     => $index,
                 'claveProdServ'     => (string) $attrs->ClaveProdServ,
-                'noIdentificacion'  => (string) $attrs->NoIdentificacion,
+                'noIdentificacion'  => $this->extractNoIdentificacion($descripcion),
                 'cantidad'          => $cantidad,
                 'claveUnidad'       => (string) $attrs->ClaveUnidad,
                 'unidad'            => (string) $attrs->Unidad,
-                'descripcion'       => (string) $attrs->Descripcion,
+                'descripcion'       => $descripcion,
                 'valorUnitario'     => (float) $attrs->ValorUnitario,
                 'importe'           => (float) $attrs->Importe,
                 'returnedQuantity'  => $returnedQty,
@@ -118,5 +122,18 @@ class XmlInvoiceService
         $conceptos = $this->getConceptos($invoiceFolio, $clientId);
 
         return $conceptos[$conceptoIndex] ?? null;
+    }
+
+    /**
+     * El id de producto viene embebido en la Descripcion, entre el primer y
+     * segundo "^" (formato estandarizado). Si no trae ese patrón, retorna ''.
+     */
+    private function extractNoIdentificacion(string $descripcion): string
+    {
+        if (preg_match('/^[^^]*\^([^^]*)\^/', $descripcion, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return '';
     }
 }

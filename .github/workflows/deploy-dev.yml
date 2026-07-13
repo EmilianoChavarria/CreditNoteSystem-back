@@ -1,0 +1,44 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches:
+      - develop   # solo se dispara con push a esta rama
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Instalar dependencias de Composer
+        run: composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Deploy por FTP (solo cambios)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps          # usa FTPS si tu cPanel lo soporta, es más seguro
+          local-dir: ./
+          server-dir: /public_html/dv/notasCreditos_back/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.env
+            **/tests/**
+            **/storage/logs/**
+
+      - name: Ejecutar migraciones y limpiar cache
+        run: |
+          curl -X POST "https://dv.timken.ittec.mx/notasCreditos_back/public/deploy/finish" \
+            -H "X-Deploy-Token: ${{ secrets.DEPLOY_TOKEN }}" \
+            -f
