@@ -22,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'jwt' => \App\Http\Middleware\JwtAuth::class,
             'module' => \App\Http\Middleware\CheckModuleAccess::class,
         ]);
+        $middleware->validateCsrfTokens(except: [
+        'deploy/finish',
+    ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (QueryException $e, \Illuminate\Http\Request $request) {
