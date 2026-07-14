@@ -28,6 +28,7 @@ use App\Http\Resources\RequestResource;
 use App\Http\Resources\UserResource;
 use App\Models\Request as RequestModel;
 use App\Models\RequestReason;
+use Illuminate\Support\Facades\Log;
 use App\Models\RequestType;
 use App\Models\User;
 use App\Services\RequestAttachmentService;
@@ -332,6 +333,17 @@ class RequestController extends Controller
         }
 
         $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
+
+        Log::info('[getNextRequestNumber] draft reservado', [
+            'userId' => $authUser->id,
+            'roleId' => $authUser->roleId ?? null,
+            'requestTypeId' => $requestTypeId,
+            'requestNumber' => $reserved['requestNumber'],
+            'draftId' => $reserved['draftId'],
+            'ip' => $request->ip(),
+            'referer' => $request->headers->get('referer'),
+            'userAgent' => $request->headers->get('user-agent'),
+        ]);
 
         return response()->json(ApiResponse::success('Next request number', [
             'requestTypeId' => $requestTypeId,
