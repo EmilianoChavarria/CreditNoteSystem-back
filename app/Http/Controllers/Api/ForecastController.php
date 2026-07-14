@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\ForecastGroupInvoicesExport;
 use App\Exports\ForecastInvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
@@ -54,8 +55,18 @@ class ForecastController extends Controller
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
     }
 
-    public function exportInvoicesByMonth(int $idClient, int $year, int $month)
+    public function exportInvoicesByMonth(string $idClient, int $year, int $month)
     {
+        if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
+            $data     = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            $filename = "facturas_{$data['name']}_{$year}_{$month}.xlsx";
+
+            return Excel::download(
+                new ForecastGroupInvoicesExport($data['sections'], $data['name'], $month, $year),
+                $filename
+            );
+        }
+
         $invoices   = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
         $clientName = $this->forecastService->getClientName($idClient);
 
