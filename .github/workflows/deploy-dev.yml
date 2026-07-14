@@ -1,9 +1,9 @@
-name: Deploy to Dev
+name: Deploy Backend to Dev
 
 on:
   push:
     branches:
-      - develop   # solo se dispara con push a esta rama
+      - develop
 
 jobs:
   deploy:
@@ -18,7 +18,10 @@ jobs:
           php-version: '8.3'
 
       - name: Instalar dependencias de Composer
-        run: composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+        env:
+          FESA_USUARIO: "dummy"
+          FESA_CONTRASENA: "dummy"
+        run: composer install --no-dev --optimize-autoloader --no-interaction
 
       - name: Deploy por FTP (solo cambios)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -29,7 +32,6 @@ jobs:
           protocol: ftps
           local-dir: ./
           server-dir: /public_html/dv/notasCreditos_back/
-          log-level: verbose
           exclude: |
             **/.git*
             **/.git*/**
@@ -38,7 +40,7 @@ jobs:
             **/tests/**
             **/storage/logs/**
 
-      - name: Limpiar cache
+      - name: Ejecutar migraciones y limpiar cache
         run: |
           curl -X POST "https://dv.timken.ittec.mx/notasCreditos_back/public/deploy/finish" \
             -H "X-Deploy-Token: ${{ secrets.DEPLOY_TOKEN }}" \
