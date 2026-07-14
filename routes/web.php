@@ -10,7 +10,7 @@ Route::get('/', function () {
 });
 
 Route::post('/deploy/finish', function (Request $request) {
-    if ($request->header('X-Deploy-Token') !== env('DEPLOY_TOKEN')) {
+    if ($request->header('X-Deploy-Token') !== config('services.deploy_token')) {
         abort(403);
     }
 
