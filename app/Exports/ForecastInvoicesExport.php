@@ -26,6 +26,7 @@ class ForecastInvoicesExport implements
         private readonly string $clientName,
         private readonly int $month,
         private readonly int $year,
+        private readonly ?string $sheetTitle = null,
     ) {}
 
     public function collection(): Collection
@@ -35,7 +36,7 @@ class ForecastInvoicesExport implements
 
     public function title(): string
     {
-        return "Facturas {$this->monthName()} {$this->year}";
+        return $this->sheetTitle ?? "Facturas {$this->monthName()} {$this->year}";
     }
 
     public function headings(): array
