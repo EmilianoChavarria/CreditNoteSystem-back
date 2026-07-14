@@ -36,6 +36,7 @@ use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
 use App\Services\RequestNumberService;
 use App\Services\RequestPdfService;
+use App\Services\RequestTypePermissionService;
 use App\Services\RequestWorkflowService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -59,8 +60,37 @@ class RequestController extends Controller
         private readonly CancelMassRequestsAction $cancelMassRequestsAction,
         private readonly SendBackMassRequestsAction $sendBackMassRequestsAction,
         private readonly RequestPdfService $requestPdfService,
+        private readonly RequestTypePermissionService $requestTypePermissionService,
     )
     {
+    }
+
+    private function denyIfCannotCreate(mixed $authUser, int $requestTypeId): ?\Illuminate\Http\JsonResponse
+    {
+        if ($this->isAdminUser($authUser)) {
+            return null;
+        }
+
+        $allowed = $this->requestTypePermissionService->canRoleAccess(
+            (int) $authUser->roleId,
+            $requestTypeId,
+            'create'
+        );
+
+        if ($allowed) {
+            return null;
+        }
+
+        Log::warning('[RequestController] intento de creación sin permiso', [
+            'userId' => $authUser->id ?? null,
+            'roleId' => $authUser->roleId ?? null,
+            'requestTypeId' => $requestTypeId,
+        ]);
+
+        return response()->json(
+            ApiResponse::error('No tienes permisos para crear solicitudes de este tipo', null, 403),
+            403
+        );
     }
 
     public function downloadPdf(int $requestId)
@@ -332,6 +362,10 @@ class RequestController extends Controller
             );
         }
 
+        if ($denied = $this->denyIfCannotCreate($authUser, $requestTypeId)) {
+            return $denied;
+        }
+
         $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
 
         Log::info('[getNextRequestNumber] draft reservado', [
@@ -355,7 +389,12 @@ class RequestController extends Controller
 
     public function createRequest(CreateRequestInput $request)
     {
-        $user    = $request->attributes->get('authUser');
+        $user = $request->attributes->get('authUser');
+
+        if ($denied = $this->denyIfCannotCreate($user, (int) $request->validated('requestTypeId'))) {
+            return $denied;
+        }
+
         $created = $this->requestCrudService->createRequest($request->validated(), $user);
 
         foreach (['uploadSupport', 'sapScreen'] as $fileType) {
@@ -599,6 +638,10 @@ class RequestController extends Controller
     public function saveDraft(SaveDraftRequestInput $request)
     {
         $user = $request->attributes->get('authUser');
+
+        if ($denied = $this->denyIfCannotCreate($user, (int) $request->validated('requestTypeId'))) {
+            return $denied;
+        }
 
         $result = $this->requestCrudService->saveDraft($request->validated(), $user);
 
