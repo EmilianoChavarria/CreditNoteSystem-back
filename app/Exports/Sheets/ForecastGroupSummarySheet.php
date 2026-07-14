@@ -36,6 +36,7 @@ class ForecastGroupSummarySheet implements
             $invoices = $section['invoices'];
 
             $rows[] = [
+                $section['clientId'],
                 $section['razonSocial'],
                 $invoices->count(),
                 round((float) $invoices->sum('total'), 2),
@@ -43,9 +44,10 @@ class ForecastGroupSummarySheet implements
         }
 
         $rows[] = [
+            '',
             'TOTAL GRUPO',
-            array_sum(array_column($rows, 1)),
-            round(array_sum(array_column($rows, 2)), 2),
+            array_sum(array_column($rows, 2)),
+            round(array_sum(array_column($rows, 3)), 2),
         ];
 
         return $rows;
@@ -58,15 +60,16 @@ class ForecastGroupSummarySheet implements
 
     public function headings(): array
     {
-        return ['Cliente', 'No. Facturas', 'Total (USD)'];
+        return ['ID Cliente', 'Cliente', 'No. Facturas', 'Total (USD)'];
     }
 
     public function columnWidths(): array
     {
         return [
-            'A' => 40,
-            'B' => 14,
-            'C' => 18,
+            'A' => 12,
+            'B' => 40,
+            'C' => 14,
+            'D' => 18,
         ];
     }
 
@@ -74,21 +77,21 @@ class ForecastGroupSummarySheet implements
     {
         $lastRow = count($this->sections) + 2; // +1 heading, +1 total row
 
-        $sheet->getStyle('A1:C1')->applyFromArray([
+        $sheet->getStyle('A1:D1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        $sheet->getStyle("B2:C{$lastRow}")->applyFromArray([
+        $sheet->getStyle("C2:D{$lastRow}")->applyFromArray([
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT],
         ]);
 
-        $sheet->getStyle("C2:C{$lastRow}")
+        $sheet->getStyle("D2:D{$lastRow}")
             ->getNumberFormat()
             ->setFormatCode('#,##0.00');
 
-        $sheet->getStyle("A{$lastRow}:C{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A{$lastRow}:D{$lastRow}")->applyFromArray([
             'font' => ['bold' => true],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9E1F2']],
         ]);

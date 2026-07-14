@@ -33,6 +33,7 @@ class ForecastGroupAllInvoicesSheet implements
         return collect($this->sections)->flatMap(
             fn($section) => $section['invoices']->map(function ($invoice) use ($section) {
                 $invoice->clienteNombre = $section['razonSocial'];
+                $invoice->clienteId     = $section['clientId'];
                 return $invoice;
             })
         )->values();
@@ -47,6 +48,7 @@ class ForecastGroupAllInvoicesSheet implements
     {
         return [
             'Cliente',
+            'ID Cliente',
             'Folio',
             'Fecha Emisión',
             'SubTotal (USD)',
@@ -66,6 +68,7 @@ class ForecastGroupAllInvoicesSheet implements
 
         return [
             $invoice->clienteNombre,
+            $invoice->clienteId,
             $invoice->folio,
             $invoice->fechaEmision instanceof \Carbon\Carbon
                 ? $invoice->fechaEmision->format('d/m/Y H:i:s')
@@ -85,16 +88,17 @@ class ForecastGroupAllInvoicesSheet implements
     {
         return [
             'A' => 30,  // Cliente
-            'B' => 14,  // Folio
-            'C' => 22,  // Fecha
-            'D' => 16,  // SubTotal USD
-            'E' => 14,  // IVA USD
-            'F' => 16,  // Total USD
-            'G' => 18,  // SubTotal original
-            'H' => 14,  // IVA original
-            'I' => 16,  // Total original
-            'J' => 14,  // Moneda original
-            'K' => 14,  // Tipo de cambio
+            'B' => 12,  // ID Cliente
+            'C' => 14,  // Folio
+            'D' => 22,  // Fecha
+            'E' => 16,  // SubTotal USD
+            'F' => 14,  // IVA USD
+            'G' => 16,  // Total USD
+            'H' => 18,  // SubTotal original
+            'I' => 14,  // IVA original
+            'J' => 16,  // Total original
+            'K' => 14,  // Moneda original
+            'L' => 14,  // Tipo de cambio
         ];
     }
 
@@ -103,17 +107,17 @@ class ForecastGroupAllInvoicesSheet implements
         $invoices = $this->collection();
         $lastRow  = $invoices->count() + 1;
 
-        $sheet->getStyle('A1:K1')->applyFromArray([
+        $sheet->getStyle('A1:L1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        $sheet->getStyle("D2:K{$lastRow}")->applyFromArray([
+        $sheet->getStyle("B2:L{$lastRow}")->applyFromArray([
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT],
         ]);
 
-        foreach (['D', 'E', 'F', 'G', 'H', 'I'] as $col) {
+        foreach (['E', 'F', 'G', 'H', 'I', 'J'] as $col) {
             $sheet->getStyle("{$col}2:{$col}{$lastRow}")
                 ->getNumberFormat()
                 ->setFormatCode('#,##0.00');
@@ -122,7 +126,7 @@ class ForecastGroupAllInvoicesSheet implements
         foreach ($invoices as $i => $invoice) {
             if (isset($invoice->originalMoneda)) {
                 $row = $i + 2;
-                $sheet->getStyle("A{$row}:K{$row}")->applyFromArray([
+                $sheet->getStyle("A{$row}:L{$row}")->applyFromArray([
                     'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF3CD']],
                 ]);
             }
