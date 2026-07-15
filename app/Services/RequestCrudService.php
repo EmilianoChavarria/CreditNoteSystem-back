@@ -508,6 +508,11 @@ class RequestCrudService
         ])
             ->where('requestTypeId', $requestTypeId)
             ->when(!$includeDrafts, fn ($q) => $q->where('status', '!=', 'draft'))
+            // Folios reservados y luego liberados (releaseReservation) no son
+            // solicitudes reales — no deben aparecer ni para admin.
+            ->where(function ($q) {
+                $q->where('reservedOnly', false)->orWhereNull('deletedAt');
+            })
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
                     $roleQuery->where('roleName', $roleName);
