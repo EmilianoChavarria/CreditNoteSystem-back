@@ -48,9 +48,14 @@ class RequestNumberService
 
     /**
      * Libera una reserva de número no utilizada (usuario abandonó el formulario
-     * sin llenar ningún dato). Solo borra filas que siguen siendo pura reserva
-     * (reservedOnly=true) y pertenecen al usuario, así el folio queda libre
-     * para la siguiente reserva.
+     * sin llenar ningún dato). Soft-delete en vez de borrado físico: el usuario
+     * de BD de la app no tiene permiso DELETE. Además reescribe requestNumber
+     * agregando el id de la fila (vía CONCAT en el propio UPDATE) porque la
+     * columna tiene UNIQUE KEY — dejar "C000003" tal cual en una fila liberada
+     * bloquearía para siempre que ese folio se vuelva a asignar. Solo aplica a
+     * filas que siguen siendo pura reserva (reservedOnly=true, no liberadas
+     * antes) y pertenecen al usuario; computeNextNumber() ignora estas filas
+     * liberadas al calcular el siguiente consecutivo.
      */
     public function releaseReservation(int $draftId, int $userId): bool
     {
@@ -58,7 +63,12 @@ class RequestNumberService
             ->where('id', $draftId)
             ->where('userId', $userId)
             ->where('reservedOnly', true)
-            ->delete();
+            ->whereNull('deletedAt')
+            ->update([
+                'requestNumber' => DB::raw("CONCAT(requestNumber, '-REL-', id)"),
+                'deletedAt' => now(),
+                'deletedBy' => $userId,
+            ]);
     }
 
     /**
@@ -76,8 +86,10 @@ class RequestNumberService
     /**
      * Calcula el siguiente consecutivo a partir del MAX(sufijo numérico) real
      * de todos los folios existentes de ese tipo (en vez de "la última fila
-     * insertada"), para que borrar drafts huérfanos de en medio no rompa el
-     * consecutivo ni deje huecos permanentes.
+     * insertada"), para que liberar reservas de en medio no rompa el
+     * consecutivo ni deje huecos permanentes. Las reservas ya liberadas
+     * (reservedOnly=true + deletedAt seteado por releaseReservation()) se
+     * excluyen para que su folio pueda reutilizarse.
      */
     private function computeNextNumber(int $requestTypeId): string
     {
@@ -86,6 +98,10 @@ class RequestNumberService
 
         $maxSequence = (int) RequestModel::where('requestTypeId', $requestTypeId)
             ->where('requestNumber', 'like', $prefix . '%')
+            ->where(function ($query) {
+                $query->where('reservedOnly', false)
+                    ->orWhereNull('deletedAt');
+            })
             ->selectRaw('MAX(CAST(SUBSTRING(requestNumber, ?) AS UNSIGNED)) as maxSequence', [$prefixLength + 1])
             ->value('maxSequence');
 
