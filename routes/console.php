@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\ReleaseStaleRequestNumberReservations;
 use App\Console\Commands\SendPendingApprovalReminders;
 use App\Console\Commands\SyncForecastSales;
 use Illuminate\Foundation\Inspiring;
@@ -19,3 +20,7 @@ Schedule::command(SyncForecastSales::class)
     ->timezone('America/Mexico_City')
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/sync-forecast.log'));
+
+Schedule::command(ReleaseStaleRequestNumberReservations::class)
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
