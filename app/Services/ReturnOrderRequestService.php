@@ -140,10 +140,11 @@ class ReturnOrderRequestService
     }
 
     /**
-     * Extrae el part number embebido en la descripcion: todo lo que viene
-     * después del primer "^" (el ";" final, si lo trae, se queda tal cual).
-     * Formato real: "510004-K^510004;" -> "510004;".
-     * Si no trae "^", retorna null.
+     * Extrae el part number de la descripcion. Dos formatos posibles:
+     * - Con "^": el part number es todo lo que viene después del primer "^"
+     *   (el ";" final, si lo trae, se queda tal cual). Ej: "510004-K^510004;" -> "510004;".
+     * - Sin "^": la descripcion ya viene formateada tal cual (ej: "56425-20024;"),
+     *   se retorna sin modificar.
      */
     public static function extractPartNumber(string $descripcion): ?string
     {
@@ -151,6 +152,6 @@ class ReturnOrderRequestService
             return $matches[1];
         }
 
-        return null;
+        return $descripcion !== '' ? $descripcion : null;
     }
 }
