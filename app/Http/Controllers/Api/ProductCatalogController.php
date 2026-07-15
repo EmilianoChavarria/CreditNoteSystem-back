@@ -23,8 +23,20 @@ class ProductCatalogController extends Controller
     {
         $perPage = max(1, (int) $request->query('per_page', 100));
         $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
 
-        $products = ProductCatalog::query()
+        $query = ProductCatalog::query();
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('idProducto', 'like', "%{$search}%")
+                    ->orWhere('descripcion', 'like', "%{$search}%")
+                    ->orWhere('claveProdServ', 'like', "%{$search}%")
+                    ->orWhere('rfc', 'like', "%{$search}%");
+            });
+        }
+
+        $products = $query
             ->orderBy('id')
             ->paginate($perPage, ['*'], 'page', $page);
 
