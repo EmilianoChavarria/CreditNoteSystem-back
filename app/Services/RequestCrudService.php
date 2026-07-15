@@ -346,9 +346,9 @@ class RequestCrudService
             ->get();
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null)
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null, bool $includeDrafts = false)
     {
-        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId, $dateFrom, $dateTo)
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId, $dateFrom, $dateTo, $includeDrafts)
             ->paginate($perPage);
         $this->enrichWithRazonSocial($paginator);
 
@@ -493,7 +493,7 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null)
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null, bool $includeDrafts = false)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -507,7 +507,7 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
-            ->where('status', '!=', 'draft')
+            ->when(!$includeDrafts, fn ($q) => $q->where('status', '!=', 'draft'))
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
                     $roleQuery->where('roleName', $roleName);

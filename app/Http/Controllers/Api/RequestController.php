@@ -322,13 +322,16 @@ class RequestController extends Controller
 
     public function getAllByRequestType(Request $request, int $id)
     {
+        $authUser = $request->attributes->get('authUser');
+        $includeDrafts = $authUser ? $this->isAdminUser($authUser) : false;
+
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
         $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
         $dateFrom = $request->filled('dateFrom') ? trim((string) $request->input('dateFrom')) : null;
         $dateTo = $request->filled('dateTo') ? trim((string) $request->input('dateTo')) : null;
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId, $dateFrom, $dateTo);
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId, $dateFrom, $dateTo, $includeDrafts);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));
