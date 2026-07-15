@@ -48,6 +48,7 @@ class RequestCrudService
                 'hasIva' => $data['hasIva'] ?? ($data['iva'] ?? null),
                 'totalAmount' => $data['totalAmount'] ?? null,
                 'comments' => $data['comments'] ?? null,
+                'reservedOnly' => false,
             ];
 
             $createdRequest = null;
@@ -195,6 +196,7 @@ class RequestCrudService
             'warehouseTotal' => $data['warehouseTotal'] ?? null,
             'status' => 'draft',
             'userId' => $authUser->id,
+            'reservedOnly' => false,
         ];
 
         $draftId = $data['id'] ?? null;
