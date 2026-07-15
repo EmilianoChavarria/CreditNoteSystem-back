@@ -15,7 +15,7 @@ Route::post('/deploy/finish', function (Request $request) {
     }
 
     Artisan::call('package:discover', ['--ansi' => true]);
-    // Artisan::call('migrate', ['--force' => true]);
+    Artisan::call('migrate', ['--force' => true]);
     Artisan::call('config:cache');
     Artisan::call('route:cache');
     Artisan::call('view:cache');
