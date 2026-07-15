@@ -15,6 +15,7 @@ use App\Services\Batches\Handlers\CreditsDataBatchHandler;
 use App\Services\Batches\Handlers\ForecastBatchHandler;
 use App\Services\Batches\Handlers\NewRequestBatchHandler;
 use App\Services\Batches\Handlers\OrderNumbersBatchHandler;
+use App\Services\Batches\Handlers\ProductClassificationBatchHandler;
 use App\Services\Batches\Handlers\SapScreenBatchHandler;
 use App\Services\Batches\Handlers\UploadSupportBatchHandler;
 use App\Services\Batches\Handlers\UsersBatchHandler;
@@ -45,6 +46,7 @@ class BatchService
         NewRequestBatchHandler $newRequestBatchHandler,
         UsersBatchHandler $usersBatchHandler,
         ForecastBatchHandler $forecastBatchHandler,
+        ProductClassificationBatchHandler $productClassificationBatchHandler,
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService $emailSender,
     ) {
@@ -56,6 +58,7 @@ class BatchService
             $newRequestBatchHandler,
             $usersBatchHandler,
             $forecastBatchHandler,
+            $productClassificationBatchHandler,
         ];
 
         foreach ($allHandlers as $handler) {
