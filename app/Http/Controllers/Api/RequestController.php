@@ -387,6 +387,32 @@ class RequestController extends Controller
         ], 201), 201);
     }
 
+    /**
+     * Libera una reserva de folio abandonada (usuario salió del formulario sin
+     * guardar). Solo borra la fila si sigue siendo pura reserva (reservedOnly=true)
+     * y es del usuario dueño — así el folio queda disponible para el siguiente.
+     * Aceptado por POST (no DELETE) para poder dispararse vía navigator.sendBeacon
+     * en el evento beforeunload/pagehide del navegador.
+     */
+    public function releaseRequestNumber(Request $request, int $draftId)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $released = $this->requestNumberService->releaseReservation($draftId, (int) $authUser->id);
+
+        Log::info('[releaseRequestNumber] liberación de reserva de folio', [
+            'userId' => $authUser->id,
+            'draftId' => $draftId,
+            'released' => $released,
+        ]);
+
+        return response()->json(ApiResponse::success('Reserva liberada', ['released' => $released]));
+    }
+
     public function createRequest(CreateRequestInput $request)
     {
         $user = $request->attributes->get('authUser');

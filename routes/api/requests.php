@@ -20,6 +20,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::delete('requests/{requestId}/attachments/{attachmentId}', [RequestController::class, 'deleteAttachmentById']);
     Route::get('requests/reasons/{requestTypeId}', [RequestController::class, 'getAllReasonsByRequestType']);
     Route::get('requests/next-number/{requestTypeId}', [RequestController::class, 'getNextRequestNumber']);
+    Route::post('requests/next-number/{draftId}/release', [RequestController::class, 'releaseRequestNumber']);
     Route::get('requests/customer/{customerId}', [RequestController::class, 'getByCustomerId']);
     Route::get('requests/{id}', [RequestController::class, 'getAllByRequestType']);
     Route::post('requests/draft', [RequestController::class, 'saveDraft']);
