@@ -39,10 +39,26 @@ class RequestNumberService
                 'requestNumber' => $requestNumber,
                 'userId'        => $userId,
                 'status'        => 'draft',
+                'reservedOnly'  => true,
             ]);
 
             return ['requestNumber' => $requestNumber, 'draftId' => $draft->id];
         });
+    }
+
+    /**
+     * Libera una reserva de número no utilizada (usuario abandonó el formulario
+     * sin llenar ningún dato). Solo borra filas que siguen siendo pura reserva
+     * (reservedOnly=true) y pertenecen al usuario, así el folio queda libre
+     * para la siguiente reserva.
+     */
+    public function releaseReservation(int $draftId, int $userId): bool
+    {
+        return (bool) RequestModel::query()
+            ->where('id', $draftId)
+            ->where('userId', $userId)
+            ->where('reservedOnly', true)
+            ->delete();
     }
 
     /**
@@ -57,24 +73,23 @@ class RequestNumberService
         return $this->computeNextNumber($requestTypeId);
     }
 
+    /**
+     * Calcula el siguiente consecutivo a partir del MAX(sufijo numérico) real
+     * de todos los folios existentes de ese tipo (en vez de "la última fila
+     * insertada"), para que borrar drafts huérfanos de en medio no rompa el
+     * consecutivo ni deje huecos permanentes.
+     */
     private function computeNextNumber(int $requestTypeId): string
     {
         $prefix = self::REQUEST_TYPE_PREFIXES[$requestTypeId] ?? 'REQ';
+        $prefixLength = strlen($prefix);
 
-        $lastRequest = RequestModel::where('requestTypeId', $requestTypeId)
-            ->whereNotNull('requestNumber')
-            ->orderByDesc('id')
-            ->select('requestNumber')
-            ->first();
+        $maxSequence = (int) RequestModel::where('requestTypeId', $requestTypeId)
+            ->where('requestNumber', 'like', $prefix . '%')
+            ->selectRaw('MAX(CAST(SUBSTRING(requestNumber, ?) AS UNSIGNED)) as maxSequence', [$prefixLength + 1])
+            ->value('maxSequence');
 
-        $nextSequence = 1;
-
-        if ($lastRequest && $lastRequest->requestNumber) {
-            $number = (int) substr((string) $lastRequest->requestNumber, strlen($prefix));
-            $nextSequence = $number + 1;
-        }
-
-        return $prefix . str_pad((string) $nextSequence, 6, '0', STR_PAD_LEFT);
+        return $prefix . str_pad((string) ($maxSequence + 1), 6, '0', STR_PAD_LEFT);
     }
 
     /**
