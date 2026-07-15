@@ -19,7 +19,7 @@ class ProductCatalogResource extends JsonResource
             'unidadMedida' => $this->unidadMedida,
             'descripcion' => $this->descripcion,
             'valorUnitario' => $this->valorUnitario,
-            'clasificacion' => $this->whenLoaded('classification', fn () => $this->classification?->clasificacion),
+            'clasificacion' => $this->clasificacion ?? null,
         ];
     }
 }

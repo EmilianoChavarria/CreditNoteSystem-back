@@ -32,9 +32,4 @@ class ProductCatalog extends Model
         'descuento'         => 'decimal:6',
         'ulActualizacionCc' => 'datetime',
     ];
-
-    public function classification()
-    {
-        return $this->hasOne(ProductClassification::class, 'idProducto', 'idProducto');
-    }
 }
