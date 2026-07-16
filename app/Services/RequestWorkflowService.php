@@ -457,7 +457,7 @@ class RequestWorkflowService
                 'comments' => 'Solicitud enviada al siguiente paso del flujo.',
             ]);
 
-            $newStatus = $transitionMarkAsApproved ? 'approved' : 'pending';
+            $newStatus = ($transitionMarkAsApproved || $requestModel->status === 'approved') ? 'approved' : 'pending';
             $requestModel->update(['status' => $newStatus]);
 
             return [
@@ -578,7 +578,9 @@ class RequestWorkflowService
                 'comments' => 'Solicitud regresada al paso anterior del flujo.',
             ]);
 
-            $requestModel->update(['status' => 'pending']);
+            if ($requestModel->status !== 'approved') {
+                $requestModel->update(['status' => 'pending']);
+            }
 
             return [
                 'ok' => true,
@@ -672,7 +674,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            if (in_array($requestModel->status, ['approved', 'released', 'rejected', 'cancelled', 'draft'], true)) {
+            if (in_array($requestModel->status, ['released', 'rejected', 'cancelled', 'draft'], true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede regresar una solicitud con estatus "' . $requestModel->status . '"']];
             }
 
@@ -760,7 +762,9 @@ class RequestWorkflowService
                 'comments' => 'Solicitud regresada al paso: ' . $targetWorkflowStep->stepName,
             ]);
 
-            $requestModel->update(['status' => 'pending']);
+            if ($requestModel->status !== 'approved') {
+                $requestModel->update(['status' => 'pending']);
+            }
 
             return [
                 'ok' => true,
