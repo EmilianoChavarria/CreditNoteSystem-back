@@ -208,7 +208,8 @@ class DataExportService
             })
             ->when(!$onlyMyApprovals && $shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', fn ($roleQuery) => $roleQuery->where('roleName', $roleName));
-            });
+            })
+            ->when(!$isAdmin, fn ($query) => $query->where('status', '!=', 'draft'));
 
         if ($search !== '') {
             $this->applyRequestSearchFilter($query, $search);
@@ -217,6 +218,7 @@ class DataExportService
         $requests = $query->orderBy('id')->get();
 
         $customerNames = $this->resolveCustomerNames($requests->pluck('customerId')->filter()->unique()->values()->all());
+        $lastApprovalDates = $this->resolveLastApprovalDates($requests->pluck('id')->all());
 
         return [
             'filename' => ($onlyMyApprovals ? 'my_approvals_' : 'requests_') . now()->format('Ymd_His') . '.xls',
@@ -235,6 +237,7 @@ class DataExportService
                 'Amount',
                 'Total Amount',
                 'Currency',
+                'Last Approval Date',
                 'Status',
                 'Comments',
             ],
@@ -252,10 +255,32 @@ class DataExportService
                 $request->amount,
                 $request->totalAmount,
                 $request->currency,
-                $request->status,
+                $lastApprovalDates[$request->id] ?? null,
+                $request->status === 'draft' && $request->deletedAt !== null
+                    ? 'draft (eliminado)'
+                    : $request->status,
                 $request->comments,
             ])->values()->all(),
         ];
+    }
+
+    /**
+     * @param array<int, int> $requestIds
+     * @return array<int, string>
+     */
+    private function resolveLastApprovalDates(array $requestIds): array
+    {
+        if (empty($requestIds)) {
+            return [];
+        }
+
+        return DB::table('workflowrequesthistory')
+            ->select('requestId', DB::raw('MAX(createdAt) as lastApprovedAt'))
+            ->where('actionType', 'approved')
+            ->whereIn('requestId', $requestIds)
+            ->groupBy('requestId')
+            ->pluck('lastApprovedAt', 'requestId')
+            ->all();
     }
 
     /**
