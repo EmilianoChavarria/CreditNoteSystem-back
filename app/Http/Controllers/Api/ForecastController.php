@@ -65,11 +65,18 @@ class ForecastController extends Controller
     public function exportInvoicesByMonth(string $idClient, int $year, int $month)
     {
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
-            $data     = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+
+            $sections = collect($data['sections'])->map(function ($section) use ($month, $year) {
+                $section['products'] = $this->productsByFolio((string) $section['clientId'], $month, $year);
+
+                return $section;
+            })->all();
+
             $filename = "facturas_{$data['name']}_{$year}_{$month}.xlsx";
 
             return Excel::download(
-                new ForecastGroupInvoicesExport($data['sections'], $data['name'], $month, $year),
+                new ForecastGroupInvoicesExport($sections, $data['name'], $month, $year),
                 $filename
             );
         }
@@ -80,9 +87,17 @@ class ForecastController extends Controller
         $filename = "facturas_{$clientName}_{$year}_{$month}.xlsx";
 
         return Excel::download(
-            new ForecastInvoicesExport($invoices, $clientName, $month, $year),
+            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year)),
             $filename
         );
+    }
+
+    /** [folio => Collection de líneas de producto] para el export en Excel. */
+    private function productsByFolio(string $idClient, int $month, int $year): \Illuminate\Support\Collection
+    {
+        return $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year)
+            ->keyBy('folio')
+            ->map(fn($invoice) => collect($invoice['products']));
     }
 
     public function updateClientExt(int $idCliente, UpdateClientExtRequest $request)

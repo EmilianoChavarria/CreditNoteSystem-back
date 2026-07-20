@@ -33,6 +33,7 @@ class ForecastGroupInvoicesExport implements WithMultipleSheets
                 $this->month,
                 $this->year,
                 $title,
+                $section['products'] ?? new \Illuminate\Support\Collection(),
             );
         }
 
