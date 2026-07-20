@@ -55,6 +55,13 @@ class ForecastController extends Controller
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
     }
 
+    public function invoiceProductsByMonth(string $idClient, int $year, int $month)
+    {
+        $data = $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year);
+
+        return response()->json(ApiResponse::success('Productos por factura del mes', $data));
+    }
+
     public function exportInvoicesByMonth(string $idClient, int $year, int $month)
     {
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
