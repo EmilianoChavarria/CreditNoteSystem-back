@@ -7,6 +7,7 @@ use App\Models\ClientGroupMember;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastComprobante;
+use App\Models\ForecastComprobanteProducto;
 use App\Models\ForecastSale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -399,23 +400,28 @@ class ForecastService
             ->all();
     }
 
-    /** Retorna ventas reales (suma de total en USD) indexado por [idClient][month]. */
+    /** Retorna ventas reales (suma de las líneas de producto por factura, en USD) indexado por [idClient][month]. */
     private function fetchSales(array $clientIds, int $year): Collection
     {
         $rate        = $this->banxico->getCurrentUsdRate();
         $receptorIds = array_map('strval', $clientIds);
 
-        return ForecastComprobante::whereIn('receptorId', $receptorIds)
-            ->where('status', 'Emitido')
-            ->whereYear('fechaEmision', $year)
-            ->selectRaw('receptorId, MONTH(fechaEmision) as month, total, moneda')
+        return ForecastComprobanteProducto::query()
+            ->join('forecastcomprobantes', function ($join) {
+                $join->on('forecastcomprobantes.receptorId', '=', 'forecastcomprobanteproductos.receptorId')
+                     ->on('forecastcomprobantes.folio', '=', 'forecastcomprobanteproductos.folio');
+            })
+            ->whereIn('forecastcomprobanteproductos.receptorId', $receptorIds)
+            ->where('forecastcomprobantes.status', 'Emitido')
+            ->whereYear('forecastcomprobantes.fechaEmision', $year)
+            ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.moneda as moneda')
             ->get()
             ->groupBy(fn($row) => (string) $row->receptorId)
             ->map(fn($byClient) => $byClient
                 ->groupBy('month')
                 ->map(function ($rows) use ($rate) {
                     $totalUsd = $rows->sum(
-                        fn($r) => $r->moneda === 'MXN' ? $r->total / $rate : (float) $r->total
+                        fn($r) => $r->moneda === 'MXN' ? $r->importe / $rate : (float) $r->importe
                     );
                     return (object) ['total' => round($totalUsd, 2)];
                 })
