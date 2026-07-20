@@ -42,6 +42,7 @@ class ChangeUserPasswordAction
 
         $user->update([
             'passwordHash' => Hash::make($newPassword),
+            'mustChangePassword' => false,
         ]);
 
         UserSecurity::query()
