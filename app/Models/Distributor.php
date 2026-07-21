@@ -17,5 +17,6 @@ class Distributor extends Model
         'address',
         'emails',
         'clientNumber',
+        'countrycode'
     ];
 }

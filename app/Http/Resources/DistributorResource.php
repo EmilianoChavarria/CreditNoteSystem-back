@@ -16,6 +16,7 @@ class DistributorResource extends JsonResource
             'address'      => $this->address,
             'emails'       => $this->emails,
             'clientNumber' => $this->clientNumber,
+            'countrycode'  => $this->countrycode,
         ];
     }
 }
