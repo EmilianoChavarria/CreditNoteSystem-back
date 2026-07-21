@@ -208,7 +208,8 @@ class RequestWorkflowService
         }
 
         $roleName = mb_strtoupper((string) ($currentStep->assignedRole?->roleName ?? ''));
-        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true);
+        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true)
+            || str_contains($roleName, 'CS LEADER');
 
         Log::info('[notifyAssignedUser] paso actual', [
             'requestId'       => $requestId,
@@ -357,7 +358,10 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                    ->where(function ($roleQuery) {
+                        $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                            ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+                    })
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
@@ -492,7 +496,10 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                    ->where(function ($roleQuery) {
+                        $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                            ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+                    })
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {

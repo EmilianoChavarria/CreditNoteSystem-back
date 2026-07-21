@@ -100,7 +100,10 @@ class RequestCrudService
             ->where('requestId', $requestId)
             ->where('status', 'pending')
             ->where('assignedRoleId', (int) $authUser->roleId)
-            ->whereHas('assignedRole', fn ($q) => $q->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT']))
+            ->whereHas('assignedRole', fn ($q) => $q->where(function ($roleQuery) {
+                $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                    ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+            }))
             ->exists();
 
         if (!$isAdmin && !$isCreator && !$isRoleAssigned) {
@@ -446,7 +449,10 @@ class RequestCrudService
                             ->orWhere(function ($roleQ) use ($authUser) {
                                 $roleQ->where('assignedRoleId', (int) $authUser->roleId)
                                     ->whereHas('assignedRole', function ($r) {
-                                        $r->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT']);
+                                        $r->where(function ($roleQuery) {
+                                            $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                                                ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+                                        });
                                     });
                             });
                     });
