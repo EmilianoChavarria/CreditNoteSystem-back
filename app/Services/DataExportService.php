@@ -218,7 +218,7 @@ class DataExportService
         $requests = $query->orderBy('id')->get();
 
         $customerNames = $this->resolveCustomerNames($requests->pluck('customerId')->filter()->unique()->values()->all());
-        $lastApprovalDates = $this->resolveLastApprovalDates($requests->pluck('id')->all());
+        $lastApprovals = $this->resolveLastApprovals($requests->pluck('id')->all());
 
         return [
             'filename' => ($onlyMyApprovals ? 'my_approvals_' : 'requests_') . now()->format('Ymd_His') . '.xls',
@@ -255,7 +255,7 @@ class DataExportService
                 $request->amount,
                 $request->totalAmount,
                 $request->currency,
-                $lastApprovalDates[$request->id] ?? null,
+                $this->formatLastApproval($lastApprovals[$request->id] ?? null),
                 $request->status === 'draft' && $request->deletedAt !== null
                     ? 'draft (eliminado)'
                     : $request->status,
@@ -265,22 +265,57 @@ class DataExportService
     }
 
     /**
-     * @param array<int, int> $requestIds
-     * @return array<int, string>
+     * @param array{date: string, userName: string|null}|null $lastApproval
      */
-    private function resolveLastApprovalDates(array $requestIds): array
+    private function formatLastApproval(?array $lastApproval): ?string
+    {
+        if ($lastApproval === null) {
+            return null;
+        }
+
+        if ($lastApproval['userName'] === null) {
+            return $lastApproval['date'];
+        }
+
+        return $lastApproval['userName'] . '  ' . $lastApproval['date'];
+    }
+
+    /**
+     * @param array<int, int> $requestIds
+     * @return array<int, array{date: string, userName: string|null}>
+     */
+    private function resolveLastApprovals(array $requestIds): array
     {
         if (empty($requestIds)) {
             return [];
         }
 
-        return DB::table('workflowrequesthistory')
-            ->select('requestId', DB::raw('MAX(createdAt) as lastApprovedAt'))
+        $rows = DB::table('workflowrequesthistory')
+            ->select('requestId', 'createdAt', 'actionUserId')
             ->where('actionType', 'approved')
             ->whereIn('requestId', $requestIds)
-            ->groupBy('requestId')
-            ->pluck('lastApprovedAt', 'requestId')
-            ->all();
+            ->orderBy('createdAt', 'desc')
+            ->get();
+
+        $latestByRequest = [];
+        foreach ($rows as $row) {
+            if (!isset($latestByRequest[$row->requestId])) {
+                $latestByRequest[$row->requestId] = $row;
+            }
+        }
+
+        $userIds = collect($latestByRequest)->pluck('actionUserId')->filter()->unique()->values()->all();
+        $userNames = empty($userIds) ? [] : User::whereIn('id', $userIds)->pluck('fullName', 'id')->all();
+
+        $result = [];
+        foreach ($latestByRequest as $requestId => $row) {
+            $result[$requestId] = [
+                'date' => $row->createdAt,
+                'userName' => $userNames[$row->actionUserId] ?? null,
+            ];
+        }
+
+        return $result;
     }
 
     /**
