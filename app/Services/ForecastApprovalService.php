@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
 use App\Mail\ForecastRejectedMail;
+use App\Mail\ForecastRequestApprovedMail;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
@@ -229,9 +230,9 @@ class ForecastApprovalService
         $salesManager = $this->findSalesManagerForClient((int) $changeRequest->idClient);
         $clientEmails = $this->getClientEmails((int) $changeRequest->idClient);
 
-        // Email TO: correos del cliente (distribuidor) | BCC: SE + SM + FORECAST ADMIN
+        // Email TO: correos del cliente (distribuidor) | BCC: SM + FORECAST ADMIN
+        // (el submitter recibe su propio correo dedicado, ver ForecastRequestApprovedMail más abajo)
         $bcc = array_values(array_filter([
-            (string) ($submitter?->email ?? ''),
             (string) ($salesManager?->email ?? ''),
             (string) ($forecastAdmin?->email ?? ''),
         ]));
@@ -246,6 +247,18 @@ class ForecastApprovalService
             proposedAmount: (string) $changeRequest->proposedAmount,
             previousAmount: (string) $changeRequest->previousAmount,
         ), $clientEmails, bcc: $bcc);
+
+        // Email dedicado al creador: "tu solicitud fue aprobada" (CC FORECAST ADMIN)
+        $this->sendEmail(new ForecastRequestApprovedMail(
+            submitterName:  (string) ($submitter?->fullName ?? ''),
+            approverName:   (string) $actor->fullName,
+            clientId:       (int) $changeRequest->idClient,
+            clientName:     $clientName,
+            month:          (int) $changeRequest->month,
+            year:           (int) $changeRequest->year,
+            proposedAmount: (string) $changeRequest->proposedAmount,
+            previousAmount: (string) $changeRequest->previousAmount,
+        ), (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'message' => 'Monto aprobado y aplicado al forecast'];
     }
