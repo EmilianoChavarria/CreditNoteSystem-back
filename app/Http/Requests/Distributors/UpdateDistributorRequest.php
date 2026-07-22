@@ -14,11 +14,13 @@ class UpdateDistributorRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'businessName' => ['sometimes', 'required', 'string', 'max:255'],
-            'taxId'        => ['sometimes', 'required', 'string', 'max:20'],
-            'countrycode'  => ['sometimes', 'required', 'string', 'max:5'],
-            'address'      => ['sometimes', 'required', 'string'],
-            'emails'       => ['sometimes', 'required', 'string'],
+            'businessName'    => ['sometimes', 'required', 'string', 'max:255'],
+            'taxId'           => ['sometimes', 'required', 'string', 'max:20'],
+            'countrycode'     => ['sometimes', 'required', 'string', 'max:5'],
+            'address'         => ['sometimes', 'required', 'string'],
+            'emails'          => ['sometimes', 'required', 'string'],
+            'salesEngineerId' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
+            'salesManagerId'  => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
         ];
     }
 

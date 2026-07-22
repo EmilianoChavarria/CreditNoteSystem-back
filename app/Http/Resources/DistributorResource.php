@@ -15,8 +15,12 @@ class DistributorResource extends JsonResource
             'taxId'        => $this->taxId,
             'address'      => $this->address,
             'emails'       => $this->emails,
-            'clientNumber' => $this->clientNumber,
-            'countrycode'  => $this->countrycode,
+            'clientNumber'      => $this->clientNumber,
+            'countrycode'       => $this->countrycode,
+            'salesEngineerId'   => $this->salesEngineerId,
+            'salesEngineerName' => $this->whenLoaded('salesEngineer', fn () => $this->salesEngineer?->fullName),
+            'salesManagerId'    => $this->salesManagerId,
+            'salesManagerName'  => $this->whenLoaded('salesManager', fn () => $this->salesManager?->fullName),
         ];
     }
 }

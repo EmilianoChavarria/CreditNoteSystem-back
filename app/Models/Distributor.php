@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Distributor extends Model
 {
@@ -17,6 +19,23 @@ class Distributor extends Model
         'address',
         'emails',
         'clientNumber',
-        'countrycode'
+        'countrycode',
+        'salesEngineerId',
+        'salesManagerId',
     ];
+
+    public function forecasts(): HasMany
+    {
+        return $this->hasMany(DistributorForecast::class, 'distributorId');
+    }
+
+    public function salesEngineer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'salesEngineerId');
+    }
+
+    public function salesManager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'salesManagerId');
+    }
 }
