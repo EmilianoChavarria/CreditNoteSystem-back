@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesAuthenticatedUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastChangeRequest;
-use App\Models\User;
 use App\Services\ForecastApprovalService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 
 class ForecastApprovalController extends Controller
 {
+    use ResolvesAuthenticatedUser;
+
     public function __construct(
         private readonly ForecastApprovalService $approvalService
     ) {
@@ -123,16 +125,5 @@ class ForecastApprovalController extends Controller
         }
 
         return response()->json(ApiResponse::success($result['message']));
-    }
-
-    private function resolveAuthenticatedUser(Request $request): ?User
-    {
-        $authUser = $request->attributes->get('authUser');
-
-        if (!$authUser || !isset($authUser->id)) {
-            return null;
-        }
-
-        return User::with('role')->find((int) $authUser->id);
     }
 }
