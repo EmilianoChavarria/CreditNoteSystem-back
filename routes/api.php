@@ -33,4 +33,5 @@ require __DIR__.'/api/clientGroups.php';
 require __DIR__.'/api/forecastApproval.php';
 require __DIR__.'/api/salesEngineerAssignment.php';
 require __DIR__.'/api/distributors.php';
+require __DIR__.'/api/distributorForecast.php';
 require __DIR__.'/api/products.php';
