@@ -43,6 +43,24 @@ class UserService
             ->get();
     }
 
+    public function getSalesManagers(): Collection
+    {
+        return User::with('role')
+            ->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->where('roleName', 'SALES ENGINEER / MANAGER'))
+            ->orderBy('fullName')
+            ->get();
+    }
+
+    public function getSalesEngineers(): Collection
+    {
+        return User::with('role')
+            ->where('isActive', '1')
+            ->whereHas('role', fn($q) => $q->where('roleName', 'SALES ENGINEER'))
+            ->orderBy('fullName')
+            ->get();
+    }
+
     public function getAllActive(): Collection
     {
         return User::with('role')
