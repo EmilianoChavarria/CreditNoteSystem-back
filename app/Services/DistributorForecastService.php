@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DistributorForecast;
+use App\Models\DistributorForecastChangeRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -10,17 +11,48 @@ class DistributorForecastService
 {
     public function getByDistributor(int $distributorId, int $year): Collection
     {
-        return DistributorForecast::where('distributorId', $distributorId)
+        $forecast = DistributorForecast::where('distributorId', $distributorId)
             ->where('year', $year)
-            ->orderBy('month')
             ->get(['month', 'forecast', 'sales'])
-            ->map(fn($row) => [
-                'month'        => $row->month,
-                'forecast'     => $row->forecast,
-                'sales'        => $row->sales,
-                'modification' => null,
-            ])
-            ->values();
+            ->keyBy('month');
+
+        $modifications = $this->fetchModifications($distributorId, $year);
+
+        $months = $forecast->keys()
+            ->merge($modifications->keys())
+            ->unique()->sort()->values();
+
+        return $months->map(fn($month) => $this->buildMonthEntry($month, $forecast, $modifications))->values();
+    }
+
+    /** Retorna la modificación más reciente (pending o approved) por mes. */
+    private function fetchModifications(int $distributorId, int $year): Collection
+    {
+        return DistributorForecastChangeRequest::where('distributorId', $distributorId)
+            ->where('year', $year)
+            ->whereIn('status', ['pending', 'approved'])
+            ->orderBy('createdAt')
+            ->get(['id', 'month', 'proposedForecast', 'status', 'currentStep', 'createdAt'])
+            ->keyBy('month');
+    }
+
+    private function buildMonthEntry(int $month, Collection $forecast, Collection $modifications): array
+    {
+        $f = $forecast->get($month);
+        $m = $modifications->get($month);
+
+        return [
+            'month'        => $month,
+            'forecast'     => $f?->forecast,
+            'sales'        => $f?->sales,
+            'modification' => $m ? [
+                'id'               => $m->id,
+                'proposedForecast' => $m->proposedForecast,
+                'status'           => $m->status,
+                'currentStep'      => $m->currentStep,
+                'submittedAt'      => $m->createdAt,
+            ] : null,
+        ];
     }
 
     public function upsertMonths(int $distributorId, int $year, array $months): Collection

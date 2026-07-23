@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\SocketMessageSent;
 use App\Models\Batch;
+use App\Models\DistributorForecastChangeRequest;
 use App\Models\ForecastChangeRequest;
 use App\Models\Notification as NotificationModel;
 use App\Models\Request as RequestModel;
@@ -272,6 +273,62 @@ class NotificationService
             relatedId: (int) $changeRequest->id,
             title: 'Tu solicitud de cambio fue rechazada',
             message: "{$rejector->fullName} rechazó el cambio de monto para el mes {$changeRequest->month}/{$changeRequest->year} — Cliente #{$changeRequest->idClient}{$client}.",
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Distributor forecast approval notifications
+    // -------------------------------------------------------------------------
+
+    public function notifyDistributorForecastPendingApproval(DistributorForecastChangeRequest $changeRequest, string $distributorName = ''): void
+    {
+        $distributor = $distributorName ? " {$distributorName}" : '';
+
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->approverUserId,
+            type: 'distributor_forecast_pending_approval',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tienes un forecast de distribuidor pendiente por aprobar',
+            message: "Se propuso un cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}. Monto propuesto: \${$changeRequest->proposedForecast}.",
+        );
+    }
+
+    public function notifyDistributorForecastStepApproved(DistributorForecastChangeRequest $changeRequest, User $approver, string $distributorName = ''): void
+    {
+        $distributor = $distributorName ? " ({$distributorName})" : '';
+
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->submittedByUserId,
+            type: 'distributor_forecast_step_approved',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tu solicitud avanzó en el flujo de aprobación',
+            message: "{$approver->fullName} aprobó el cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}. Pendiente de aprobación final por GENERAL MANAGER.",
+        );
+    }
+
+    public function notifyDistributorForecastApproved(DistributorForecastChangeRequest $changeRequest, User $approver, string $distributorName = ''): void
+    {
+        $distributor = $distributorName ? " ({$distributorName})" : '';
+
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->submittedByUserId,
+            type: 'distributor_forecast_approved',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tu solicitud de cambio fue aprobada',
+            message: "{$approver->fullName} aprobó el objetivo de \${$changeRequest->proposedForecast} para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}. El nuevo objetivo de ventas ha sido confirmado.",
+        );
+    }
+
+    public function notifyDistributorForecastRejected(DistributorForecastChangeRequest $changeRequest, User $rejector, string $distributorName = ''): void
+    {
+        $distributor = $distributorName ? " ({$distributorName})" : '';
+
+        $this->createAndBroadcast(
+            userId: (int) $changeRequest->submittedByUserId,
+            type: 'distributor_forecast_rejected',
+            relatedId: (int) $changeRequest->id,
+            title: 'Tu solicitud de cambio fue rechazada',
+            message: "{$rejector->fullName} rechazó el cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}.",
         );
     }
 
