@@ -1,0 +1,4 @@
+clientNumber,businessName,taxId,address,emails,countrycode,salesEngineer,salesManager
+DILCO,DILCO,XAXX010101000,Calle Falsa 123 Guatemala,contacto@dilco.com,GT,FRANCISCO MORENO,ARTURO CANO
+DIST-CR-01,Distribuidora Costa Rica,XAXX010101001,Avenida Central 45 San Jose,ventas@distcr.com,CRI,FRANCISCO MORENO,ARTURO CANO
+DIST-PA-02,Panama Trading SA,XAXX010101002,"Calle 50, Torre B Panama",info@panamatrading.com,PAN,,

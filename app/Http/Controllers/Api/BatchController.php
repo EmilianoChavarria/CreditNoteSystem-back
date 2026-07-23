@@ -59,6 +59,27 @@ class BatchController extends Controller
         return response()->json(ApiResponse::success('Cargas de clasificación de productos', $batches));
     }
 
+    public function distributorBatches(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $perPage = max(1, min(200, (int) $request->query('perPage', 15)));
+
+        $batches = Batch::query()
+            ->where('userId', (int) $authUser->id)
+            ->where('batchType', 'distributors')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+
+        $batches->setCollection(BatchResource::collection($batches->getCollection())->collection);
+
+        return response()->json(ApiResponse::success('Cargas de distribuidores', $batches));
+    }
+
     public function store(StoreBatchRequest $request, BatchService $batchService)
     {
         try {

@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Contracts\BatchTypeHandler;
 use App\Services\Batches\Handlers\CreditsDataBatchHandler;
+use App\Services\Batches\Handlers\DistributorsBatchHandler;
 use App\Services\Batches\Handlers\ForecastBatchHandler;
 use App\Services\Batches\Handlers\NewRequestBatchHandler;
 use App\Services\Batches\Handlers\OrderNumbersBatchHandler;
@@ -47,6 +48,7 @@ class BatchService
         UsersBatchHandler $usersBatchHandler,
         ForecastBatchHandler $forecastBatchHandler,
         ProductClassificationBatchHandler $productClassificationBatchHandler,
+        DistributorsBatchHandler $distributorsBatchHandler,
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService $emailSender,
     ) {
@@ -59,6 +61,7 @@ class BatchService
             $usersBatchHandler,
             $forecastBatchHandler,
             $productClassificationBatchHandler,
+            $distributorsBatchHandler,
         ];
 
         foreach ($allHandlers as $handler) {
