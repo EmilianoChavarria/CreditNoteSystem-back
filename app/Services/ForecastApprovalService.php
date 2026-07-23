@@ -25,6 +25,7 @@ class ForecastApprovalService
     public function __construct(
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService  $emailSender,
+        private readonly ForecastRoleService $roleService,
     ) {
     }
 
@@ -50,7 +51,7 @@ class ForecastApprovalService
             ->value('amount') ?? 0;
 
         // FORECAST ADMIN: aprobación directa, sin flujo de aprobación
-        if ($this->isForecastAdmin($actor)) {
+        if ($this->roleService->isForecastAdmin($actor)) {
             $changeRequest = null;
 
             DB::transaction(function () use ($actor, $idClient, $year, $month, $amount, $previousAmount, &$changeRequest): void {
@@ -83,11 +84,11 @@ class ForecastApprovalService
             return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
         }
 
-        $isSalesManager = $this->isSalesEngineerManager($actor);
+        $isSalesManager = $this->roleService->isSalesEngineerManager($actor);
 
         if ($isSalesManager) {
             $step     = 'general_manager';
-            $approver = $this->findGeneralManager();
+            $approver = $this->roleService->findGeneralManager();
         } else {
             $step     = 'sales_manager';
             $approver = $this->findSalesManagerForClient($idClient);
@@ -123,7 +124,7 @@ class ForecastApprovalService
         });
 
         $clientName   = $this->getClientName($idClient);
-        $forecastAdmin = $this->findForecastAdmin();
+        $forecastAdmin = $this->roleService->findForecastAdmin();
 
         $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
 
@@ -159,11 +160,11 @@ class ForecastApprovalService
         }
 
         $clientName    = $this->getClientName((int) $changeRequest->idClient);
-        $forecastAdmin = $this->findForecastAdmin();
+        $forecastAdmin = $this->roleService->findForecastAdmin();
         $submitter     = User::find((int) $changeRequest->submittedByUserId);
 
         if ($changeRequest->currentStep === 'sales_manager') {
-            $generalManager = $this->findGeneralManager();
+            $generalManager = $this->roleService->findGeneralManager();
 
             if (!$generalManager) {
                 return ['success' => false, 'code' => 422, 'message' => 'No se encontró un GENERAL MANAGER disponible'];
@@ -292,7 +293,7 @@ class ForecastApprovalService
         });
 
         $clientName    = $this->getClientName((int) $changeRequest->idClient);
-        $forecastAdmin = $this->findForecastAdmin();
+        $forecastAdmin = $this->roleService->findForecastAdmin();
         $submitter     = User::find((int) $changeRequest->submittedByUserId);
 
         $this->notificationService->notifyForecastRejected($changeRequest, $actor, $clientName);
@@ -389,52 +390,22 @@ class ForecastApprovalService
 
     public function canSubmitChange(User $user): bool
     {
-        $role = $this->normalizeRole($user);
-
-        return $role === 'SALES ENGINEER'
-            || (str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER'))
-            || $this->isForecastAdmin($user);
+        return $this->roleService->canSubmitChange($user);
     }
 
     public function canApprove(User $user): bool
     {
-        $role = $this->normalizeRole($user);
-
-        return (str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER'))
-            || $role === 'GENERAL MANAGER';
+        return $this->roleService->canApprove($user);
     }
 
     public function isForecastAdmin(User $user): bool
     {
-        return str_contains($this->normalizeRole($user), 'FORECAST ADMIN');
+        return $this->roleService->isForecastAdmin($user);
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
-
-    private function isSalesEngineerManager(User $user): bool
-    {
-        $role = $this->normalizeRole($user);
-
-        return str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER');
-    }
-
-    private function findGeneralManager(): ?User
-    {
-        return User::whereHas('role', fn($q) => $q->whereRaw('UPPER(roleName) = ?', ['GENERAL MANAGER']))
-            ->where('isActive', true)
-            ->whereNull('deletedAt')
-            ->first();
-    }
-
-    private function findForecastAdmin(): ?User
-    {
-        return User::whereHas('role', fn($q) => $q->whereRaw('UPPER(roleName) LIKE ?', ['%FORECAST ADMIN%']))
-            ->where('isActive', true)
-            ->whereNull('deletedAt')
-            ->first();
-    }
 
     private function findSalesManagerForClient(int $idClient): ?User
     {
@@ -494,11 +465,6 @@ class ForecastApprovalService
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    private function normalizeRole(User $user): string
-    {
-        return mb_strtoupper(trim((string) optional($user->role)->roleName));
     }
 
     private function formatRequest(ForecastChangeRequest $r): array
