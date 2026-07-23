@@ -237,31 +237,52 @@ class DataExportService
                 'Amount',
                 'Total Amount',
                 'Currency',
+                'Warehouse IVA',
+                'Warehouse IVA Amount',
+                'Replenishment IVA',
+                'Replenishment IVA Amount',
                 'Last Approval Date',
                 'Status',
                 'Comments',
             ],
-            'rows' => $requests->map(fn (RequestModel $request) => [
-                $request->requestNumber,
-                $request->requestType?->name ?? $request->requestType?->typeName,
-                $request->customerId,
-                $customerNames[(string) $request->customerId] ?? null,
-                $request->user?->fullName,
-                $request->workflowCurrentStep?->assignedUser?->fullName,
-                $request->workflowCurrentStep?->assignedRole?->roleName,
-                $request->reason?->name,
-                $request->classification?->name,
-                $request->invoiceNumber,
-                $request->amount,
-                $request->totalAmount,
-                $request->currency,
-                $this->formatLastApproval($lastApprovals[$request->id] ?? null),
-                $request->status === 'draft' && $request->deletedAt !== null
-                    ? 'draft (eliminado)'
-                    : $request->status,
-                $request->comments,
-            ])->values()->all(),
+            'rows' => $requests->map(function (RequestModel $request) use ($customerNames, $lastApprovals) {
+                $isMaterialReturn = (int) $request->requestTypeId === 6;
+
+                return [
+                    $request->requestNumber,
+                    $request->requestType?->name ?? $request->requestType?->typeName,
+                    $request->customerId,
+                    $customerNames[(string) $request->customerId] ?? null,
+                    $request->user?->fullName,
+                    $request->workflowCurrentStep?->assignedUser?->fullName,
+                    $request->workflowCurrentStep?->assignedRole?->roleName,
+                    $request->reason?->name,
+                    $request->classification?->name,
+                    $request->invoiceNumber,
+                    $request->amount,
+                    $request->totalAmount,
+                    $request->currency,
+                    $isMaterialReturn ? ($request->hasWarehouseIva ? 'true' : 'false') : null,
+                    $isMaterialReturn ? $this->calculateIvaAmount($request->hasWarehouseIva, $request->warehouseAmount, $request->warehouseTotal) : null,
+                    $isMaterialReturn ? ($request->hasReplenishmentIva ? 'true' : 'false') : null,
+                    $isMaterialReturn ? $this->calculateIvaAmount($request->hasReplenishmentIva, $request->replenishmentAmount, $request->replenishmentTotal) : null,
+                    $this->formatLastApproval($lastApprovals[$request->id] ?? null),
+                    $request->status === 'draft' && $request->deletedAt !== null
+                        ? 'draft (eliminado)'
+                        : $request->status,
+                    $request->comments,
+                ];
+            })->values()->all(),
         ];
+    }
+
+    private function calculateIvaAmount(?bool $hasIva, mixed $amount, mixed $total): ?float
+    {
+        if (!$hasIva) {
+            return 0.0;
+        }
+
+        return round((float) ($total ?? 0) - (float) ($amount ?? 0), 2);
     }
 
     /**
