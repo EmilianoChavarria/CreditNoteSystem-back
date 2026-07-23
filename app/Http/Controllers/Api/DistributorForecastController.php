@@ -32,6 +32,13 @@ class DistributorForecastController extends Controller
         return response()->json(ApiResponse::success('Forecast de distribuidor obtenido exitosamente', $rows));
     }
 
+    public function indexBySalesEngineer(int $salesEngineerId, int $year)
+    {
+        $result = $this->forecastService->getBySalesEngineer($salesEngineerId, $year);
+
+        return response()->json(ApiResponse::success('Distribuidores con forecast', $result));
+    }
+
     public function store(StoreDistributorForecastRequest $request, int $distributorId)
     {
         $actor = $this->resolveAuthenticatedUser($request);

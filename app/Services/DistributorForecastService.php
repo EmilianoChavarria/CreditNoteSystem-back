@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Distributor;
 use App\Models\DistributorForecast;
 use App\Models\DistributorForecastChangeRequest;
 use Illuminate\Support\Carbon;
@@ -16,7 +17,7 @@ class DistributorForecastService
             ->get(['month', 'forecast', 'sales'])
             ->keyBy('month');
 
-        $modifications = $this->fetchModifications($distributorId, $year);
+        $modifications = $this->fetchModifications([$distributorId], $year)->get((string) $distributorId, collect());
 
         $months = $forecast->keys()
             ->merge($modifications->keys())
@@ -25,15 +26,59 @@ class DistributorForecastService
         return $months->map(fn($month) => $this->buildMonthEntry($month, $forecast, $modifications))->values();
     }
 
-    /** Retorna la modificación más reciente (pending o approved) por mes. */
-    private function fetchModifications(int $distributorId, int $year): Collection
+    /**
+     * Distribuidores asignados a un sales engineer, en el mismo formato que
+     * ForecastService::getBySalesEngineer() (isGroup/idCliente/razonSocial/year/months)
+     * para que el frontend reutilice la misma tabla de clientes extranjeros.
+     */
+    public function getBySalesEngineer(int $salesEngineerId, int $year): Collection
     {
-        return DistributorForecastChangeRequest::where('distributorId', $distributorId)
+        $distributors = Distributor::where('salesEngineerId', $salesEngineerId)
+            ->orderBy('businessName')
+            ->get(['id', 'businessName']);
+
+        if ($distributors->isEmpty()) {
+            return collect();
+        }
+
+        $distributorIds = $distributors->pluck('id')->all();
+
+        $forecastMap = DistributorForecast::whereIn('distributorId', $distributorIds)
+            ->where('year', $year)
+            ->get(['distributorId', 'month', 'forecast', 'sales'])
+            ->groupBy(fn($row) => (string) $row->distributorId)
+            ->map(fn($rows) => $rows->keyBy('month'));
+
+        $modificationMap = $this->fetchModifications($distributorIds, $year);
+
+        return $distributors->map(function ($distributor) use ($year, $forecastMap, $modificationMap) {
+            $forecast      = $forecastMap->get((string) $distributor->id, collect());
+            $modifications = $modificationMap->get((string) $distributor->id, collect());
+
+            $months = $forecast->keys()
+                ->merge($modifications->keys())
+                ->unique()->sort()->values();
+
+            return [
+                'isGroup'     => false,
+                'idCliente'   => $distributor->id,
+                'razonSocial' => $distributor->businessName,
+                'year'        => $year,
+                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications))->values(),
+            ];
+        })->values();
+    }
+
+    /** Retorna la modificación pending/approved más reciente por [distributorId][month]. */
+    private function fetchModifications(array $distributorIds, int $year): Collection
+    {
+        return DistributorForecastChangeRequest::whereIn('distributorId', $distributorIds)
             ->where('year', $year)
             ->whereIn('status', ['pending', 'approved'])
             ->orderBy('createdAt')
-            ->get(['id', 'month', 'proposedForecast', 'status', 'currentStep', 'createdAt'])
-            ->keyBy('month');
+            ->get(['id', 'distributorId', 'month', 'proposedForecast', 'status', 'currentStep', 'createdAt'])
+            ->groupBy(fn($row) => (string) $row->distributorId)
+            ->map(fn($rows) => $rows->keyBy('month'));
     }
 
     private function buildMonthEntry(int $month, Collection $forecast, Collection $modifications): array
