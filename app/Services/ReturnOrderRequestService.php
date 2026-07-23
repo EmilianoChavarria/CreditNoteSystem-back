@@ -140,15 +140,18 @@ class ReturnOrderRequestService
     }
 
     /**
-     * Extrae el part number de la descripcion del XML.
-     * Formato esperado: ^PARTNUMBER;^...
+     * Extrae el part number de la descripcion. Dos formatos posibles:
+     * - Con "^": el part number es todo lo que viene después del primer "^"
+     *   (el ";" final, si lo trae, se queda tal cual). Ej: "510004-K^510004;" -> "510004;".
+     * - Sin "^": la descripcion ya viene formateada tal cual (ej: "56425-20024;"),
+     *   se retorna sin modificar.
      */
     public static function extractPartNumber(string $descripcion): ?string
     {
-        if (preg_match('/^\^([^;]+);/', $descripcion, $matches)) {
+        if (preg_match('/\^(.+)$/', $descripcion, $matches) === 1) {
             return $matches[1];
         }
 
-        return null;
+        return $descripcion !== '' ? $descripcion : null;
     }
 }

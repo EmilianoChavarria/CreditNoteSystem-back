@@ -48,6 +48,7 @@ class RequestCrudService
                 'hasIva' => $data['hasIva'] ?? ($data['iva'] ?? null),
                 'totalAmount' => $data['totalAmount'] ?? null,
                 'comments' => $data['comments'] ?? null,
+                'reservedOnly' => false,
             ];
 
             $createdRequest = null;
@@ -99,7 +100,10 @@ class RequestCrudService
             ->where('requestId', $requestId)
             ->where('status', 'pending')
             ->where('assignedRoleId', (int) $authUser->roleId)
-            ->whereHas('assignedRole', fn ($q) => $q->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT']))
+            ->whereHas('assignedRole', fn ($q) => $q->where(function ($roleQuery) {
+                $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                    ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+            }))
             ->exists();
 
         if (!$isAdmin && !$isCreator && !$isRoleAssigned) {
@@ -195,6 +199,7 @@ class RequestCrudService
             'warehouseTotal' => $data['warehouseTotal'] ?? null,
             'status' => 'draft',
             'userId' => $authUser->id,
+            'reservedOnly' => false,
         ];
 
         $draftId = $data['id'] ?? null;
@@ -344,9 +349,9 @@ class RequestCrudService
             ->get();
     }
 
-    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null)
+    public function getByRequestType(int $requestTypeId, int $perPage, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null, bool $includeDrafts = false)
     {
-        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId, $dateFrom, $dateTo)
+        $paginator = $this->buildByRequestTypeQuery($requestTypeId, $search, $roleName, $requesterId, $dateFrom, $dateTo, $includeDrafts)
             ->paginate($perPage);
         $this->enrichWithRazonSocial($paginator);
 
@@ -444,7 +449,10 @@ class RequestCrudService
                             ->orWhere(function ($roleQ) use ($authUser) {
                                 $roleQ->where('assignedRoleId', (int) $authUser->roleId)
                                     ->whereHas('assignedRole', function ($r) {
-                                        $r->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT']);
+                                        $r->where(function ($roleQuery) {
+                                            $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                                                ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+                                        });
                                     });
                             });
                     });
@@ -491,7 +499,7 @@ class RequestCrudService
         return $query;
     }
 
-    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null)
+    private function buildByRequestTypeQuery(int $requestTypeId, string $search, string $roleName = '', ?int $requesterId = null, ?string $dateFrom = null, ?string $dateTo = null, bool $includeDrafts = false)
     {
         $shouldFilterByRole = $roleName !== '' && strtolower($roleName) !== 'all';
 
@@ -505,7 +513,12 @@ class RequestCrudService
             'workflowCurrentStep.assignedUser',
         ])
             ->where('requestTypeId', $requestTypeId)
-            ->where('status', '!=', 'draft')
+            ->when(!$includeDrafts, fn ($q) => $q->where('status', '!=', 'draft'))
+            // Folios reservados y luego liberados (releaseReservation) no son
+            // solicitudes reales — no deben aparecer ni para admin.
+            ->where(function ($q) {
+                $q->where('reservedOnly', false)->orWhereNull('deletedAt');
+            })
             ->when($shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', function ($roleQuery) use ($roleName) {
                     $roleQuery->where('roleName', $roleName);

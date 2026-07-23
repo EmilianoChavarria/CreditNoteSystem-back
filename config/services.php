@@ -47,4 +47,6 @@ return [
         'nombre_sucursal'  => env('FESA_NOMBRE_SUCURSAL', 'MATRIZ'),
     ],
 
+    'deploy_token' => env('DEPLOY_TOKEN'),
+
 ];

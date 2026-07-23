@@ -112,7 +112,7 @@ class SyncForecastSales extends Command
                     ];
                 })->all();
 
-                // Upsert on (receptorId, folio) — no DELETE needed
+                // Upsert on (receptorId, folio)
                 // Captures status changes (e.g. Emitido → Cancelado) on next sync
                 ForecastComprobante::upsert(
                     $records,

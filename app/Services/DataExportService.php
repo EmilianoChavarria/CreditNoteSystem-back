@@ -208,7 +208,8 @@ class DataExportService
             })
             ->when(!$onlyMyApprovals && $shouldFilterByRole, function ($query) use ($roleName) {
                 $query->whereHas('workflowCurrentStep.assignedRole', fn ($roleQuery) => $roleQuery->where('roleName', $roleName));
-            });
+            })
+            ->when(!$isAdmin, fn ($query) => $query->where('status', '!=', 'draft'));
 
         if ($search !== '') {
             $this->applyRequestSearchFilter($query, $search);
@@ -217,6 +218,7 @@ class DataExportService
         $requests = $query->orderBy('id')->get();
 
         $customerNames = $this->resolveCustomerNames($requests->pluck('customerId')->filter()->unique()->values()->all());
+        $lastApprovals = $this->resolveLastApprovals($requests->pluck('id')->all());
 
         return [
             'filename' => ($onlyMyApprovals ? 'my_approvals_' : 'requests_') . now()->format('Ymd_His') . '.xls',
@@ -235,27 +237,106 @@ class DataExportService
                 'Amount',
                 'Total Amount',
                 'Currency',
+                'Warehouse IVA',
+                'Warehouse IVA Amount',
+                'Replenishment IVA',
+                'Replenishment IVA Amount',
+                'Last Approval Date',
                 'Status',
                 'Comments',
             ],
-            'rows' => $requests->map(fn (RequestModel $request) => [
-                $request->requestNumber,
-                $request->requestType?->name ?? $request->requestType?->typeName,
-                $request->customerId,
-                $customerNames[(string) $request->customerId] ?? null,
-                $request->user?->fullName,
-                $request->workflowCurrentStep?->assignedUser?->fullName,
-                $request->workflowCurrentStep?->assignedRole?->roleName,
-                $request->reason?->name,
-                $request->classification?->name,
-                $request->invoiceNumber,
-                $request->amount,
-                $request->totalAmount,
-                $request->currency,
-                $request->status,
-                $request->comments,
-            ])->values()->all(),
+            'rows' => $requests->map(function (RequestModel $request) use ($customerNames, $lastApprovals) {
+                $isMaterialReturn = (int) $request->requestTypeId === 6;
+
+                return [
+                    $request->requestNumber,
+                    $request->requestType?->name ?? $request->requestType?->typeName,
+                    $request->customerId,
+                    $customerNames[(string) $request->customerId] ?? null,
+                    $request->user?->fullName,
+                    $request->workflowCurrentStep?->assignedUser?->fullName,
+                    $request->workflowCurrentStep?->assignedRole?->roleName,
+                    $request->reason?->name,
+                    $request->classification?->name,
+                    $request->invoiceNumber,
+                    $request->amount,
+                    $request->totalAmount,
+                    $request->currency,
+                    $isMaterialReturn ? ($request->hasWarehouseIva ? 'true' : 'false') : null,
+                    $isMaterialReturn ? $this->calculateIvaAmount($request->hasWarehouseIva, $request->warehouseAmount, $request->warehouseTotal) : null,
+                    $isMaterialReturn ? ($request->hasReplenishmentIva ? 'true' : 'false') : null,
+                    $isMaterialReturn ? $this->calculateIvaAmount($request->hasReplenishmentIva, $request->replenishmentAmount, $request->replenishmentTotal) : null,
+                    $this->formatLastApproval($lastApprovals[$request->id] ?? null),
+                    $request->status === 'draft' && $request->deletedAt !== null
+                        ? 'draft (eliminado)'
+                        : $request->status,
+                    $request->comments,
+                ];
+            })->values()->all(),
         ];
+    }
+
+    private function calculateIvaAmount(?bool $hasIva, mixed $amount, mixed $total): ?float
+    {
+        if (!$hasIva) {
+            return 0.0;
+        }
+
+        return round((float) ($total ?? 0) - (float) ($amount ?? 0), 2);
+    }
+
+    /**
+     * @param array{date: string, userName: string|null}|null $lastApproval
+     */
+    private function formatLastApproval(?array $lastApproval): ?string
+    {
+        if ($lastApproval === null) {
+            return null;
+        }
+
+        if ($lastApproval['userName'] === null) {
+            return $lastApproval['date'];
+        }
+
+        return $lastApproval['userName'] . '  ' . $lastApproval['date'];
+    }
+
+    /**
+     * @param array<int, int> $requestIds
+     * @return array<int, array{date: string, userName: string|null}>
+     */
+    private function resolveLastApprovals(array $requestIds): array
+    {
+        if (empty($requestIds)) {
+            return [];
+        }
+
+        $rows = DB::table('workflowrequesthistory')
+            ->select('requestId', 'createdAt', 'actionUserId')
+            ->where('actionType', 'approved')
+            ->whereIn('requestId', $requestIds)
+            ->orderBy('createdAt', 'desc')
+            ->get();
+
+        $latestByRequest = [];
+        foreach ($rows as $row) {
+            if (!isset($latestByRequest[$row->requestId])) {
+                $latestByRequest[$row->requestId] = $row;
+            }
+        }
+
+        $userIds = collect($latestByRequest)->pluck('actionUserId')->filter()->unique()->values()->all();
+        $userNames = empty($userIds) ? [] : User::whereIn('id', $userIds)->pluck('fullName', 'id')->all();
+
+        $result = [];
+        foreach ($latestByRequest as $requestId => $row) {
+            $result[$requestId] = [
+                'date' => $row->createdAt,
+                'userName' => $userNames[$row->actionUserId] ?? null,
+            ];
+        }
+
+        return $result;
     }
 
     /**

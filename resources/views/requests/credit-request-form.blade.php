@@ -221,18 +221,19 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
     @php $items = $request->returnOrderRequest?->items ?? collect(); @endphp
     @forelse($items as $item)
     @php
-    var_dump($item);
       $roItem = $item->returnOrderItem;
       $qty    = $roItem?->requestedQuantity;
       $price  = $roItem?->valorUnitario;
       $total  = ($qty !== null && $price !== null) ? $qty * $price : null;
       $rejection = $item->warehouseReasonForRejection ?? $item->replenishmentReasonForRejection ?? '';
+      $partNumber = $item->partNumber
+        ?: \App\Services\ReturnOrderRequestService::extractPartNumber($roItem?->descripcion ?? '');
     @endphp
     <tr>
       <td class="center">{{ $qty !== null ? number_format((float)$qty, 2) : '' }}</td>
       <td class="center">{{ $item->warehouseReceived !== null ? number_format((float)$item->warehouseReceived, 2) : '' }}</td>
       <td class="center">{{ $item->warehouseAccepted !== null ? number_format((float)$item->warehouseAccepted, 2) : '' }}</td>
-      <td>{{ $item->descripcion ?? '' }}</td>
+      <td>{{ $partNumber ?? '' }}</td>
       <td>{{ $item->sapId ?? '' }}</td>
       <td class="right">{{ $price !== null ? number_format((float)$price, 2) : '' }}</td>
       <td class="right">{{ $total !== null ? number_format($total, 2) : '' }}</td>

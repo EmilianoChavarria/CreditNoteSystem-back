@@ -68,6 +68,32 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Usuarios por rol obtenidos correctamente', $data));
     }
 
+    public function salesManagers()
+    {
+        $users = $this->userService->getSalesManagers();
+
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('Sales managers obtenidos correctamente', $data));
+    }
+
+    public function salesEngineers()
+    {
+        $users = $this->userService->getSalesEngineers();
+
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('Sales engineers obtenidos correctamente', $data));
+    }
+
     public function me(Request $request)
     {
         $authUser = $request->attributes->get('authUser');

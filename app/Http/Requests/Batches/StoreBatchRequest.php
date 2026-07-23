@@ -27,6 +27,7 @@ class StoreBatchRequest extends FormRequest
                     'uploadSupport',
                     'users',
                     'forecast',
+                    'productClassification',
                 ]),
             ],
             'requestTypeId' => ['nullable', 'integer', 'exists:requesttype,id'],

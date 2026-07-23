@@ -91,6 +91,10 @@ class InvoiceService
             $query->where('fechaEmision', '>=', Carbon::today()->subDays(30)->toDateString());
         }
 
+        if ($chargeType === 'annual') {
+            $query->where('fechaEmision', '>=', Carbon::today()->subMonths(30)->toDateString());
+        }
+
         if ($search !== '') {
             $query->where('folio', 'like', "%{$search}%");
         }

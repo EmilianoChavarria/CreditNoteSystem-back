@@ -28,6 +28,7 @@ use App\Http\Resources\RequestResource;
 use App\Http\Resources\UserResource;
 use App\Models\Request as RequestModel;
 use App\Models\RequestReason;
+use Illuminate\Support\Facades\Log;
 use App\Models\RequestType;
 use App\Models\User;
 use App\Services\RequestAttachmentService;
@@ -35,6 +36,7 @@ use App\Services\RequestCrudService;
 use App\Services\RequestHistoryService;
 use App\Services\RequestNumberService;
 use App\Services\RequestPdfService;
+use App\Services\RequestTypePermissionService;
 use App\Services\RequestWorkflowService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -58,8 +60,37 @@ class RequestController extends Controller
         private readonly CancelMassRequestsAction $cancelMassRequestsAction,
         private readonly SendBackMassRequestsAction $sendBackMassRequestsAction,
         private readonly RequestPdfService $requestPdfService,
+        private readonly RequestTypePermissionService $requestTypePermissionService,
     )
     {
+    }
+
+    private function denyIfCannotCreate(mixed $authUser, int $requestTypeId): ?\Illuminate\Http\JsonResponse
+    {
+        if ($this->isAdminUser($authUser)) {
+            return null;
+        }
+
+        $allowed = $this->requestTypePermissionService->canRoleAccess(
+            (int) $authUser->roleId,
+            $requestTypeId,
+            'create'
+        );
+
+        if ($allowed) {
+            return null;
+        }
+
+        Log::warning('[RequestController] intento de creación sin permiso', [
+            'userId' => $authUser->id ?? null,
+            'roleId' => $authUser->roleId ?? null,
+            'requestTypeId' => $requestTypeId,
+        ]);
+
+        return response()->json(
+            ApiResponse::error('No tienes permisos para crear solicitudes de este tipo', null, 403),
+            403
+        );
     }
 
     public function downloadPdf(int $requestId)
@@ -291,13 +322,16 @@ class RequestController extends Controller
 
     public function getAllByRequestType(Request $request, int $id)
     {
+        $authUser = $request->attributes->get('authUser');
+        $includeDrafts = $authUser ? $this->isAdminUser($authUser) : false;
+
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search = trim((string) $request->query('search', ''));
         $roleName = trim((string) $request->query('roleName', $request->query('role_name', '')));
         $requesterId = $request->filled('requesterId') ? (int) $request->input('requesterId') : null;
         $dateFrom = $request->filled('dateFrom') ? trim((string) $request->input('dateFrom')) : null;
         $dateTo = $request->filled('dateTo') ? trim((string) $request->input('dateTo')) : null;
-        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId, $dateFrom, $dateTo);
+        $requests = $this->requestCrudService->getByRequestType($id, $perPage, $search, $roleName, $requesterId, $dateFrom, $dateTo, $includeDrafts);
         $requests->setCollection(RequestResource::collection($requests->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Requests', $requests));
@@ -331,7 +365,22 @@ class RequestController extends Controller
             );
         }
 
+        if ($denied = $this->denyIfCannotCreate($authUser, $requestTypeId)) {
+            return $denied;
+        }
+
         $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
+
+        Log::info('[getNextRequestNumber] draft reservado', [
+            'userId' => $authUser->id,
+            'roleId' => $authUser->roleId ?? null,
+            'requestTypeId' => $requestTypeId,
+            'requestNumber' => $reserved['requestNumber'],
+            'draftId' => $reserved['draftId'],
+            'ip' => $request->ip(),
+            'referer' => $request->headers->get('referer'),
+            'userAgent' => $request->headers->get('user-agent'),
+        ]);
 
         return response()->json(ApiResponse::success('Next request number', [
             'requestTypeId' => $requestTypeId,
@@ -341,9 +390,40 @@ class RequestController extends Controller
         ], 201), 201);
     }
 
+    /**
+     * Libera una reserva de folio abandonada (usuario salió del formulario sin
+     * guardar). Solo borra la fila si sigue siendo pura reserva (reservedOnly=true)
+     * y es del usuario dueño — así el folio queda disponible para el siguiente.
+     * Aceptado por POST (no DELETE) para poder dispararse vía navigator.sendBeacon
+     * en el evento beforeunload/pagehide del navegador.
+     */
+    public function releaseRequestNumber(Request $request, int $draftId)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $released = $this->requestNumberService->releaseReservation($draftId, (int) $authUser->id);
+
+        Log::info('[releaseRequestNumber] liberación de reserva de folio', [
+            'userId' => $authUser->id,
+            'draftId' => $draftId,
+            'released' => $released,
+        ]);
+
+        return response()->json(ApiResponse::success('Reserva liberada', ['released' => $released]));
+    }
+
     public function createRequest(CreateRequestInput $request)
     {
-        $user    = $request->attributes->get('authUser');
+        $user = $request->attributes->get('authUser');
+
+        if ($denied = $this->denyIfCannotCreate($user, (int) $request->validated('requestTypeId'))) {
+            return $denied;
+        }
+
         $created = $this->requestCrudService->createRequest($request->validated(), $user);
 
         foreach (['uploadSupport', 'sapScreen'] as $fileType) {
@@ -587,6 +667,10 @@ class RequestController extends Controller
     public function saveDraft(SaveDraftRequestInput $request)
     {
         $user = $request->attributes->get('authUser');
+
+        if ($denied = $this->denyIfCannotCreate($user, (int) $request->validated('requestTypeId'))) {
+            return $denied;
+        }
 
         $result = $this->requestCrudService->saveDraft($request->validated(), $user);
 

@@ -10,6 +10,7 @@ use Illuminate\Console\Command;
 class SendPendingApprovalReminders extends Command
 {
     protected $signature = 'reminders:pending-approvals';
+    
     protected $description = 'Send reminder emails to users with pending approval requests';
 
     public function __construct(private readonly EmailSenderService $emailSender)

@@ -7,7 +7,9 @@ use App\Models\ClientGroupMember;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastComprobante;
+use App\Models\ForecastComprobanteProducto;
 use App\Models\ForecastSale;
+use App\Models\ProductClassification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -330,7 +332,7 @@ class ForecastService
         return $client ?? (string) $idClient;
     }
 
-    public function getGroupInvoicesByMonth(int $groupId, int $month, int $year): array
+    public function getGroupInvoicesByMonth(string $groupId, int $month, int $year): array
     {
         $group   = ClientGroup::with('members')->findOrFail($groupId);
         $members = $group->members->unique('clientId')->values();
@@ -357,36 +359,166 @@ class ForecastService
         ];
     }
 
-    public function getInvoicesByMonth(int $idClient, int $month, int $year): Collection
+    public function getInvoicesByMonth(string $idClient, int $month, int $year): Collection
     {
-        $fallbackRate = null;
-
-        return ForecastComprobante::where('receptorId', (string) $idClient)
+        $invoices = ForecastComprobante::where('receptorId', (string) $idClient)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
             ->whereMonth('fechaEmision', $month)
             ->orderBy('fechaEmision')
-            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio'])
-            ->map(function ($invoice) use (&$fallbackRate) {
-                if ($invoice->moneda === 'MXN') {
-                    // Use rate stored at sync time; fall back to current rate for legacy rows
-                    $rate = $invoice->tipoCambio
-                        ? (float) $invoice->tipoCambio
-                        : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
+            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio']);
 
-                    $invoice->originalSubTotal = (float) $invoice->subTotal;
-                    $invoice->originalIva      = (float) $invoice->iva;
-                    $invoice->originalTotal    = (float) $invoice->total;
-                    $invoice->originalMoneda   = 'MXN';
-                    $invoice->tipoCambio       = $rate;
+        if ($invoices->isEmpty()) {
+            return $invoices;
+        }
 
-                    $invoice->subTotal = round($invoice->subTotal / $rate, 2);
-                    $invoice->iva      = round($invoice->iva / $rate, 2);
-                    $invoice->total    = round($invoice->total / $rate, 2);
-                    $invoice->moneda   = 'USD';
-                }
-                return $invoice;
-            });
+        $consideredSubtotalByFolio = $this->consideredSubtotalByFolio(
+            (string) $idClient,
+            $invoices->pluck('folio')->all()
+        );
+
+        $fallbackRate = null;
+
+        return $invoices->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio) {
+            $originalSubTotal = (float) $invoice->subTotal;
+            $originalTotal    = (float) $invoice->total;
+            // Reconstruye subTotal/iva/total desde las líneas de producto (excluyendo No Rodamientos),
+            // prorrateando el IVA con el mismo factor total/subTotal de la factura original.
+            $factor = $originalSubTotal > 0 ? $originalTotal / $originalSubTotal : 1;
+
+            $subTotal = round($consideredSubtotalByFolio->get($invoice->folio, 0.0), 2);
+            $total    = round($subTotal * $factor, 2);
+            $iva      = round($total - $subTotal, 2);
+
+            $invoice->subTotal = $subTotal;
+            $invoice->iva      = $iva;
+            $invoice->total    = $total;
+
+            if ($invoice->moneda === 'MXN') {
+                // Use rate stored at sync time; fall back to current rate for legacy rows
+                $rate = $invoice->tipoCambio
+                    ? (float) $invoice->tipoCambio
+                    : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
+
+                $invoice->originalSubTotal = $invoice->subTotal;
+                $invoice->originalIva      = $invoice->iva;
+                $invoice->originalTotal    = $invoice->total;
+                $invoice->originalMoneda   = 'MXN';
+                $invoice->tipoCambio       = $rate;
+
+                $invoice->subTotal = round($invoice->subTotal / $rate, 2);
+                $invoice->iva      = round($invoice->iva / $rate, 2);
+                $invoice->total    = round($invoice->total / $rate, 2);
+                $invoice->moneda   = 'USD';
+            }
+            return $invoice;
+        });
+    }
+
+    /** [folio => suma de importe de sus líneas, excluyendo productos No Rodamientos] */
+    private function consideredSubtotalByFolio(string $idClient, array $folios): Collection
+    {
+        $products = ForecastComprobanteProducto::where('receptorId', $idClient)
+            ->whereIn('folio', $folios)
+            ->get(['folio', 'noIdentificacion', 'importe']);
+
+        $productIds = $products->map(fn($p) => trim($p->noIdentificacion))->unique()->values()->all();
+
+        $excludedProductIds = ProductClassification::whereIn('idProducto', $productIds)
+            ->where('clasificacion', ProductClassification::NO_RODAMIENTOS)
+            ->pluck('idProducto')
+            ->flip();
+
+        return $products
+            ->reject(fn($p) => isset($excludedProductIds[trim($p->noIdentificacion)]))
+            ->groupBy('folio')
+            ->map(fn($lines) => (float) $lines->sum('importe'));
+    }
+
+    /**
+     * Desglose de productos por factura de un cliente en un mes/año.
+     * Cada línea trae su clasificación (Rodamientos / No Rodamientos / null si no está clasificada);
+     * el `breakdown` de cada factura resta lo marcado como No Rodamientos del total facturado.
+     */
+    public function getInvoiceProductsByMonth(string $idClient, int $month, int $year): Collection
+    {
+        $invoices = ForecastComprobante::where('receptorId', (string) $idClient)
+            ->where('status', 'Emitido')
+            ->whereYear('fechaEmision', $year)
+            ->whereMonth('fechaEmision', $month)
+            ->orderBy('fechaEmision')
+            ->get(['folio', 'subTotal', 'total', 'fechaEmision', 'moneda', 'tipoCambio']);
+
+        if ($invoices->isEmpty()) {
+            return collect();
+        }
+
+        $folios = $invoices->pluck('folio')->all();
+
+        $productsByFolio = ForecastComprobanteProducto::where('receptorId', (string) $idClient)
+            ->whereIn('folio', $folios)
+            ->orderBy('conceptoIndex')
+            ->get(['folio', 'noIdentificacion', 'descripcion', 'cantidad', 'valorUnitario', 'importe'])
+            ->groupBy('folio');
+
+        $productIds = $productsByFolio->flatten()
+            ->map(fn($p) => trim($p->noIdentificacion))
+            ->unique()
+            ->values()
+            ->all();
+
+        $classifications = ProductClassification::whereIn('idProducto', $productIds)
+            ->pluck('clasificacion', 'idProducto');
+
+        $fallbackRate = null;
+
+        return $invoices->map(function ($invoice) use ($productsByFolio, $classifications, &$fallbackRate) {
+            $subTotal = (float) $invoice->subTotal;
+            $total    = (float) $invoice->total;
+            // Las líneas de producto no traen IVA; se prorratea con el mismo factor que fetchSales().
+            $factor   = $subTotal > 0 ? $total / $subTotal : 1;
+
+            $rate = null;
+            if ($invoice->moneda === 'MXN') {
+                $rate = $invoice->tipoCambio
+                    ? (float) $invoice->tipoCambio
+                    : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
+            }
+
+            $lines = $productsByFolio->get($invoice->folio, collect())->map(function ($p) use ($classifications, $factor, $rate) {
+                $clasificacion = $classifications[trim($p->noIdentificacion)] ?? null;
+                $importeConIva = (float) $p->importe * $factor;
+                $importeUsd    = round($rate ? $importeConIva / $rate : $importeConIva, 2);
+
+                return [
+                    'noIdentificacion' => $p->noIdentificacion,
+                    'descripcion'      => $p->descripcion,
+                    'cantidad'         => (float) $p->cantidad,
+                    'valorUnitario'    => (float) $p->valorUnitario,
+                    'importe'          => round((float) $p->importe, 2),
+                    'importeUsd'       => $importeUsd,
+                    'clasificacion'    => $clasificacion,
+                    'excluido'         => $clasificacion === ProductClassification::NO_RODAMIENTOS,
+                ];
+            })->values();
+
+            $totalFacturado     = round($lines->sum('importeUsd'), 2);
+            $totalNoRodamientos = round($lines->where('excluido', true)->sum('importeUsd'), 2);
+            $totalConsiderado   = round($totalFacturado - $totalNoRodamientos, 2);
+
+            return [
+                'folio'        => $invoice->folio,
+                'fechaEmision' => $invoice->fechaEmision,
+                'moneda'       => $rate ? 'USD' : $invoice->moneda,
+                'tipoCambio'   => $rate,
+                'products'     => $lines,
+                'breakdown'    => [
+                    'totalFacturado'     => $totalFacturado,
+                    'totalNoRodamientos' => $totalNoRodamientos,
+                    'totalConsiderado'   => $totalConsiderado,
+                ],
+            ];
+        })->values();
     }
 
     /** [idCliente => razonSocial] fetched from the external clients table in one query. */
@@ -399,24 +531,47 @@ class ForecastService
             ->all();
     }
 
-    /** Retorna ventas reales (suma de total en USD) indexado por [idClient][month]. */
+    /**
+     * Retorna ventas reales (suma de las líneas de producto por factura, en USD) indexado por [idClient][month].
+     * Excluye las líneas cuyo producto esté clasificado como No Rodamientos.
+     */
     private function fetchSales(array $clientIds, int $year): Collection
     {
         $rate        = $this->banxico->getCurrentUsdRate();
         $receptorIds = array_map('strval', $clientIds);
 
-        return ForecastComprobante::whereIn('receptorId', $receptorIds)
-            ->where('status', 'Emitido')
-            ->whereYear('fechaEmision', $year)
-            ->selectRaw('receptorId, MONTH(fechaEmision) as month, total, moneda')
-            ->get()
+        $rows = ForecastComprobanteProducto::query()
+            ->join('forecastcomprobantes', function ($join) {
+                $join->on('forecastcomprobantes.receptorId', '=', 'forecastcomprobanteproductos.receptorId')
+                     ->on('forecastcomprobantes.folio', '=', 'forecastcomprobanteproductos.folio');
+            })
+            ->whereIn('forecastcomprobanteproductos.receptorId', $receptorIds)
+            ->where('forecastcomprobantes.status', 'Emitido')
+            ->whereYear('forecastcomprobantes.fechaEmision', $year)
+            ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.noIdentificacion as noIdentificacion, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.subTotal as subTotal, forecastcomprobantes.total as total, forecastcomprobantes.moneda as moneda')
+            ->get();
+
+        $productIds = $rows->map(fn($r) => trim($r->noIdentificacion))->unique()->values()->all();
+
+        $excludedProductIds = ProductClassification::whereIn('idProducto', $productIds)
+            ->where('clasificacion', ProductClassification::NO_RODAMIENTOS)
+            ->pluck('idProducto')
+            ->flip();
+
+        return $rows
+            ->reject(fn($r) => isset($excludedProductIds[trim($r->noIdentificacion)]))
             ->groupBy(fn($row) => (string) $row->receptorId)
             ->map(fn($byClient) => $byClient
                 ->groupBy('month')
                 ->map(function ($rows) use ($rate) {
-                    $totalUsd = $rows->sum(
-                        fn($r) => $r->moneda === 'MXN' ? $r->total / $rate : (float) $r->total
-                    );
+                    // El importe de cada línea excluye IVA; se prorratea con el factor
+                    // total/subTotal de su factura para que la suma cuadre con el total facturado.
+                    $totalUsd = $rows->sum(function ($r) use ($rate) {
+                        $factor = (float) $r->subTotal > 0 ? (float) $r->total / (float) $r->subTotal : 1;
+                        $amount = (float) $r->importe * $factor;
+
+                        return $r->moneda === 'MXN' ? $amount / $rate : $amount;
+                    });
                     return (object) ['total' => round($totalUsd, 2)];
                 })
             );

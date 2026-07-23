@@ -7,7 +7,6 @@ use App\Services\BanxicoService;
 use App\Models\Request as RequestModel;
 use App\Models\RequestClassification;
 use App\Models\User;
-use App\Models\UserAssignment;
 use App\Models\Workflow;
 use App\Models\WorkflowRequestCurrentStep;
 use App\Models\WorkflowRequestHistory;
@@ -209,7 +208,8 @@ class RequestWorkflowService
         }
 
         $roleName = mb_strtoupper((string) ($currentStep->assignedRole?->roleName ?? ''));
-        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true);
+        $isBroadcastRole = in_array($roleName, ['REPLENISHMENT', 'WAREHOUSE', 'IT'], true)
+            || str_contains($roleName, 'CS LEADER');
 
         Log::info('[notifyAssignedUser] paso actual', [
             'requestId'       => $requestId,
@@ -358,7 +358,10 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                    ->where(function ($roleQuery) {
+                        $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                            ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+                    })
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
@@ -457,7 +460,7 @@ class RequestWorkflowService
                 'comments' => 'Solicitud enviada al siguiente paso del flujo.',
             ]);
 
-            $newStatus = $transitionMarkAsApproved ? 'approved' : 'pending';
+            $newStatus = ($transitionMarkAsApproved || $requestModel->status === 'approved') ? 'approved' : 'pending';
             $requestModel->update(['status' => $newStatus]);
 
             return [
@@ -493,7 +496,10 @@ class RequestWorkflowService
             $isRoleAssigned = (int) $currentStep->assignedRoleId === (int) $authUser->roleId
                 && Role::query()
                     ->where('id', (int) $currentStep->assignedRoleId)
-                    ->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                    ->where(function ($roleQuery) {
+                        $roleQuery->whereIn('roleName', ['REPLENISHMENT', 'WAREHOUSE', 'IT'])
+                            ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
+                    })
                     ->exists();
 
             if (!$isAdmin && !$isAssignedUser && !$isRoleAssigned) {
@@ -578,7 +584,9 @@ class RequestWorkflowService
                 'comments' => 'Solicitud regresada al paso anterior del flujo.',
             ]);
 
-            $requestModel->update(['status' => 'pending']);
+            if ($requestModel->status !== 'approved') {
+                $requestModel->update(['status' => 'pending']);
+            }
 
             return [
                 'ok' => true,
@@ -672,7 +680,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            if (in_array($requestModel->status, ['approved', 'released', 'rejected', 'cancelled', 'draft'], true)) {
+            if (in_array($requestModel->status, ['released', 'rejected', 'cancelled', 'draft'], true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede regresar una solicitud con estatus "' . $requestModel->status . '"']];
             }
 
@@ -760,7 +768,9 @@ class RequestWorkflowService
                 'comments' => 'Solicitud regresada al paso: ' . $targetWorkflowStep->stepName,
             ]);
 
-            $requestModel->update(['status' => 'pending']);
+            if ($requestModel->status !== 'approved') {
+                $requestModel->update(['status' => 'pending']);
+            }
 
             return [
                 'ok' => true,
@@ -1189,37 +1199,27 @@ class RequestWorkflowService
 
     private function resolveCsLeaderAssignedUserId(RequestModel $requestModel): ?int
     {
-        $creatorUserId = (int) ($requestModel->userId ?? 0);
-        if ($creatorUserId <= 0) {
+        $customerId = (int) ($requestModel->customerId ?? 0);
+        if ($customerId <= 0) {
             return null;
         }
 
-        $leaderUserId = UserAssignment::query()
-            ->where('assignedUserId', $creatorUserId)
-            ->where('isActive', true)
-            ->orderBy('id')
-            ->value('leaderUserId');
+        $extTable = 'clientes_TME700618RC7_ext';
+        if (
+            Schema::connection('invoices')->hasTable($extTable)
+            && Schema::connection('invoices')->hasColumn($extTable, 'idCliente')
+            && Schema::connection('invoices')->hasColumn($extTable, 'csLeaderId')
+        ) {
+            $candidateUserId = DB::connection('invoices')->table($extTable)
+                ->where('idCliente', $customerId)
+                ->value('csLeaderId');
 
-        if ($leaderUserId === null) {
-            return null;
+            if ($candidateUserId !== null && $this->isActiveUser((int) $candidateUserId)) {
+                return (int) $candidateUserId;
+            }
         }
 
-        $leader = User::with('role')
-            ->where('id', (int) $leaderUserId)
-            ->where('isActive', true)
-            ->whereNull('deletedAt')
-            ->first();
-
-        if (!$leader) {
-            return null;
-        }
-
-        $leaderRoleName = mb_strtoupper((string) optional($leader->role)->roleName);
-        if (!str_contains($leaderRoleName, 'CS LEADER')) {
-            return null;
-        }
-
-        return (int) $leader->id;
+        return null;
     }
 
     private function resolveFirstUserByRoleId(int $roleId): ?int
