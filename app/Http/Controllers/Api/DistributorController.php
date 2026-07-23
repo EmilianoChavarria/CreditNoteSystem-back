@@ -19,8 +19,9 @@ class DistributorController extends Controller
     {
         $perPage = max(1, (int) $request->query('per_page', 15));
         $search  = trim((string) $request->query('search', ''));
+        $zone    = mb_strtolower(trim((string) $request->query('zone', '')));
 
-        $distributors = $this->distributorService->getPaginated($perPage, $search);
+        $distributors = $this->distributorService->getPaginated($perPage, $search, $zone);
         $distributors->setCollection(DistributorResource::collection($distributors->getCollection())->collection);
 
         return response()->json(ApiResponse::success('Distribuidores', $distributors));
