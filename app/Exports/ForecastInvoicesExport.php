@@ -5,10 +5,13 @@ namespace App\Exports;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use Maatwebsite\Excel\Concerns\WithCustomStartCell;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
@@ -25,7 +28,9 @@ class ForecastInvoicesExport implements
     WithMapping,
     WithStyles,
     WithColumnWidths,
-    WithTitle
+    WithTitle,
+    WithCustomStartCell,
+    WithEvents
 {
     public function __construct(
         private readonly Collection $invoices,
@@ -44,6 +49,27 @@ class ForecastInvoicesExport implements
     public function title(): string
     {
         return $this->sheetTitle ?? "Facturas {$this->monthName()} {$this->year}";
+    }
+
+    /** Deja la fila 1 libre para el nombre del cliente; los headings arrancan en la fila 2. */
+    public function startCell(): string
+    {
+        return 'A2';
+    }
+
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function (AfterSheet $event) {
+                $sheet = $event->sheet->getDelegate();
+                $sheet->mergeCells('A1:P1');
+                $sheet->setCellValue('A1', "Cliente: {$this->clientName}");
+                $sheet->getStyle('A1')->applyFromArray([
+                    'font' => ['bold' => true, 'size' => 12],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT],
+                ]);
+            },
+        ];
     }
 
     public function headings(): array
@@ -128,32 +154,32 @@ class ForecastInvoicesExport implements
     public function styles(Worksheet $sheet): array
     {
         $rowMeta = $this->buildRowMeta();
-        $lastRow = count($rowMeta) + 1;
+        $lastRow = count($rowMeta) + 2;
 
         // Header row
-        $sheet->getStyle('A1:P1')->applyFromArray([
+        $sheet->getStyle('A2:P2')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
         // Right-align numeric columns
-        $sheet->getStyle("C2:J{$lastRow}")->applyFromArray([
+        $sheet->getStyle("C3:J{$lastRow}")->applyFromArray([
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT],
         ]);
-        $sheet->getStyle("M2:N{$lastRow}")->applyFromArray([
+        $sheet->getStyle("M3:N{$lastRow}")->applyFromArray([
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT],
         ]);
 
         // Number format for money columns
         foreach (['C', 'D', 'E', 'F', 'G', 'H', 'N'] as $col) {
-            $sheet->getStyle("{$col}2:{$col}{$lastRow}")
+            $sheet->getStyle("{$col}3:{$col}{$lastRow}")
                 ->getNumberFormat()
                 ->setFormatCode('#,##0.00');
         }
 
         foreach ($rowMeta as $i => $meta) {
-            $row = $i + 2;
+            $row = $i + 3;
 
             if ($meta['type'] === 'summary') {
                 if ($meta['converted']) {
