@@ -39,6 +39,7 @@ class ForecastInvoicesExport implements
         private readonly int $year,
         private readonly ?string $sheetTitle = null,
         private readonly Collection $productsByFolio = new Collection(),
+        private readonly string|int|null $clientId = null,
     ) {}
 
     public function collection(): Collection
@@ -62,8 +63,10 @@ class ForecastInvoicesExport implements
         return [
             AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
+                $label = $this->clientId !== null ? "{$this->clientId} - {$this->clientName}" : $this->clientName;
+
                 $sheet->mergeCells('A1:P1');
-                $sheet->setCellValue('A1', "Cliente: {$this->clientName}");
+                $sheet->setCellValue('A1', "Cliente: {$label}");
                 $sheet->getStyle('A1')->applyFromArray([
                     'font' => ['bold' => true, 'size' => 12],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT],

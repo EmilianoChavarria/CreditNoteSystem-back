@@ -87,7 +87,7 @@ class ForecastController extends Controller
         $filename = "facturas_{$clientName}_{$year}_{$month}.xlsx";
 
         return Excel::download(
-            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year)),
+            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year), $idClient),
             $filename
         );
     }
