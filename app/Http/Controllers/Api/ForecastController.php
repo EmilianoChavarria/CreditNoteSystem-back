@@ -58,10 +58,10 @@ class ForecastController extends Controller
         $clients = $this->forecastService->getExportTemplateClients($salesEngineerId);
         $year    = now()->year;
 
-        $headers = array_merge(['Customer Number', 'Customer Name', 'Year'], self::TEMPLATE_MONTHS, ['Total Forecast']);
+        $headers = array_merge(['Customer Number', 'Customer Name', 'Is Group', 'Year'], self::TEMPLATE_MONTHS, ['Total Forecast']);
 
         $rows = $clients->map(fn (array $client) => array_merge(
-            [$client['idCliente'], $client['razonSocial'], $year],
+            [$client['idCliente'], $client['razonSocial'], $client['isGroup'] ? 'true' : 'false', $year],
             array_fill(0, count(self::TEMPLATE_MONTHS), ''),
             ['']
         ))->values()->all();

@@ -24,9 +24,6 @@ class ForecastService
 
     public function __construct(private readonly BanxicoService $banxico) {}
 
-    /** @var string[] */
-    private const FORECAST_COUNTRIES = ['BLZ', 'CRI', 'SLV', 'GTM', 'HND', 'NIC', 'PAN', 'ARG'];
-
     public function updateClientExt(int $idCliente, array $data): void
     {
         if (empty($data)) {
@@ -70,8 +67,7 @@ class ForecastService
             ->table(self::CLIENT_TABLE . ' as cl')
             ->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
-                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
             ->when($search !== '', function ($q) use ($search) {
                 $q->where(function ($sub) use ($search) {
@@ -146,8 +142,7 @@ class ForecastService
             ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
             ->where('cle.salesEngineerId', $salesEngineerId)
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
-                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
@@ -213,10 +208,12 @@ class ForecastService
     }
 
     /**
-     * Lista de clientes (idCliente + razonSocial) para el template de carga masiva de forecast.
-     * Si $salesEngineerId es null, retorna todos los clientes elegibles para forecast.
+     * Lista de clientes/grupos (idCliente + razonSocial + isGroup) para el template de carga masiva de forecast.
+     * Los clientes que pertenecen a un grupo no se listan individualmente: el grupo se agrega
+     * una sola vez, al final, en su lugar (el forecast se sube contra el grupo, no sus miembros).
+     * Si $salesEngineerId es null, retorna todos los clientes/grupos elegibles para forecast.
      *
-     * @return Collection<int, array{idCliente: int|string, razonSocial: string|null}>
+     * @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}>
      */
     public function getExportTemplateClients(?int $salesEngineerId): Collection
     {
@@ -225,14 +222,10 @@ class ForecastService
             : $this->getAllForecastClientList();
     }
 
-    /** @return Collection<int, array{idCliente: int|string, razonSocial: string|null}> */
+    /** @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}> */
     private function getSalesEngineerClientList(int $salesEngineerId): Collection
     {
-        $myGroups = ClientGroup::where('responsibleUserId', $salesEngineerId)
-            ->with('members')
-            ->get();
-
-        $myGroupClientIds = $myGroups->flatMap(fn($g) => $g->members->pluck('clientId'))->unique()->values();
+        $myGroups = ClientGroup::where('responsibleUserId', $salesEngineerId)->get();
         $allGroupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values();
 
         $extClients = DB::connection(self::CONNECTION)
@@ -240,52 +233,49 @@ class ForecastService
             ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
             ->where('cle.salesEngineerId', $salesEngineerId)
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
-                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
-        if ($extClients->isEmpty() && $myGroupClientIds->isEmpty()) {
-            return collect();
-        }
-
-        $groupClientNames = $myGroupClientIds->isEmpty() ? [] : $this->fetchClientNames($myGroupClientIds->all());
-
         $result = collect();
-
-        foreach ($myGroupClientIds as $clientId) {
-            $known = $extClients->firstWhere('idCliente', $clientId);
-            $result->push([
-                'idCliente'   => $clientId,
-                'razonSocial' => $known->razonSocial ?? ($groupClientNames[$clientId] ?? (string) $clientId),
-            ]);
-        }
 
         foreach ($extClients as $client) {
             if ($allGroupedClientIds->contains($client->idCliente)) {
-                continue; // ya incluido arriba vía su grupo
+                continue; // pertenece a un grupo — se lista como grupo más abajo
             }
 
-            $result->push(['idCliente' => $client->idCliente, 'razonSocial' => $client->razonSocial]);
+            $result->push(['idCliente' => $client->idCliente, 'razonSocial' => $client->razonSocial, 'isGroup' => false]);
         }
 
-        return $result->unique('idCliente')->values();
+        foreach ($myGroups as $group) {
+            $result->push(['idCliente' => $group->id, 'razonSocial' => $group->name, 'isGroup' => true]);
+        }
+
+        return $result->values();
     }
 
-    /** @return Collection<int, array{idCliente: int|string, razonSocial: string|null}> */
+    /** @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}> */
     private function getAllForecastClientList(): Collection
     {
-        return DB::connection(self::CONNECTION)
+        $groupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values()->all();
+
+        $clients = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_TABLE . ' as cl')
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
-                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+               $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
+            ->when(!empty($groupedClientIds), fn ($q) => $q->whereNotIn('cl.idCliente', $groupedClientIds))
             ->orderBy('cl.idCliente')
             ->select('cl.idCliente', 'cl.razonSocial')
             ->get()
-            ->map(fn($row) => ['idCliente' => $row->idCliente, 'razonSocial' => $row->razonSocial]);
+            ->map(fn($row) => ['idCliente' => $row->idCliente, 'razonSocial' => $row->razonSocial, 'isGroup' => false]);
+
+        $groups = ClientGroup::orderBy('name')
+            ->get()
+            ->map(fn($group) => ['idCliente' => $group->id, 'razonSocial' => $group->name, 'isGroup' => true]);
+
+        return $clients->concat($groups)->values();
     }
 
     private function buildGroupEntry(
