@@ -10,6 +10,7 @@ use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Services\ForecastService;
 use App\Support\ApiResponse;
+use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ForecastController extends Controller
@@ -41,6 +42,58 @@ class ForecastController extends Controller
         $result = $this->forecastService->getBySalesEngineer($salesEngineerId, $year);
 
         return response()->json(ApiResponse::success('Clientes con forecast', $result));
+    }
+
+    private const TEMPLATE_MONTHS = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+
+    /** Template CSV para carga masiva de forecast: por sales engineer (?salesEngineerId=) o de todos los clientes. */
+    public function exportTemplate(Request $request)
+    {
+        $salesEngineerId = $request->query('salesEngineerId');
+        $salesEngineerId = is_numeric($salesEngineerId) ? (int) $salesEngineerId : null;
+
+        $clients = $this->forecastService->getExportTemplateClients($salesEngineerId);
+        $year    = now()->year;
+
+        $headers = array_merge(['Customer Number', 'Customer Name', 'Year'], self::TEMPLATE_MONTHS, ['Total Forecast']);
+
+        $rows = $clients->map(fn (array $client) => array_merge(
+            [$client['idCliente'], $client['razonSocial'], $year],
+            array_fill(0, count(self::TEMPLATE_MONTHS), ''),
+            ['']
+        ))->values()->all();
+
+        $filename = 'forecast_template_' . ($salesEngineerId ?? 'all') . '_' . $year . '.csv';
+
+        return response($this->buildCsv($headers, $rows), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
+
+    /**
+     * @param array<int, string> $headers
+     * @param array<int, array<int, mixed>> $rows
+     */
+    private function buildCsv(array $headers, array $rows): string
+    {
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, $headers);
+
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv;
     }
 
     public function invoicesByMonth(string $idClient, int $year, int $month)
