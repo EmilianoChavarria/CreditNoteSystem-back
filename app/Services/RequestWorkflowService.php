@@ -1041,10 +1041,6 @@ class RequestWorkflowService
 
         $field = (string) $transition->conditionField;
 
-        if ($field === 'totalAmount' && str_starts_with((string) ($requestModel->requestNumber ?? ''), 'DM')) {
-            $field = 'warehouseTotal';
-        }
-
         $left = data_get($requestModel, $field);
         $operator = (string) ($transition->conditionOperator ?? '==');
         $rightRaw = $transition->conditionValue;
