@@ -79,6 +79,11 @@
                                     </td>
                                 </tr>
                             </table>
+
+                            <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
+                                Ingresa a la plataforma para revisar el detalle del proceso:
+                                <a href="https://timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://timken.ittec.mx/</a>
+                            </p>
                         </td>
                     </tr>
 

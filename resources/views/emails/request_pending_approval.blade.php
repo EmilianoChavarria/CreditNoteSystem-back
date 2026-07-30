@@ -79,8 +79,13 @@
                                 </tr>
                             </table>
 
-                            <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
+                            <p style="margin: 0 0 20px; color: #4a5568; font-size: 14px; line-height: 1.6;">
                                 {{ __('emails.pending_approval_cta') }}
+                            </p>
+
+                            <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
+                                Ingresa a la plataforma para aprobar o rechazar esta solicitud:
+                                <a href="https://timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://timken.ittec.mx/</a>
                             </p>
                         </td>
                     </tr>
