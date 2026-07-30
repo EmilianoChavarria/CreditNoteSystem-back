@@ -320,39 +320,45 @@ class ForecastApprovalService
 
     public function getPendingForApprover(User $actor): Collection
     {
-        return ForecastChangeRequest::where('approverUserId', $actor->id)
+        $requests = ForecastChangeRequest::where('approverUserId', $actor->id)
             ->where('status', 'pending')
             ->with([
                 'submittedBy:id,fullName',
                 'history.actor:id,fullName',
             ])
             ->orderBy('createdAt')
-            ->get()
-            ->map(function ($r) {
-                /** @var ForecastChangeRequest $r */
-                return $this->formatRequest($r);
-            });
+            ->get();
+
+        $clientNames = $this->getClientNames($requests->pluck('idClient')->unique()->all());
+
+        return $requests->map(function ($r) use ($clientNames) {
+            /** @var ForecastChangeRequest $r */
+            return $this->formatRequest($r, $clientNames);
+        });
     }
 
     public function getPendingBySubmitter(User $actor): Collection
     {
-        return ForecastChangeRequest::where('submittedByUserId', $actor->id)
+        $requests = ForecastChangeRequest::where('submittedByUserId', $actor->id)
             ->whereIn('status', ['pending', 'approved', 'rejected'])
             ->with([
                 'approver:id,fullName',
                 'history.actor:id,fullName',
             ])
             ->orderByDesc('createdAt')
-            ->get()
-            ->map(function ($r) {
-                /** @var ForecastChangeRequest $r */
-                return $this->formatRequest($r);
-            });
+            ->get();
+
+        $clientNames = $this->getClientNames($requests->pluck('idClient')->unique()->all());
+
+        return $requests->map(function ($r) use ($clientNames) {
+            /** @var ForecastChangeRequest $r */
+            return $this->formatRequest($r, $clientNames);
+        });
     }
 
     public function getMonthHistory(int $idClient, int $year, int $month): Collection
     {
-        return ForecastChangeRequest::where('idClient', $idClient)
+        $requests = ForecastChangeRequest::where('idClient', $idClient)
             ->where('year', $year)
             ->where('month', $month)
             ->with([
@@ -361,8 +367,11 @@ class ForecastApprovalService
                 'history.actor:id,fullName',
             ])
             ->orderBy('createdAt')
-            ->get()
-            ->map(fn($r) => $this->formatRequest($r));
+            ->get();
+
+        $clientNames = $this->getClientNames([$idClient]);
+
+        return $requests->map(fn($r) => $this->formatRequest($r, $clientNames));
     }
 
     public function getPendingMapForClient(int $idClient, int $year): Collection
@@ -431,6 +440,23 @@ class ForecastApprovalService
             ->value('razonSocial') ?? '');
     }
 
+    /**
+     * @param  array<int, int> $idClients
+     * @return array<int, string> idCliente => razonSocial
+     */
+    private function getClientNames(array $idClients): array
+    {
+        if (empty($idClients)) {
+            return [];
+        }
+
+        return DB::connection(self::EXT_CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->whereIn('idCliente', $idClients)
+            ->pluck('razonSocial', 'idCliente')
+            ->all();
+    }
+
     /** @return string[] */
     private function getClientEmails(int $idClient): array
     {
@@ -467,11 +493,13 @@ class ForecastApprovalService
         }
     }
 
-    private function formatRequest(ForecastChangeRequest $r): array
+    /** @param array<int, string> $clientNames idCliente => razonSocial */
+    private function formatRequest(ForecastChangeRequest $r, array $clientNames = []): array
     {
         return [
             'id'             => $r->id,
             'idClient'       => $r->idClient,
+            'clientName'     => $clientNames[$r->idClient] ?? null,
             'year'           => $r->year,
             'month'          => $r->month,
             'previousAmount' => $r->previousAmount,
