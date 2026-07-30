@@ -414,6 +414,7 @@ class DistributorForecastApprovalService
         return [
             'id'               => $r->id,
             'distributorId'    => $r->distributorId,
+            'clientName'       => $r->distributor?->businessName ?? null,
             'year'             => $r->year,
             'month'            => $r->month,
             'previousForecast' => $r->previousForecast,
