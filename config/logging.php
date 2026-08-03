@@ -134,6 +134,13 @@ return [
             'days'   => 14,
         ],
 
+        'client_group_invalid_ids' => [
+            'driver' => 'daily',
+            'path'   => storage_path('logs/client-group-invalid-ids.log'),
+            'level'  => 'warning',
+            'days'   => 30,
+        ],
+
     ],
 
 ];

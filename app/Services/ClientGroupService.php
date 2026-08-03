@@ -8,6 +8,7 @@ use App\Models\ClientGroupMember;
 use App\Models\ForecastComprobante;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ClientGroupService
 {
@@ -55,7 +56,11 @@ class ClientGroupService
 
     public function addMember(int $groupId, string $clientId): void
     {
-        ClientGroup::findOrFail($groupId);
+        $group = ClientGroup::findOrFail($groupId);
+
+        if (!in_array($clientId, $this->filterExistingClientIds($group, [$clientId]), true)) {
+            return;
+        }
 
         $existing = ClientGroupMember::withTrashed()
             ->where('groupId', $groupId)
@@ -67,16 +72,57 @@ class ClientGroupService
 
     public function addMembers(int $groupId, array $clientIds): void
     {
-        ClientGroup::findOrFail($groupId);
+        $group = ClientGroup::findOrFail($groupId);
+
+        $validIds = $this->filterExistingClientIds($group, $clientIds);
+
+        if (empty($validIds)) {
+            return;
+        }
 
         $records = array_map(fn($cid) => [
             'groupId'   => $groupId,
             'clientId'  => $cid,
             'deletedAt' => null,
-        ], $clientIds);
+        ], $validIds);
 
         // deletedAt in update columns ensures soft-deleted members get restored
         ClientGroupMember::upsert($records, ['groupId', 'clientId'], ['deletedAt']);
+    }
+
+    /**
+     * Filtra $clientIds a solo los que existen en la BD de invoices; los que no existen
+     * se registran en storage/logs/client-group-invalid-ids*.log y se descartan.
+     *
+     * @return array<int, string> clientId existentes
+     */
+    private function filterExistingClientIds(ClientGroup $group, array $clientIds): array
+    {
+        // Los ids se mandan como string explícito: si viajan como entero, PDO los liga como
+        // PARAM_INT y MySQL compara idCliente (varchar) por coerción numérica, matcheando
+        // también subcuentas tipo "182042-23040" contra "182042".
+        $clientIdStrings = array_values(array_unique(array_map('strval', $clientIds)));
+
+        $existingIds = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->whereIn('idCliente', $clientIdStrings)
+            ->pluck('idCliente')
+            ->map(fn($id) => (string) $id)
+            ->intersect($clientIdStrings)
+            ->values()
+            ->all();
+
+        $missingIds = array_values(array_diff($clientIdStrings, $existingIds));
+
+        if (!empty($missingIds)) {
+            Log::channel('client_group_invalid_ids')->warning('clientId no encontrados en invoices, no se agregaron al grupo', [
+                'groupId'    => $group->id,
+                'groupName'  => $group->name,
+                'missingIds' => $missingIds,
+            ]);
+        }
+
+        return $existingIds;
     }
 
     public function removeMember(int $groupId, string $clientId): void
