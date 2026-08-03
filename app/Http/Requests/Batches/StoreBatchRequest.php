@@ -29,6 +29,7 @@ class StoreBatchRequest extends FormRequest
                     'forecast',
                     'productClassification',
                     'distributors',
+                    'nationalCustomers',
                 ]),
             ],
             'requestTypeId' => ['nullable', 'integer', 'exists:requesttype,id'],
