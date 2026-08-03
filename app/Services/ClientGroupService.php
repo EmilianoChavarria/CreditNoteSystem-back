@@ -21,25 +21,29 @@ class ClientGroupService
 
     public function all(): Collection
     {
-        return ClientGroup::with(['members', 'responsible'])->get()->map(fn($g) => $this->formatGroup($g));
+        return ClientGroup::with(['members', 'responsible', 'salesManager'])->get()->map(fn($g) => $this->formatGroup($g));
     }
 
-    public function create(string $name, ?string $description, ?int $responsibleUserId = null): ClientGroup
+    public function create(string $name, ?string $description, ?int $responsibleUserId = null, ?int $salesManagerId = null, ?string $clientNumber = null): ClientGroup
     {
         return ClientGroup::create([
             'name' => $name,
+            'clientNumber' => $clientNumber,
             'description' => $description,
             'responsibleUserId' => $responsibleUserId,
+            'salesManagerId' => $salesManagerId,
         ]);
     }
 
-    public function update(int $groupId, string $name, ?string $description, ?int $responsibleUserId = null): ClientGroup
+    public function update(int $groupId, string $name, ?string $description, ?int $responsibleUserId = null, ?int $salesManagerId = null, ?string $clientNumber = null): ClientGroup
     {
         $group = ClientGroup::findOrFail($groupId);
         $group->update([
             'name' => $name,
+            'clientNumber' => $clientNumber,
             'description' => $description,
             'responsibleUserId' => $responsibleUserId,
+            'salesManagerId' => $salesManagerId,
         ]);
         return $group;
     }
@@ -256,10 +260,13 @@ class ClientGroupService
         return [
             'id'                => $group->id,
             'name'              => $group->name,
+            'clientNumber'      => $group->clientNumber,
             'description'       => $group->description,
             'memberCount'       => $group->members->count(),
             'responsibleUserId' => $group->responsibleUserId,
             'responsible'       => $group->responsible ? new UserResource($group->responsible) : null,
+            'salesManagerId'    => $group->salesManagerId,
+            'salesManager'      => $group->salesManager ? new UserResource($group->salesManager) : null,
             'createdAt'         => $group->createdAt,
         ];
     }
