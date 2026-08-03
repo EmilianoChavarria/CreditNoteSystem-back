@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
+use App\Services\DistributorForecastService;
 use App\Services\ForecastService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -16,8 +17,55 @@ use Maatwebsite\Excel\Facades\Excel;
 class ForecastController extends Controller
 {
     public function __construct(
-        private readonly ForecastService $forecastService
+        private readonly ForecastService $forecastService,
+        private readonly DistributorForecastService $distributorForecastService
     ) {
+    }
+
+    /** Búsqueda por nombre entre distribuidores, clientes extranjeros y grupos, agrupada por sección para autocomplete. */
+    public function search(Request $request)
+    {
+        $term = trim((string) $request->query('q', ''));
+
+        if ($term === '') {
+            return response()->json(ApiResponse::success('Búsqueda de forecast', [
+                'clientes'            => [],
+                'clientesExtranjeros' => [],
+                'grupos'              => [],
+            ]));
+        }
+
+        $result = [
+            'clientes'            => $this->forecastService->searchClients($term)->values(),
+            'clientesExtranjeros' => $this->distributorForecastService->search($term)->values(),
+            'grupos'              => $this->forecastService->searchGroups($term)->values(),
+        ];
+
+        return response()->json(ApiResponse::success('Búsqueda de forecast', $result));
+    }
+
+    /**
+     * Resumen de 12 meses de un solo cliente/distribuidor/grupo: objetivo, venta mensual,
+     * %cumplimiento y %retorno (null por ahora, se agrega después).
+     */
+    public function summary(string $tipo, string $id, int $year)
+    {
+        try {
+            $result = match ($tipo) {
+                'cliente'           => $this->forecastService->getClientSummary((int) $id, $year),
+                'clienteExtranjero' => $this->distributorForecastService->getSummary((int) $id, $year),
+                'grupo'             => $this->forecastService->getGroupSummary($id, $year),
+                default             => null,
+            };
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return response()->json(ApiResponse::error('No encontrado', null, 404), 404);
+        }
+
+        if ($result === null) {
+            return response()->json(ApiResponse::error('Tipo inválido, usa: cliente, clienteExtranjero o grupo', null, 422), 422);
+        }
+
+        return response()->json(ApiResponse::success('Resumen de forecast obtenido exitosamente', array_merge(['tipo' => $tipo], $result)));
     }
 
     public function index(int $idClient, int $year)

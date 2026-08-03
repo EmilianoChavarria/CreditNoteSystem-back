@@ -69,6 +69,60 @@ class DistributorForecastService
         })->values();
     }
 
+    /** Busca clientes extranjeros (distribuidores) por nombre/número de cliente, para el autocomplete de forecast. */
+    public function search(string $term): Collection
+    {
+        return Distributor::where(function ($q) use ($term) {
+                $q->where('businessName', 'like', "%{$term}%")
+                    ->orWhere('clientNumber', 'like', "%{$term}%");
+            })
+            ->orderBy('businessName')
+            ->limit(20)
+            ->get(['id', 'businessName', 'clientNumber'])
+            ->map(fn($d) => [
+                'tipo'          => 'clienteExtranjero',
+                'id'            => $d->id,
+                'numeroCliente' => $d->clientNumber,
+                'nombre'        => $d->businessName,
+            ]);
+    }
+
+    /** Resumen de 12 meses de un cliente extranjero (distribuidor): objetivo, venta mensual, %cumplimiento, %retorno (null por ahora). */
+    public function getSummary(int $distributorId, int $year): array
+    {
+        $distributor = Distributor::findOrFail($distributorId);
+
+        $forecast = DistributorForecast::where('distributorId', $distributorId)
+            ->where('year', $year)
+            ->get(['month', 'forecast', 'sales'])
+            ->keyBy('month');
+
+        $meses = [];
+
+        for ($month = 1; $month <= 12; $month++) {
+            $row          = $forecast->get($month);
+            $objetivo     = $row?->forecast !== null ? (float) $row->forecast : null;
+            $ventaMensual = $row?->sales !== null ? (float) $row->sales : null;
+
+            $meses[] = [
+                'mes'                    => $month,
+                'objetivo'               => $objetivo,
+                'ventaMensual'           => $ventaMensual,
+                'porcentajeCumplimiento' => ($objetivo > 0 && $ventaMensual !== null)
+                    ? round($ventaMensual / $objetivo * 100, 2)
+                    : null,
+                'porcentajeRetorno'      => null,
+            ];
+        }
+
+        return [
+            'numeroCliente' => $distributor->clientNumber,
+            'nombre'        => $distributor->businessName,
+            'anio'          => $year,
+            'meses'         => $meses,
+        ];
+    }
+
     /** Retorna la modificación pending/approved más reciente por [distributorId][month]. */
     private function fetchModifications(array $distributorIds, int $year): Collection
     {
