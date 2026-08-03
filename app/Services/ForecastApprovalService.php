@@ -6,6 +6,7 @@ use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
 use App\Mail\ForecastRejectedMail;
 use App\Mail\ForecastRequestApprovedMail;
+use App\Models\ClientGroup;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
@@ -418,6 +419,12 @@ class ForecastApprovalService
 
     private function findSalesManagerForClient(int $idClient): ?User
     {
+        $group = ClientGroup::find($idClient);
+
+        if ($group) {
+            return $this->findSalesManagerForGroup($group);
+        }
+
         $salesManagerId = DB::connection(self::EXT_CONNECTION)
             ->table(self::CLIENT_EXT_TABLE)
             ->where('idCliente', $idClient)
@@ -432,8 +439,25 @@ class ForecastApprovalService
             ->find((int) $salesManagerId);
     }
 
+    private function findSalesManagerForGroup(ClientGroup $group): ?User
+    {
+        if (!$group->salesManagerId) {
+            return null;
+        }
+
+        return User::where('isActive', true)
+            ->whereNull('deletedAt')
+            ->find((int) $group->salesManagerId);
+    }
+
     private function getClientName(int $idClient): string
     {
+        $group = ClientGroup::find($idClient);
+
+        if ($group) {
+            return (string) $group->name;
+        }
+
         return (string) (DB::connection(self::EXT_CONNECTION)
             ->table(self::CLIENT_TABLE)
             ->where('idCliente', $idClient)
@@ -442,7 +466,7 @@ class ForecastApprovalService
 
     /**
      * @param  array<int, int> $idClients
-     * @return array<int, string> idCliente => razonSocial
+     * @return array<int, string> idCliente => razonSocial (o groupId => nombre del grupo)
      */
     private function getClientNames(array $idClients): array
     {
@@ -450,16 +474,26 @@ class ForecastApprovalService
             return [];
         }
 
-        return DB::connection(self::EXT_CONNECTION)
+        $groupNames = ClientGroup::whereIn('id', $idClients)->pluck('name', 'id')->all();
+
+        $remainingIds = array_values(array_diff($idClients, array_keys($groupNames)));
+
+        $clientNames = empty($remainingIds) ? [] : DB::connection(self::EXT_CONNECTION)
             ->table(self::CLIENT_TABLE)
-            ->whereIn('idCliente', $idClients)
+            ->whereIn('idCliente', $remainingIds)
             ->pluck('razonSocial', 'idCliente')
             ->all();
+
+        return $groupNames + $clientNames;
     }
 
     /** @return string[] */
     private function getClientEmails(int $idClient): array
     {
+        if (ClientGroup::where('id', $idClient)->exists()) {
+            return [];
+        }
+
         $raw = Distributor::where('clientNumber', (string) $idClient)->value('emails');
 
         if (!$raw) {
