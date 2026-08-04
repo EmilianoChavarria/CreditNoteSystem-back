@@ -93,6 +93,18 @@ class ForecastController extends Controller
         ]), 201);
     }
 
+    /** Aportación por cliente miembro de un grupo en un mes (facturas, venta considerada, %, retorno, NC ya generada). */
+    public function groupMonthBreakdown(string $id, int $year, int $month)
+    {
+        try {
+            $breakdown = $this->forecastCreditNoteService->getGroupMonthBreakdown($id, $year, $month);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return response()->json(ApiResponse::error('No encontrado', null, 404), 404);
+        }
+
+        return response()->json(ApiResponse::success('Aportación por cliente del grupo', $breakdown));
+    }
+
     /** Historial de NC generadas desde forecast para un cliente/grupo. */
     public function creditNoteHistory(string $tipo, string $id)
     {

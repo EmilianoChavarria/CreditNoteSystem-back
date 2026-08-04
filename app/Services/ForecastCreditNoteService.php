@@ -49,6 +49,71 @@ class ForecastCreditNoteService
     }
 
     /**
+     * Aportación de cada cliente miembro de un grupo en un mes: facturas consideradas, venta
+     * considerada, % de participación dentro del grupo, retorno calculado y si ya tiene NC.
+     */
+    public function getGroupMonthBreakdown(string $groupId, int $year, int $month): array
+    {
+        $group   = ClientGroup::with('members')->findOrFail($groupId);
+        $members = $group->members->pluck('clientId')->unique()->values()->all();
+
+        $returnPercentage = $group->returnPercentage !== null ? (float) $group->returnPercentage : null;
+
+        $rows       = [];
+        $totalSales = 0.0;
+
+        foreach ($members as $memberId) {
+            [$sales, $folios] = $this->considered((string) $memberId, $year, $month);
+            $totalSales += $sales;
+
+            $rows[(string) $memberId] = [
+                'clientId'      => (string) $memberId,
+                'name'          => $this->forecastService->getClientName((int) $memberId),
+                'folioCount'    => count($folios),
+                'salesAmount'   => $sales,
+                'participation' => null,
+                'returnAmount'  => $returnPercentage !== null ? round($sales * $returnPercentage / 100, 2) : null,
+                'note'          => null,
+            ];
+        }
+
+        if ($totalSales > 0) {
+            foreach ($rows as &$row) {
+                $row['participation'] = round($row['salesAmount'] / $totalSales * 100, 2);
+            }
+            unset($row);
+        }
+
+        $notes = ForecastCreditNote::with('request')
+            ->where('entityType', 'cliente')
+            ->whereIn('entityId', array_map('intval', $members))
+            ->where('year', $year)
+            ->where('month', $month)
+            ->get();
+
+        foreach ($notes as $note) {
+            if (isset($rows[$note->customerNumber])) {
+                $rows[$note->customerNumber]['note'] = [
+                    'id'            => $note->id,
+                    'requestId'     => $note->requestId,
+                    'requestNumber' => $note->request?->requestNumber,
+                    'requestStatus' => $note->request?->status,
+                ];
+            }
+        }
+
+        return [
+            'groupId'          => $group->id,
+            'groupName'        => $group->name,
+            'year'             => $year,
+            'month'            => $month,
+            'returnPercentage' => $returnPercentage,
+            'totalSales'       => round($totalSales, 2),
+            'members'          => array_values($rows),
+        ];
+    }
+
+    /**
      * Genera NC (registro en `requests`, tipo auditor credits) por cumplimiento de forecast.
      *
      * - cliente: una sola NC para ese cliente.
