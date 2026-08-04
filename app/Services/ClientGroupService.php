@@ -24,7 +24,7 @@ class ClientGroupService
         return ClientGroup::with(['members', 'responsible', 'salesManager'])->get()->map(fn($g) => $this->formatGroup($g));
     }
 
-    public function create(string $name, ?string $description, ?int $responsibleUserId = null, ?int $salesManagerId = null, ?string $clientNumber = null): ClientGroup
+    public function create(string $name, ?string $description, ?int $responsibleUserId = null, ?int $salesManagerId = null, ?string $clientNumber = null, ?float $returnPercentage = null): ClientGroup
     {
         return ClientGroup::create([
             'name' => $name,
@@ -32,10 +32,11 @@ class ClientGroupService
             'description' => $description,
             'responsibleUserId' => $responsibleUserId,
             'salesManagerId' => $salesManagerId,
+            'returnPercentage' => $returnPercentage,
         ]);
     }
 
-    public function update(int $groupId, string $name, ?string $description, ?int $responsibleUserId = null, ?int $salesManagerId = null, ?string $clientNumber = null): ClientGroup
+    public function update(int $groupId, string $name, ?string $description, ?int $responsibleUserId = null, ?int $salesManagerId = null, ?string $clientNumber = null, ?float $returnPercentage = null): ClientGroup
     {
         $group = ClientGroup::findOrFail($groupId);
         $group->update([
@@ -44,6 +45,7 @@ class ClientGroupService
             'description' => $description,
             'responsibleUserId' => $responsibleUserId,
             'salesManagerId' => $salesManagerId,
+            'returnPercentage' => $returnPercentage,
         ]);
         return $group;
     }
@@ -267,6 +269,7 @@ class ClientGroupService
             'responsible'       => $group->responsible ? new UserResource($group->responsible) : null,
             'salesManagerId'    => $group->salesManagerId,
             'salesManager'      => $group->salesManager ? new UserResource($group->salesManager) : null,
+            'returnPercentage'  => $group->returnPercentage,
             'createdAt'         => $group->createdAt,
         ];
     }

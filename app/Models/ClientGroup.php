@@ -17,7 +17,9 @@ class ClientGroup extends Model
 
     protected $table = 'client_groups';
 
-    protected $fillable = ['name', 'clientNumber', 'description', 'responsibleUserId', 'salesManagerId'];
+    protected $fillable = ['name', 'clientNumber', 'description', 'responsibleUserId', 'salesManagerId', 'returnPercentage'];
+
+    protected $casts = ['returnPercentage' => 'decimal:2'];
 
     public function members(): HasMany
     {
