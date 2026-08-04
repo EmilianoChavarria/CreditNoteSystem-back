@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\ClientGroup;
-use App\Models\Customer;
 use App\Models\ForecastCreditNote;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
@@ -20,6 +19,9 @@ class ForecastCreditNoteService
     private const CLASSIFICATION_NAME = 'SALES FORECAST';
     private const REASON_NAME         = 'REBATE';
 
+    private const INVOICES_CONNECTION  = 'invoices';
+    private const CLIENT_EXT_TABLE     = 'clientes_TME700618RC7_ext';
+
     private const MESES_ES = [
         1 => 'ENERO', 2 => 'FEBRERO', 3 => 'MARZO', 4 => 'ABRIL', 5 => 'MAYO', 6 => 'JUNIO',
         7 => 'JULIO', 8 => 'AGOSTO', 9 => 'SEPTIEMBRE', 10 => 'OCTUBRE', 11 => 'NOVIEMBRE', 12 => 'DICIEMBRE',
@@ -29,6 +31,7 @@ class ForecastCreditNoteService
         private readonly ForecastService $forecastService,
         private readonly RequestCrudService $requestCrudService,
         private readonly RequestNumberService $requestNumberService,
+        private readonly BanxicoService $banxico,
     ) {
     }
 
@@ -263,7 +266,8 @@ class ForecastCreditNoteService
             throw ValidationException::withMessages(['amount' => "Monto de nota de crédito inválido para el cliente {$clientId}."]);
         }
 
-        $area = Customer::where('idClient', (int) $clientId)->value('area');
+        $area         = $this->resolveArea($clientId);
+        $exchangeRate = $this->banxico->getCurrentUsdRate();
 
         $comments = sprintf(
             '01 Nota de credito del Programa Forecast %d , %s%% de reembolso de las compras totales participantes facturadas durante %s/%d aplicado a las siguientes facturas:%s',
@@ -276,7 +280,7 @@ class ForecastCreditNoteService
 
         return DB::transaction(function () use (
             $clientId, $year, $month, $sales, $returnPercentage, $folios, $groupId, $authUser,
-            $requestTypeId, $classificationId, $reasonId, $totalAmount, $area, $comments
+            $requestTypeId, $classificationId, $reasonId, $totalAmount, $area, $exchangeRate, $comments
         ) {
             $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
 
@@ -287,6 +291,7 @@ class ForecastCreditNoteService
                 'requestDate'      => now()->toDateString(),
                 'currency'         => 'USD',
                 'area'             => $area,
+                'exchangeRate'     => $exchangeRate,
                 'reasonId'         => $reasonId,
                 'classificationId' => $classificationId,
                 'amount'           => $totalAmount,
@@ -310,6 +315,15 @@ class ForecastCreditNoteService
                 'generatedBy'      => $authUser->id,
             ])->load('request');
         });
+    }
+
+    /** Área del cliente registrada en clientes_TME700618RC7_ext (misma fuente que autocompleta el campo al crear un request normal). */
+    private function resolveArea(string $clientId): ?string
+    {
+        return DB::connection(self::INVOICES_CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE)
+            ->where('idCliente', $clientId)
+            ->value('area');
     }
 
     private function requiredId(string $modelClass, string $name, string $label): int
