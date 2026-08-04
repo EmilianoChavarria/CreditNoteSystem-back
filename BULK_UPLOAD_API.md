@@ -330,6 +330,36 @@ Si no viene `password`, se usa la contraseña por defecto de:
 
 ---
 
+## G) nationalCustomers
+
+Carga masiva exclusiva para clientes nacionales (deben existir en `invoices.clientes_TME700618RC7`, identificados por `customerNumber`). Cada fila crea o actualiza (upsert) el registro en la tabla de intersección `national_customers`.
+
+Archivo CSV/XML/XLS/XLSX con columnas:
+
+- `customerNumber` (alias: `clientNumber`, `idCliente`)
+- `emails` (uno o varios, separados por coma o `;`)
+- `returnPercentage` (decimal, ej. `1.50`, `4.00`)
+
+### Validación y errores
+
+- `customerNumber` debe existir en `invoices.clientes_TME700618RC7`; si no existe, la fila queda en error.
+- `customerNumber` repetido dentro del mismo archivo produce error en esa fila.
+- Cada correo en `emails` se valida individualmente (formato de email).
+- Si `customerNumber` ya tiene un registro en `national_customers`, se actualiza (`emails` y `returnPercentage` se sobreescriben con el valor más reciente).
+
+### Ejemplo
+
+- `batchType`: `nationalCustomers`
+- `file`: `national_customers.csv`
+
+```csv
+customerNumber,emails,returnPercentage
+10023,contacto@cliente10023.com,1.50
+10088,ventas@cliente10088.com;compras@cliente10088.com,4.00
+```
+
+---
+
 ## Ejemplos con cURL
 
 ## Crear batch (creditsData)

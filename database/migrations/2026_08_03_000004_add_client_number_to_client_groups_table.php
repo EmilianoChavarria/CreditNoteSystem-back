@@ -9,22 +9,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('client_groups', function (Blueprint $table) {
-            $table->softDeletes('deletedAt');
-        });
+            $table->string('clientNumber', 50)->nullable()->after('name');
 
-        Schema::table('client_group_members', function (Blueprint $table) {
-            $table->softDeletes('deletedAt');
+            $table->unique('clientNumber');
         });
     }
 
     public function down(): void
     {
         Schema::table('client_groups', function (Blueprint $table) {
-            $table->dropSoftDeletes('deletedAt');
-        });
-
-        Schema::table('client_group_members', function (Blueprint $table) {
-            $table->dropSoftDeletes('deletedAt');
+            $table->dropUnique(['clientNumber']);
+            $table->dropColumn('clientNumber');
         });
     }
 };

@@ -20,10 +20,13 @@ class ClientGroupController extends Controller
     {
         $data  = $request->validate([
             'name' => 'required|string|max:150',
+            'clientNumber' => 'nullable|string|max:50|unique:client_groups,clientNumber',
             'description' => 'nullable|string|max:255',
             'responsibleUserId' => 'nullable|integer|exists:users,id',
+            'salesManagerId' => 'nullable|integer|exists:users,id',
+            'returnPercentage' => 'nullable|numeric|min:0|max:100',
         ]);
-        $group = $this->service->create($data['name'], $data['description'] ?? null, $data['responsibleUserId'] ?? null);
+        $group = $this->service->create($data['name'], $data['description'] ?? null, $data['responsibleUserId'] ?? null, $data['salesManagerId'] ?? null, $data['clientNumber'] ?? null, $data['returnPercentage'] ?? null);
 
         return response()->json(ApiResponse::success('Grupo creado', $group), 201);
     }
@@ -32,10 +35,13 @@ class ClientGroupController extends Controller
     {
         $data  = $request->validate([
             'name' => 'required|string|max:150',
+            'clientNumber' => 'nullable|string|max:50|unique:client_groups,clientNumber,' . $id,
             'description' => 'nullable|string|max:255',
             'responsibleUserId' => 'nullable|integer|exists:users,id',
+            'salesManagerId' => 'nullable|integer|exists:users,id',
+            'returnPercentage' => 'nullable|numeric|min:0|max:100',
         ]);
-        $group = $this->service->update($id, $data['name'], $data['description'] ?? null, $data['responsibleUserId'] ?? null);
+        $group = $this->service->update($id, $data['name'], $data['description'] ?? null, $data['responsibleUserId'] ?? null, $data['salesManagerId'] ?? null, $data['clientNumber'] ?? null, $data['returnPercentage'] ?? null);
 
         return response()->json(ApiResponse::success('Grupo actualizado', $group));
     }

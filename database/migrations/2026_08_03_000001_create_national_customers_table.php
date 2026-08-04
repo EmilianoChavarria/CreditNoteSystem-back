@@ -8,18 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('productcatalogsynclogs', function (Blueprint $table) {
+        Schema::create('national_customers', function (Blueprint $table) {
             $table->id();
-            $table->unsignedInteger('recordsSynced')->default(0);
-            $table->string('status', 20);
-            $table->text('errorMessage')->nullable();
+            $table->string('customerNumber', 50);
+            $table->string('emails', 500);
+            $table->decimal('returnPercentage', 5, 2);
             $table->timestamp('createdAt')->nullable();
             $table->timestamp('updatedAt')->nullable();
+
+            $table->unique('customerNumber');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('productcatalogsynclogs');
+        Schema::dropIfExists('national_customers');
     }
 };

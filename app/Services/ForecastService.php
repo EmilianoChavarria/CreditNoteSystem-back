@@ -9,6 +9,7 @@ use App\Models\ForecastChangeRequest;
 use App\Models\ForecastComprobante;
 use App\Models\ForecastComprobanteProducto;
 use App\Models\ForecastSale;
+use App\Models\NationalCustomer;
 use App\Models\ProductClassification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -23,9 +24,6 @@ class ForecastService
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
     public function __construct(private readonly BanxicoService $banxico) {}
-
-    /** @var string[] */
-    private const FORECAST_COUNTRIES = ['BLZ', 'CRI', 'SLV', 'GTM', 'HND', 'NIC', 'PAN', 'ARG'];
 
     public function updateClientExt(int $idCliente, array $data): void
     {
@@ -70,8 +68,7 @@ class ForecastService
             ->table(self::CLIENT_TABLE . ' as cl')
             ->leftJoin(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
-                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
             ->when($search !== '', function ($q) use ($search) {
                 $q->where(function ($sub) use ($search) {
@@ -93,7 +90,11 @@ class ForecastService
             ->get()
             ->keyBy('clientNumber');
 
-        $paginator->through(function ($client) use ($distributors) {
+        $nationalCustomers = NationalCustomer::whereIn('customerNumber', $clientNumbers)
+            ->get()
+            ->keyBy('customerNumber');
+
+        $paginator->through(function ($client) use ($distributors, $nationalCustomers) {
             $dist = $distributors->get((string) $client->idCliente);
 
             if ($dist) {
@@ -103,10 +104,52 @@ class ForecastService
                 $client->correosForecast = $dist->emails;
             }
 
+            $nationalCustomer = $nationalCustomers->get((string) $client->idCliente);
+
+            $client->emails           = $nationalCustomer?->emails;
+            $client->returnPercentage = $nationalCustomer?->returnPercentage;
+
             return $client;
         });
 
         return $paginator;
+    }
+
+    /** Busca clientes nacionales (RFC real, no el genérico de extranjero/público general) por nombre/número. */
+    public function searchClients(string $term): Collection
+    {
+        return DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->where('rfc', '!=', 'XEXX010101000')
+            ->whereColumn('idCliente', '!=', 'rfc') // descarta filas fantasma donde idCliente quedó igual al rfc
+            ->where(function ($q) use ($term) {
+                $q->where('razonSocial', 'like', "%{$term}%")
+                    ->orWhere('idCliente', 'like', "%{$term}%");
+            })
+            ->orderBy('razonSocial')
+            ->limit(20)
+            ->get(['idCliente', 'razonSocial'])
+            ->map(fn($row) => [
+                'tipo'          => 'cliente',
+                'id'            => $row->idCliente,
+                'numeroCliente' => $row->idCliente,
+                'nombre'        => $row->razonSocial,
+            ]);
+    }
+
+    /** Busca grupos por nombre, para el autocomplete de forecast. */
+    public function searchGroups(string $term): Collection
+    {
+        return ClientGroup::where('name', 'like', "%{$term}%")
+            ->orderBy('name')
+            ->limit(20)
+            ->get(['id', 'name'])
+            ->map(fn($group) => [
+                'tipo'          => 'grupo',
+                'id'            => $group->id,
+                'numeroCliente' => $group->id,
+                'nombre'        => $group->name,
+            ]);
     }
 
     public function getByClient(int $idClient, int $year): Collection
@@ -146,8 +189,7 @@ class ForecastService
             ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
             ->where('cle.salesEngineerId', $salesEngineerId)
             ->where(function ($q) {
-                $q->whereIn('cl.ResidenciaFiscal', self::FORECAST_COUNTRIES)
-                  ->orWhere('cl.ResidenciaFiscal', '=', '');
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
@@ -212,6 +254,77 @@ class ForecastService
         return $result;
     }
 
+    /**
+     * Lista de clientes/grupos (idCliente + razonSocial + isGroup) para el template de carga masiva de forecast.
+     * Los clientes que pertenecen a un grupo no se listan individualmente: el grupo se agrega
+     * una sola vez, al final, en su lugar (el forecast se sube contra el grupo, no sus miembros).
+     * Si $salesEngineerId es null, retorna todos los clientes/grupos elegibles para forecast.
+     *
+     * @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}>
+     */
+    public function getExportTemplateClients(?int $salesEngineerId): Collection
+    {
+        return $salesEngineerId !== null
+            ? $this->getSalesEngineerClientList($salesEngineerId)
+            : $this->getAllForecastClientList();
+    }
+
+    /** @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}> */
+    private function getSalesEngineerClientList(int $salesEngineerId): Collection
+    {
+        $myGroups = ClientGroup::where('responsibleUserId', $salesEngineerId)->get();
+        $allGroupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values();
+
+        $extClients = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE . ' as cle')
+            ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
+            ->where('cle.salesEngineerId', $salesEngineerId)
+            ->where(function ($q) {
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
+            })
+            ->select('cle.idCliente', 'cl.razonSocial')
+            ->get();
+
+        $result = collect();
+
+        foreach ($extClients as $client) {
+            if ($allGroupedClientIds->contains($client->idCliente)) {
+                continue; // pertenece a un grupo — se lista como grupo más abajo
+            }
+
+            $result->push(['idCliente' => $client->idCliente, 'razonSocial' => $client->razonSocial, 'isGroup' => false]);
+        }
+
+        foreach ($myGroups as $group) {
+            $result->push(['idCliente' => $group->id, 'razonSocial' => $group->name, 'isGroup' => true]);
+        }
+
+        return $result->values();
+    }
+
+    /** @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}> */
+    private function getAllForecastClientList(): Collection
+    {
+        $groupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values()->all();
+
+        $clients = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE . ' as cl')
+            ->where(function ($q) {
+               $q->where('cl.rfc', '!=', 'XEXX010101000');
+            })
+            ->when(!empty($groupedClientIds), fn ($q) => $q->whereNotIn('cl.idCliente', $groupedClientIds))
+            ->orderBy('cl.idCliente')
+            ->select('cl.idCliente', 'cl.razonSocial')
+            ->get()
+            ->map(fn($row) => ['idCliente' => $row->idCliente, 'razonSocial' => $row->razonSocial, 'isGroup' => false]);
+
+        $groups = ClientGroup::orderBy('name')
+            ->get()
+            ->map(fn($group) => ['idCliente' => $group->id, 'razonSocial' => $group->name, 'isGroup' => true]);
+
+        return $clients->concat($groups)->values();
+    }
+
     private function buildGroupEntry(
         ClientGroup $group,
         \Illuminate\Support\Collection $groupClients,
@@ -268,6 +381,75 @@ class ForecastService
             'months'      => $groupMonths,
             'clients'     => $clients,
         ];
+    }
+
+    /** Resumen de 12 meses de un cliente nacional: objetivo, venta mensual, %cumplimiento, %retorno (null por ahora). */
+    public function getClientSummary(int $idClient, int $year): array
+    {
+        $forecast = $this->fetchForecast([$idClient], $year)->get((string) $idClient, collect());
+        $sales    = $this->fetchSales([$idClient], $year)->get((string) $idClient, collect());
+
+        $returnPercentage = NationalCustomer::where('customerNumber', (string) $idClient)->value('returnPercentage');
+
+        return [
+            'numeroCliente' => $idClient,
+            'nombre'        => $this->getClientName($idClient),
+            'anio'          => $year,
+            'meses'         => $this->buildSummaryMonths($forecast, $sales, $returnPercentage !== null ? (float) $returnPercentage : null),
+        ];
+    }
+
+    /** Resumen de 12 meses de un grupo: objetivo del grupo, venta mensual sumada de sus miembros. */
+    public function getGroupSummary(string $groupId, int $year): array
+    {
+        $group     = ClientGroup::with('members')->findOrFail($groupId);
+        $memberIds = $group->members->pluck('clientId')->unique()->values()->all();
+
+        $forecast      = $this->fetchForecast([$groupId], $year)->get((string) $groupId, collect());
+        $salesByClient = empty($memberIds) ? collect() : $this->fetchSales($memberIds, $year);
+
+        $sales = collect();
+        for ($month = 1; $month <= 12; $month++) {
+            $total = collect($memberIds)->sum(
+                fn($cid) => (float) ($salesByClient->get((string) $cid)?->get($month)?->total ?? 0)
+            );
+
+            if ($total > 0) {
+                $sales->put($month, (object) ['total' => round($total, 2)]);
+            }
+        }
+
+        return [
+            'numeroCliente' => $group->id,
+            'nombre'        => $group->name,
+            'anio'          => $year,
+            'meses'         => $this->buildSummaryMonths($forecast, $sales, $group->returnPercentage !== null ? (float) $group->returnPercentage : null),
+        ];
+    }
+
+    /** Arma los 12 meses de un resumen con objetivo/ventaMensual/%cumplimiento/%retorno. */
+    private function buildSummaryMonths(Collection $forecast, Collection $sales, ?float $returnPercentage = null): array
+    {
+        $meses = [];
+
+        for ($month = 1; $month <= 12; $month++) {
+            $objetivo     = $forecast->get($month)?->amount;
+            $objetivo     = $objetivo !== null ? (float) $objetivo : null;
+            $ventaMensual = $sales->get($month)?->total;
+            $ventaMensual = $ventaMensual !== null ? (float) $ventaMensual : null;
+
+            $meses[] = [
+                'mes'                    => $month,
+                'objetivo'               => $objetivo,
+                'ventaMensual'           => $ventaMensual,
+                'porcentajeCumplimiento' => ($objetivo > 0 && $ventaMensual !== null)
+                    ? round($ventaMensual / $objetivo * 100, 2)
+                    : null,
+                'porcentajeRetorno'      => $returnPercentage,
+            ];
+        }
+
+        return $meses;
     }
 
     public function upsert(int $idClient, int $year, array $months): Collection

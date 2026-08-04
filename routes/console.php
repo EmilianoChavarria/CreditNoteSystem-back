@@ -12,9 +12,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command(SendPendingApprovalReminders::class)
-    ->dailyAt('15:56')
-    ->timezone('America/Mexico_City');
+// Schedule::command(SendPendingApprovalReminders::class)
+//     ->dailyAt('15:56')
+//     ->timezone('America/Mexico_City');
 
 Schedule::command(SyncForecastSales::class)
     ->dailyAt('02:00')
@@ -22,9 +22,9 @@ Schedule::command(SyncForecastSales::class)
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/sync-forecast.log'));
 
-Schedule::command(ReleaseStaleRequestNumberReservations::class)
-    ->everyFifteenMinutes()
-    ->withoutOverlapping();
+// Schedule::command(ReleaseStaleRequestNumberReservations::class)
+//     ->everyFifteenMinutes()
+//     ->withoutOverlapping();
 
 Schedule::command(SyncProductCatalog::class)
     ->dailyAt('02:30')

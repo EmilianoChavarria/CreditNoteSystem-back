@@ -9,16 +9,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('client_groups', function (Blueprint $table) {
-            $table->integer('responsibleUserId')->nullable()->after('description');
-            $table->foreign('responsibleUserId')->references('id')->on('users')->nullOnDelete();
+            $table->integer('salesManagerId')->nullable()->after('responsibleUserId');
+
+            $table->foreign('salesManagerId')->references('id')->on('users')->onDelete('set null');
         });
     }
 
     public function down(): void
     {
         Schema::table('client_groups', function (Blueprint $table) {
-            $table->dropForeign(['responsibleUserId']);
-            $table->dropColumn('responsibleUserId');
+            $table->dropForeign(['salesManagerId']);
+            $table->dropColumn('salesManagerId');
         });
     }
 };

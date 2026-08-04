@@ -6,6 +6,7 @@ use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
 use App\Mail\ForecastRejectedMail;
 use App\Mail\ForecastRequestApprovedMail;
+use App\Models\ClientGroup;
 use App\Models\Distributor;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
@@ -320,39 +321,45 @@ class ForecastApprovalService
 
     public function getPendingForApprover(User $actor): Collection
     {
-        return ForecastChangeRequest::where('approverUserId', $actor->id)
+        $requests = ForecastChangeRequest::where('approverUserId', $actor->id)
             ->where('status', 'pending')
             ->with([
                 'submittedBy:id,fullName',
                 'history.actor:id,fullName',
             ])
             ->orderBy('createdAt')
-            ->get()
-            ->map(function ($r) {
-                /** @var ForecastChangeRequest $r */
-                return $this->formatRequest($r);
-            });
+            ->get();
+
+        $clientNames = $this->getClientNames($requests->pluck('idClient')->unique()->all());
+
+        return $requests->map(function ($r) use ($clientNames) {
+            /** @var ForecastChangeRequest $r */
+            return $this->formatRequest($r, $clientNames);
+        });
     }
 
     public function getPendingBySubmitter(User $actor): Collection
     {
-        return ForecastChangeRequest::where('submittedByUserId', $actor->id)
+        $requests = ForecastChangeRequest::where('submittedByUserId', $actor->id)
             ->whereIn('status', ['pending', 'approved', 'rejected'])
             ->with([
                 'approver:id,fullName',
                 'history.actor:id,fullName',
             ])
             ->orderByDesc('createdAt')
-            ->get()
-            ->map(function ($r) {
-                /** @var ForecastChangeRequest $r */
-                return $this->formatRequest($r);
-            });
+            ->get();
+
+        $clientNames = $this->getClientNames($requests->pluck('idClient')->unique()->all());
+
+        return $requests->map(function ($r) use ($clientNames) {
+            /** @var ForecastChangeRequest $r */
+            return $this->formatRequest($r, $clientNames);
+        });
     }
 
     public function getMonthHistory(int $idClient, int $year, int $month): Collection
     {
-        return ForecastChangeRequest::where('idClient', $idClient)
+        $requests = ForecastChangeRequest::where('idClient', $idClient)
             ->where('year', $year)
             ->where('month', $month)
             ->with([
@@ -361,8 +368,11 @@ class ForecastApprovalService
                 'history.actor:id,fullName',
             ])
             ->orderBy('createdAt')
-            ->get()
-            ->map(fn($r) => $this->formatRequest($r));
+            ->get();
+
+        $clientNames = $this->getClientNames([$idClient]);
+
+        return $requests->map(fn($r) => $this->formatRequest($r, $clientNames));
     }
 
     public function getPendingMapForClient(int $idClient, int $year): Collection
@@ -409,6 +419,12 @@ class ForecastApprovalService
 
     private function findSalesManagerForClient(int $idClient): ?User
     {
+        $group = ClientGroup::find($idClient);
+
+        if ($group) {
+            return $this->findSalesManagerForGroup($group);
+        }
+
         $salesManagerId = DB::connection(self::EXT_CONNECTION)
             ->table(self::CLIENT_EXT_TABLE)
             ->where('idCliente', $idClient)
@@ -423,17 +439,61 @@ class ForecastApprovalService
             ->find((int) $salesManagerId);
     }
 
+    private function findSalesManagerForGroup(ClientGroup $group): ?User
+    {
+        if (!$group->salesManagerId) {
+            return null;
+        }
+
+        return User::where('isActive', true)
+            ->whereNull('deletedAt')
+            ->find((int) $group->salesManagerId);
+    }
+
     private function getClientName(int $idClient): string
     {
+        $group = ClientGroup::find($idClient);
+
+        if ($group) {
+            return (string) $group->name;
+        }
+
         return (string) (DB::connection(self::EXT_CONNECTION)
             ->table(self::CLIENT_TABLE)
             ->where('idCliente', $idClient)
             ->value('razonSocial') ?? '');
     }
 
+    /**
+     * @param  array<int, int> $idClients
+     * @return array<int, string> idCliente => razonSocial (o groupId => nombre del grupo)
+     */
+    private function getClientNames(array $idClients): array
+    {
+        if (empty($idClients)) {
+            return [];
+        }
+
+        $groupNames = ClientGroup::whereIn('id', $idClients)->pluck('name', 'id')->all();
+
+        $remainingIds = array_values(array_diff($idClients, array_keys($groupNames)));
+
+        $clientNames = empty($remainingIds) ? [] : DB::connection(self::EXT_CONNECTION)
+            ->table(self::CLIENT_TABLE)
+            ->whereIn('idCliente', $remainingIds)
+            ->pluck('razonSocial', 'idCliente')
+            ->all();
+
+        return $groupNames + $clientNames;
+    }
+
     /** @return string[] */
     private function getClientEmails(int $idClient): array
     {
+        if (ClientGroup::where('id', $idClient)->exists()) {
+            return [];
+        }
+
         $raw = Distributor::where('clientNumber', (string) $idClient)->value('emails');
 
         if (!$raw) {
@@ -467,11 +527,13 @@ class ForecastApprovalService
         }
     }
 
-    private function formatRequest(ForecastChangeRequest $r): array
+    /** @param array<int, string> $clientNames idCliente => razonSocial */
+    private function formatRequest(ForecastChangeRequest $r, array $clientNames = []): array
     {
         return [
             'id'             => $r->id,
             'idClient'       => $r->idClient,
+            'clientName'     => $clientNames[$r->idClient] ?? null,
             'year'           => $r->year,
             'month'          => $r->month,
             'previousAmount' => $r->previousAmount,

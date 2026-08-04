@@ -17,7 +17,9 @@ class ClientGroup extends Model
 
     protected $table = 'client_groups';
 
-    protected $fillable = ['name', 'description', 'responsibleUserId'];
+    protected $fillable = ['name', 'clientNumber', 'description', 'responsibleUserId', 'salesManagerId', 'returnPercentage'];
+
+    protected $casts = ['returnPercentage' => 'decimal:2'];
 
     public function members(): HasMany
     {
@@ -27,5 +29,10 @@ class ClientGroup extends Model
     public function responsible(): BelongsTo
     {
         return $this->belongsTo(User::class, 'responsibleUserId');
+    }
+
+    public function salesManager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'salesManagerId');
     }
 }

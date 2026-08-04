@@ -9,7 +9,7 @@ return new class extends Migration
     {
         DB::statement("ALTER TABLE batches MODIFY COLUMN batchType ENUM(
             'sapScreen', 'creditsData', 'orderNumbers', 'newRequest',
-            'uploadSupport', 'users', 'forecast', 'productClassification'
+            'uploadSupport', 'users', 'forecast', 'productClassification', 'distributors', 'nationalCustomers'
         ) NOT NULL");
     }
 
@@ -17,7 +17,7 @@ return new class extends Migration
     {
         DB::statement("ALTER TABLE batches MODIFY COLUMN batchType ENUM(
             'sapScreen', 'creditsData', 'orderNumbers', 'newRequest',
-            'uploadSupport', 'users', 'forecast'
+            'uploadSupport', 'users', 'forecast', 'productClassification', 'distributors'
         ) NOT NULL");
     }
 };

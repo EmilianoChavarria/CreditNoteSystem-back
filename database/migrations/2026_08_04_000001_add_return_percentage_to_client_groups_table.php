@@ -8,15 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('forecastcomprobantes', function (Blueprint $table) {
-            $table->decimal('tipoCambio', 10, 4)->nullable()->after('moneda');
+        Schema::table('client_groups', function (Blueprint $table) {
+            $table->decimal('returnPercentage', 5, 2)->nullable()->after('salesManagerId');
         });
     }
 
     public function down(): void
     {
-        Schema::table('forecastcomprobantes', function (Blueprint $table) {
-            $table->dropColumn('tipoCambio');
+        Schema::table('client_groups', function (Blueprint $table) {
+            $table->dropColumn('returnPercentage');
         });
     }
 };

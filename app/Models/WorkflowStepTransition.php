@@ -4,13 +4,15 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class WorkflowStepTransition extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     const CREATED_AT = 'createdAt';
     const UPDATED_AT = 'updatedAt';
+    const DELETED_AT = 'deletedAt';
 
     protected $table = 'workflowsteptransitions';
 
@@ -23,6 +25,8 @@ class WorkflowStepTransition extends Model
         'conditionValue',
         'priority',
         'markAsApproved',
+        'deletedAt',
+        'deletedBy',
     ];
 
     protected $casts = [
@@ -33,6 +37,7 @@ class WorkflowStepTransition extends Model
         'markAsApproved' => 'boolean',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
+        'deletedAt' => 'datetime',
     ];
 
     public function workflow()
