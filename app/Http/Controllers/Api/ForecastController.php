@@ -79,7 +79,7 @@ class ForecastController extends Controller
         $authUser = $request->attributes->get('authUser');
 
         try {
-            $creditNote = $this->forecastCreditNoteService->generate($tipo, $id, $year, $month, $authUser);
+            $result = $this->forecastCreditNoteService->generate($tipo, $id, $year, $month, $authUser);
         } catch (ValidationException $e) {
             $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
             return response()->json(ApiResponse::error($message, $e->errors(), 422), 422);
@@ -87,7 +87,10 @@ class ForecastController extends Controller
             return response()->json(ApiResponse::error('No encontrado', null, 404), 404);
         }
 
-        return response()->json(ApiResponse::success('Nota de crédito generada', ForecastCreditNoteResource::make($creditNote)), 201);
+        return response()->json(ApiResponse::success('Nota de crédito generada', [
+            'created' => ForecastCreditNoteResource::collection($result['created']),
+            'skipped' => $result['skipped'],
+        ]), 201);
     }
 
     /** Historial de NC generadas desde forecast para un cliente/grupo. */

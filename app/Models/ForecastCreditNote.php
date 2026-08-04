@@ -17,6 +17,7 @@ class ForecastCreditNote extends Model
         'entityType',
         'entityId',
         'customerNumber',
+        'groupId',
         'year',
         'month',
         'returnPercentage',
@@ -35,6 +36,11 @@ class ForecastCreditNote extends Model
     public function request(): BelongsTo
     {
         return $this->belongsTo(Request::class, 'requestId');
+    }
+
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(ClientGroup::class, 'groupId');
     }
 
     public function generatedByUser(): BelongsTo
