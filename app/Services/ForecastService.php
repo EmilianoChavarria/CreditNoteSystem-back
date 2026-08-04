@@ -389,11 +389,13 @@ class ForecastService
         $forecast = $this->fetchForecast([$idClient], $year)->get((string) $idClient, collect());
         $sales    = $this->fetchSales([$idClient], $year)->get((string) $idClient, collect());
 
+        $returnPercentage = NationalCustomer::where('customerNumber', (string) $idClient)->value('returnPercentage');
+
         return [
             'numeroCliente' => $idClient,
             'nombre'        => $this->getClientName($idClient),
             'anio'          => $year,
-            'meses'         => $this->buildSummaryMonths($forecast, $sales),
+            'meses'         => $this->buildSummaryMonths($forecast, $sales, $returnPercentage !== null ? (float) $returnPercentage : null),
         ];
     }
 
@@ -421,12 +423,12 @@ class ForecastService
             'numeroCliente' => $group->id,
             'nombre'        => $group->name,
             'anio'          => $year,
-            'meses'         => $this->buildSummaryMonths($forecast, $sales),
+            'meses'         => $this->buildSummaryMonths($forecast, $sales, $group->returnPercentage !== null ? (float) $group->returnPercentage : null),
         ];
     }
 
-    /** Arma los 12 meses de un resumen con objetivo/ventaMensual/%cumplimiento/%retorno(null). */
-    private function buildSummaryMonths(Collection $forecast, Collection $sales): array
+    /** Arma los 12 meses de un resumen con objetivo/ventaMensual/%cumplimiento/%retorno. */
+    private function buildSummaryMonths(Collection $forecast, Collection $sales, ?float $returnPercentage = null): array
     {
         $meses = [];
 
@@ -443,7 +445,7 @@ class ForecastService
                 'porcentajeCumplimiento' => ($objetivo > 0 && $ventaMensual !== null)
                     ? round($ventaMensual / $objetivo * 100, 2)
                     : null,
-                'porcentajeRetorno'      => null,
+                'porcentajeRetorno'      => $returnPercentage,
             ];
         }
 

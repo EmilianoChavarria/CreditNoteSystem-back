@@ -8,17 +8,21 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
+use App\Http\Resources\ForecastCreditNoteResource;
 use App\Services\DistributorForecastService;
+use App\Services\ForecastCreditNoteService;
 use App\Services\ForecastService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ForecastController extends Controller
 {
     public function __construct(
         private readonly ForecastService $forecastService,
-        private readonly DistributorForecastService $distributorForecastService
+        private readonly DistributorForecastService $distributorForecastService,
+        private readonly ForecastCreditNoteService $forecastCreditNoteService
     ) {
     }
 
@@ -46,7 +50,8 @@ class ForecastController extends Controller
 
     /**
      * Resumen de 12 meses de un solo cliente/distribuidor/grupo: objetivo, venta mensual,
-     * %cumplimiento y %retorno (null por ahora, se agrega después).
+     * %cumplimiento y %retorno (national_customers.returnPercentage / client_groups.returnPercentage;
+     * null para clienteExtranjero, aún sin ese campo).
      */
     public function summary(string $tipo, string $id, int $year)
     {
@@ -66,6 +71,35 @@ class ForecastController extends Controller
         }
 
         return response()->json(ApiResponse::success('Resumen de forecast obtenido exitosamente', array_merge(['tipo' => $tipo], $result)));
+    }
+
+    /** Genera la NC (registro en requests, tipo auditor credits) por cumplimiento de forecast de un cliente/grupo en un mes. */
+    public function generateCreditNote(Request $request, string $tipo, string $id, int $year, int $month)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        try {
+            $creditNote = $this->forecastCreditNoteService->generate($tipo, $id, $year, $month, $authUser);
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
+            return response()->json(ApiResponse::error($message, $e->errors(), 422), 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return response()->json(ApiResponse::error('No encontrado', null, 404), 404);
+        }
+
+        return response()->json(ApiResponse::success('Nota de crédito generada', ForecastCreditNoteResource::make($creditNote)), 201);
+    }
+
+    /** Historial de NC generadas desde forecast para un cliente/grupo. */
+    public function creditNoteHistory(string $tipo, string $id)
+    {
+        if (!in_array($tipo, ['cliente', 'grupo'], true)) {
+            return response()->json(ApiResponse::error('Tipo inválido, usa: cliente o grupo', null, 422), 422);
+        }
+
+        $history = $this->forecastCreditNoteService->getHistory($tipo, $id);
+
+        return response()->json(ApiResponse::success('Historial de notas de crédito', ForecastCreditNoteResource::collection($history)));
     }
 
     public function index(int $idClient, int $year)
