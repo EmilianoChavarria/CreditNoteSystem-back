@@ -32,6 +32,7 @@ class ForecastCreditNoteService
         private readonly RequestCrudService $requestCrudService,
         private readonly RequestNumberService $requestNumberService,
         private readonly BanxicoService $banxico,
+        private readonly RequestAttachmentService $requestAttachmentService,
     ) {
     }
 
@@ -123,9 +124,11 @@ class ForecastCreditNoteService
      * - grupo: el % de retorno es del grupo, pero la NC se reparte una por cada cliente miembro
      *   que aportó ventas consideradas ese mes (cada una a su propio customerId/area).
      *
+     * @param array<string, \Illuminate\Http\UploadedFile[]> $attachmentsByClient Adjuntos por clientId; cada
+     *   NC (cliente o miembro de grupo) requiere al menos uno, el workflow no avanza una solicitud sin adjuntos.
      * @return array{created: ForecastCreditNote[], skipped: array<int, array{clientId: string, reason: string}>}
      */
-    public function generate(string $tipo, string $id, int $year, int $month, mixed $authUser): array
+    public function generate(string $tipo, string $id, int $year, int $month, mixed $authUser, array $attachmentsByClient = []): array
     {
         if (!in_array($tipo, ['cliente', 'grupo'], true)) {
             throw ValidationException::withMessages(['tipo' => 'Solo se pueden generar notas de crédito para cliente o grupo.']);
@@ -150,7 +153,13 @@ class ForecastCreditNoteService
                 throw ValidationException::withMessages(['invoices' => 'No hay facturas consideradas para este periodo (todo excluido por clasificación de producto).']);
             }
 
-            $note = $this->createNote((string) $id, $year, $month, $sales, $returnPercentage, $folios, null, $authUser, ...$catalogIds);
+            $files = $this->validFiles($attachmentsByClient[(string) $id] ?? []);
+
+            if (empty($files)) {
+                throw ValidationException::withMessages(['attachments' => 'Debes adjuntar al menos un archivo de soporte para generar la nota de crédito.']);
+            }
+
+            $note = $this->createNote((string) $id, $year, $month, $sales, $returnPercentage, $folios, null, $authUser, $files, ...$catalogIds);
 
             return ['created' => [$note], 'skipped' => []];
         }
@@ -188,7 +197,14 @@ class ForecastCreditNoteService
                 continue;
             }
 
-            $created[] = $this->createNote((string) $memberId, $year, $month, $sales, $returnPercentage, $folios, (int) $group->id, $authUser, ...$catalogIds);
+            $files = $this->validFiles($attachmentsByClient[(string) $memberId] ?? []);
+
+            if (empty($files)) {
+                $skipped[] = ['clientId' => (string) $memberId, 'reason' => 'Falta adjuntar el archivo de soporte de esta nota.'];
+                continue;
+            }
+
+            $created[] = $this->createNote((string) $memberId, $year, $month, $sales, $returnPercentage, $folios, (int) $group->id, $authUser, $files, ...$catalogIds);
         }
 
         if (empty($created)) {
@@ -246,6 +262,12 @@ class ForecastCreditNoteService
         return [round($sales, 2), array_values(array_unique($folios))];
     }
 
+    /** Filtra a solo UploadedFile válidos (descarta entradas vacías/corruptas). */
+    private function validFiles(array $files): array
+    {
+        return array_values(array_filter($files, fn ($f) => $f instanceof \Illuminate\Http\UploadedFile && $f->isValid()));
+    }
+
     /** Crea el request (auditor credits) + su registro de historial para un cliente puntual. */
     private function createNote(
         string $clientId,
@@ -256,6 +278,7 @@ class ForecastCreditNoteService
         array $folios,
         ?int $groupId,
         mixed $authUser,
+        array $files,
         int $requestTypeId,
         int $classificationId,
         int $reasonId
@@ -279,7 +302,7 @@ class ForecastCreditNoteService
         );
 
         return DB::transaction(function () use (
-            $clientId, $year, $month, $sales, $returnPercentage, $folios, $groupId, $authUser,
+            $clientId, $year, $month, $sales, $returnPercentage, $folios, $groupId, $authUser, $files,
             $requestTypeId, $classificationId, $reasonId, $totalAmount, $area, $exchangeRate, $comments
         ) {
             $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
@@ -299,6 +322,8 @@ class ForecastCreditNoteService
                 'hasIva'           => false,
                 'comments'         => $comments,
             ], $authUser);
+
+            $this->requestAttachmentService->storeAndAttachFiles($request, $files, 'uploadSupport');
 
             return ForecastCreditNote::create([
                 'requestId'        => $request->id,
