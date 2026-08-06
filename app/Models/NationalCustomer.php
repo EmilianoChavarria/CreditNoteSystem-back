@@ -3,11 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class NationalCustomer extends Model
 {
+    use SoftDeletes;
+
     public const CREATED_AT = 'createdAt';
     public const UPDATED_AT = 'updatedAt';
+    public const DELETED_AT = 'deletedAt';
 
     protected $table = 'national_customers';
 
