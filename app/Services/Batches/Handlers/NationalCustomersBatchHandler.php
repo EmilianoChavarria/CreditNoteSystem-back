@@ -4,6 +4,7 @@ namespace App\Services\Batches\Handlers;
 
 use App\Models\Batch;
 use App\Models\BatchItem;
+use App\Models\NationalCustomer;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
 use App\Services\NationalCustomerService;
@@ -34,6 +35,8 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
 
     public function process(array $row, Batch $batch): ?int
     {
+        $rawCurrency = $this->value($row, ['currency', 'moneda', 'divisa']);
+
         $payload = [
             'customerNumber'   => $this->value($row, ['customernumber', 'customer_number', 'clientnumber', 'client_number', 'idcliente']),
             'emails'           => $this->value($row, ['emails', 'correos', 'email', 'correo']),
@@ -55,12 +58,35 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
             throw new RuntimeException("El customer number '{$customerNumber}' no existe en la base de datos de invoices.");
         }
 
-        $this->nationalCustomerService->upsertByCustomerNumber($customerNumber, [
+        $data = [
             'emails'           => $emails,
             'returnPercentage' => (float) $validated['returnPercentage'],
-        ]);
+        ];
+
+        // La columna es opcional: si el archivo no la trae, se conserva la moneda ya guardada.
+        $currency = $this->normalizeCurrency($rawCurrency);
+        if ($currency !== null) {
+            $data['currency'] = $currency;
+        }
+
+        $this->nationalCustomerService->upsertByCustomerNumber($customerNumber, $data);
 
         return null;
+    }
+
+    private function normalizeCurrency(mixed $rawCurrency): ?string
+    {
+        $currency = strtoupper(trim((string) $rawCurrency));
+
+        if ($currency === '') {
+            return null;
+        }
+
+        if (!in_array($currency, NationalCustomer::CURRENCIES, true)) {
+            throw new RuntimeException("La moneda '{$currency}' no es válida. Use USD o MXN.");
+        }
+
+        return $currency;
     }
 
     private function validateEmails(string $rawEmails): string
