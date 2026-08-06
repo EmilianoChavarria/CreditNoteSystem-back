@@ -798,8 +798,9 @@ class ForecastService
      */
     private function fetchSales(array $clientIds, int $year): Collection
     {
-        $rate        = $this->banxico->getCurrentUsdRate();
-        $receptorIds = array_map('strval', $clientIds);
+        // Solo para comprobantes antiguos que se sincronizaron sin tipoCambio.
+        $fallbackRate = $this->banxico->getCurrentUsdRate();
+        $receptorIds  = array_map('strval', $clientIds);
 
         $rows = ForecastComprobanteProducto::query()
             ->join('forecastcomprobantes', function ($join) {
@@ -809,7 +810,7 @@ class ForecastService
             ->whereIn('forecastcomprobanteproductos.receptorId', $receptorIds)
             ->where('forecastcomprobantes.status', 'Emitido')
             ->whereYear('forecastcomprobantes.fechaEmision', $year)
-            ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, forecastcomprobanteproductos.folio as folio, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.noIdentificacion as noIdentificacion, forecastcomprobanteproductos.noPedido as noPedido, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.subTotal as subTotal, forecastcomprobantes.total as total, forecastcomprobantes.moneda as moneda, forecastcomprobantes.tipoComprobante as tipoComprobante')
+            ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, forecastcomprobanteproductos.folio as folio, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.noIdentificacion as noIdentificacion, forecastcomprobanteproductos.noPedido as noPedido, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.subTotal as subTotal, forecastcomprobantes.total as total, forecastcomprobantes.moneda as moneda, forecastcomprobantes.tipoCambio as tipoCambio, forecastcomprobantes.tipoComprobante as tipoComprobante')
             ->get();
 
         $productIds = $rows->map(fn($r) => trim($r->noIdentificacion))->unique()->values()->all();
@@ -834,17 +835,33 @@ class ForecastService
             ->groupBy(fn($row) => (string) $row->receptorId)
             ->map(fn($byClient) => $byClient
                 ->groupBy('month')
-                ->map(function ($rows) use ($rate, $folioRol) {
-                    // El importe de cada línea excluye IVA; se prorratea con el factor
-                    // total/subTotal de su factura para que la suma cuadre con el total facturado.
-                    // Las notas de crédito de devolución (signo -1) restan del total del mes.
-                    $totalUsd = $rows->sum(function ($r) use ($rate, $folioRol) {
-                        $factor = (float) $r->subTotal > 0 ? (float) $r->total / (float) $r->subTotal : 1;
-                        $amount = (float) $r->importe * $factor;
-                        $signo  = $folioRol->get("{$r->receptorId}|{$r->folio}")['signo'];
+                ->map(function ($rows) use ($fallbackRate, $folioRol) {
+                    // Se agrega por comprobante y se redondea igual que getInvoicesByMonth()
+                    // para que el total del mes ate al centavo con su desglose.
+                    $totalUsd = $rows
+                        ->groupBy(fn($r) => "{$r->receptorId}|{$r->folio}")
+                        ->sum(function ($lines) use ($fallbackRate, $folioRol) {
+                            $first = $lines->first();
 
-                        return ($r->moneda === 'MXN' ? $amount / $rate : $amount) * $signo;
-                    });
+                            // El importe de cada línea excluye IVA; se prorratea con el factor
+                            // total/subTotal de su comprobante para cuadrar con el total facturado.
+                            $factor = (float) $first->subTotal > 0
+                                ? (float) $first->total / (float) $first->subTotal
+                                : 1;
+
+                            $subTotal = round((float) $lines->sum('importe'), 2);
+                            $total    = round($subTotal * $factor, 2);
+
+                            if ($first->moneda === 'MXN') {
+                                // Con el tipo de cambio con el que se timbró, no con el actual.
+                                $rate  = $first->tipoCambio ? (float) $first->tipoCambio : $fallbackRate;
+                                $total = round($total / $rate, 2);
+                            }
+
+                            // Las notas de crédito de devolución (signo -1) restan del mes.
+                            return $total * $folioRol->get("{$first->receptorId}|{$first->folio}")['signo'];
+                        });
+
                     return (object) ['total' => round($totalUsd, 2)];
                 })
             );

@@ -11,6 +11,21 @@ class BulkStoreNationalCustomersRequest extends FormRequest
         return true;
     }
 
+    /** Los ids suelen mandarse como números en el JSON; se normalizan a string. */
+    protected function prepareForValidation(): void
+    {
+        $numbers = $this->input('customerNumbers');
+
+        if (is_array($numbers)) {
+            $this->merge([
+                'customerNumbers' => array_map(
+                    fn ($n) => is_scalar($n) ? trim((string) $n) : $n,
+                    $numbers
+                ),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
         return [
