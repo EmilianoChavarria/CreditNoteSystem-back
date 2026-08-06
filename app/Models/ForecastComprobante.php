@@ -22,6 +22,7 @@ class ForecastComprobante extends Model
         'moneda',
         'tipoCambio',
         'status',
+        'tipoComprobante',
     ];
 
     protected $casts = [

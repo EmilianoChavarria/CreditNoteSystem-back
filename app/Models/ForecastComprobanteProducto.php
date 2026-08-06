@@ -23,6 +23,7 @@ class ForecastComprobanteProducto extends Model
         'descripcion',
         'valorUnitario',
         'importe',
+        'noPedido',
     ];
 
     protected $casts = [
