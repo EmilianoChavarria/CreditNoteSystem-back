@@ -89,7 +89,7 @@ class SyncForecastSales extends Command
             ->table(self::COMPROBANTES_TABLE)
             ->where('serie', '')
             ->whereBetween('fechaEmision', [$startOfYear, $endOfYear])
-            ->select(['receptorId', 'folio', 'serie', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'status'])
+            ->select(['receptorId', 'folio', 'serie', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'status', 'tipoComprobante'])
             ->orderBy('receptorId')
             ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, $rates, &$total) {
                 $records = $rows->map(function ($r) use ($now, $rates) {
@@ -107,6 +107,7 @@ class SyncForecastSales extends Command
                         'moneda'       => (string) $r->moneda,
                         'tipoCambio'   => $tipoCambio,
                         'status'       => (string) $r->status,
+                        'tipoComprobante' => (string) ($r->tipoComprobante ?? ''),
                         'createdAt'    => $now,
                         'updatedAt'    => $now,
                     ];
@@ -117,7 +118,7 @@ class SyncForecastSales extends Command
                 ForecastComprobante::upsert(
                     $records,
                     ['receptorId', 'folio'],
-                    ['subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio', 'status', 'updatedAt']
+                    ['subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio', 'status', 'tipoComprobante', 'updatedAt']
                 );
 
                 $total += \count($records);
@@ -176,6 +177,7 @@ class SyncForecastSales extends Command
                 'conceptoIndex'    => $c['conceptoIndex'],
                 'claveProdServ'    => $c['claveProdServ'],
                 'noIdentificacion' => $c['noIdentificacion'],
+                'noPedido'         => $c['noPedido'],
                 'cantidad'         => $c['cantidad'],
                 'claveUnidad'      => $c['claveUnidad'],
                 'unidad'           => $c['unidad'],
@@ -189,7 +191,7 @@ class SyncForecastSales extends Command
             ForecastComprobanteProducto::upsert(
                 $rows,
                 ['receptorId', 'folio', 'conceptoIndex'],
-                ['claveProdServ', 'noIdentificacion', 'cantidad', 'claveUnidad', 'unidad', 'descripcion', 'valorUnitario', 'importe', 'updatedAt']
+                ['claveProdServ', 'noIdentificacion', 'noPedido', 'cantidad', 'claveUnidad', 'unidad', 'descripcion', 'valorUnitario', 'importe', 'updatedAt']
             );
         }
     }
