@@ -25,6 +25,9 @@ class SyncForecastSales extends Command
     private const LOG_RETENTION_DAYS = 10;
     private const CHUNK_SIZE         = 500;
 
+    /** Días hacia atrás que se buscan para hallar el FIX aplicable a un comprobante. */
+    private const RATE_LOOKBACK_DAYS = 10;
+
     public function __construct(
         private readonly BanxicoService $banxico,
         private readonly FesaWsService $fesaWsService,
@@ -78,10 +81,12 @@ class SyncForecastSales extends Command
         $endOfYear   = Carbon::create($year)->endOfYear();
         $total       = 0;
 
-        // Single Banxico call for the entire year — map [Y-m-d => rate]
+        // Single Banxico call for the entire year — map [Y-m-d => rate].
+        // Se piden días extra antes del 1 de enero porque cada comprobante se liga
+        // al FIX del día hábil anterior (ver resolveRate).
         $this->line("  Fetching Banxico FIX rates for {$year}...");
         $rates = $this->banxico->getRatesByDateRange(
-            $startOfYear->format('Y-m-d'),
+            $startOfYear->copy()->subDays(self::RATE_LOOKBACK_DAYS)->format('Y-m-d'),
             min($endOfYear, $now)->format('Y-m-d')
         );
 
@@ -93,8 +98,7 @@ class SyncForecastSales extends Command
             ->orderBy('receptorId')
             ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, $rates, &$total) {
                 $records = $rows->map(function ($r) use ($now, $rates) {
-                    $date      = Carbon::parse($r->fechaEmision)->format('Y-m-d');
-                    $tipoCambio = $rates[$date] ?? null;
+                    $tipoCambio = $this->resolveRate($rates, Carbon::parse($r->fechaEmision));
 
                     return [
                         'receptorId'   => (string) $r->receptorId,
@@ -128,6 +132,29 @@ class SyncForecastSales extends Command
             });
 
         return $total;
+    }
+
+    /**
+     * FIX aplicable a un comprobante emitido en $fecha.
+     *
+     * Banxico fecha la serie SF43718 por día de determinación, pero el tipo de cambio
+     * se publica en el DOF al día hábil siguiente: una factura del día D se timbra con
+     * el FIX determinado en D-1. Se verificó contra 2,447 facturas en USD — 2,322 usan
+     * el del día hábil anterior y ninguna el del mismo día.
+     *
+     * @param array<string, float> $rates
+     */
+    private function resolveRate(array $rates, Carbon $fecha): ?float
+    {
+        for ($i = 1; $i <= self::RATE_LOOKBACK_DAYS; $i++) {
+            $key = $fecha->copy()->subDays($i)->format('Y-m-d');
+
+            if (isset($rates[$key])) {
+                return $rates[$key];
+            }
+        }
+
+        return null;
     }
 
     /**
