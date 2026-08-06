@@ -23,8 +23,7 @@ class ForecastService
     private const CLIENT_TABLE     = 'clientes_TME700618RC7';
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
-    private const TIPO_FACTURA       = 'factura';
-    private const TIPO_NOTA_CREDITO  = 'nota de credito';
+    private const TIPO_NOTA_CREDITO = 'nota de credito';
 
     public function __construct(private readonly BanxicoService $banxico) {}
 
@@ -564,13 +563,15 @@ class ForecastService
 
         $fallbackRate = null;
 
-        return $invoices->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio, $devolucionFolios) {
+        return $invoices->filter(function ($invoice) use ($devolucionFolios) {
+            // Las notas de crédito que no son devolución no cuentan para la venta:
+            // se omiten del desglose para que lo listado sea justo lo que forma el total.
             $rol = $this->comprobanteRol((string) $invoice->tipoComprobante, $devolucionFolios->contains($invoice->folio));
 
-            $invoice->cuenta = $rol['cuenta'];
-            $invoice->signo  = $rol['signo'];
-            $invoice->motivo = $rol['motivo'];
+            $invoice->signo = $rol['signo'];
 
+            return $rol['cuenta'];
+        })->values()->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio) {
             $originalSubTotal = (float) $invoice->subTotal;
             $originalTotal    = (float) $invoice->total;
             // Reconstruye subTotal/iva/total desde las líneas de producto (excluyendo No Rodamientos),
@@ -617,30 +618,23 @@ class ForecastService
 
     /**
      * Determina si un comprobante cuenta para la venta mensual y con qué signo:
-     *   - Factura                              → cuenta, suma.
      *   - Nota de Crédito con PO de devolución → cuenta, resta.
-     *   - Nota de Crédito sin PO de devolución → no cuenta (ni suma ni resta).
-     *   - Cualquier otro tipo                  → cuenta, suma (comportamiento histórico).
+     *   - Nota de Crédito sin PO de devolución → no cuenta; se omite de todos los endpoints.
+     *   - Factura (y cualquier otro tipo)      → cuenta, suma.
      *
-     * @return array{cuenta: bool, signo: int, motivo: string|null}
+     * @return array{cuenta: bool, signo: int}
      */
     private function comprobanteRol(string $tipoComprobante, bool $esDevolucion): array
     {
         $tipo = strtolower(trim($tipoComprobante));
 
-        if ($tipo === self::TIPO_FACTURA) {
-            return ['cuenta' => true, 'signo' => 1, 'motivo' => null];
-        }
-
-        if ($tipo === self::TIPO_NOTA_CREDITO && $esDevolucion) {
-            return ['cuenta' => true, 'signo' => -1, 'motivo' => 'Nota de crédito de devolución de material'];
-        }
-
         if ($tipo === self::TIPO_NOTA_CREDITO) {
-            return ['cuenta' => false, 'signo' => 0, 'motivo' => 'Nota de crédito sin relación a devolución de material'];
+            return $esDevolucion
+                ? ['cuenta' => true, 'signo' => -1]
+                : ['cuenta' => false, 'signo' => 0];
         }
 
-        return ['cuenta' => true, 'signo' => 1, 'motivo' => null];
+        return ['cuenta' => true, 'signo' => 1];
     }
 
     /** Folios de un cliente cuyas líneas traen algún PO de devolución (empieza con "DM"). */
@@ -688,7 +682,19 @@ class ForecastService
             ->whereYear('fechaEmision', $year)
             ->whereMonth('fechaEmision', $month)
             ->orderBy('fechaEmision')
-            ->get(['folio', 'subTotal', 'total', 'fechaEmision', 'moneda', 'tipoCambio']);
+            ->get(['folio', 'subTotal', 'total', 'fechaEmision', 'moneda', 'tipoCambio', 'tipoComprobante']);
+
+        if ($invoices->isEmpty()) {
+            return collect();
+        }
+
+        $devolucionFolios = $this->devolucionFolios((string) $idClient, $invoices->pluck('folio')->all());
+
+        // Mismo criterio que getInvoicesByMonth(): lo que no cuenta para la venta no se lista.
+        $invoices = $invoices->filter(fn($invoice) => $this->comprobanteRol(
+            (string) $invoice->tipoComprobante,
+            $devolucionFolios->contains($invoice->folio)
+        )['cuenta'])->values();
 
         if ($invoices->isEmpty()) {
             return collect();
