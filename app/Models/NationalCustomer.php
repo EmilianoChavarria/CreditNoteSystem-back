@@ -11,10 +11,17 @@ class NationalCustomer extends Model
 
     protected $table = 'national_customers';
 
+    public const CURRENCY_USD = 'USD';
+    public const CURRENCY_MXN = 'MXN';
+
+    /** Monedas permitidas para el cliente nacional. */
+    public const CURRENCIES = [self::CURRENCY_USD, self::CURRENCY_MXN];
+
     protected $fillable = [
         'customerNumber',
         'emails',
         'returnPercentage',
+        'currency',
     ];
 
     protected $casts = [
