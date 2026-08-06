@@ -23,6 +23,9 @@ class ForecastService
     private const CLIENT_TABLE     = 'clientes_TME700618RC7';
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
+    private const TIPO_FACTURA       = 'factura';
+    private const TIPO_NOTA_CREDITO  = 'nota de credito';
+
     public function __construct(private readonly BanxicoService $banxico) {}
 
     public function updateClientExt(int $idCliente, array $data): void
@@ -548,20 +551,26 @@ class ForecastService
             ->whereYear('fechaEmision', $year)
             ->whereMonth('fechaEmision', $month)
             ->orderBy('fechaEmision')
-            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio']);
+            ->get(['folio', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio', 'tipoComprobante']);
 
         if ($invoices->isEmpty()) {
             return $invoices;
         }
 
-        $consideredSubtotalByFolio = $this->consideredSubtotalByFolio(
-            (string) $idClient,
-            $invoices->pluck('folio')->all()
-        );
+        $folios = $invoices->pluck('folio')->all();
+
+        $consideredSubtotalByFolio = $this->consideredSubtotalByFolio((string) $idClient, $folios);
+        $devolucionFolios          = $this->devolucionFolios((string) $idClient, $folios);
 
         $fallbackRate = null;
 
-        return $invoices->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio) {
+        return $invoices->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio, $devolucionFolios) {
+            $rol = $this->comprobanteRol((string) $invoice->tipoComprobante, $devolucionFolios->contains($invoice->folio));
+
+            $invoice->cuenta = $rol['cuenta'];
+            $invoice->signo  = $rol['signo'];
+            $invoice->motivo = $rol['motivo'];
+
             $originalSubTotal = (float) $invoice->subTotal;
             $originalTotal    = (float) $invoice->total;
             // Reconstruye subTotal/iva/total desde las líneas de producto (excluyendo No Rodamientos),
@@ -595,6 +604,56 @@ class ForecastService
             }
             return $invoice;
         });
+    }
+
+    /**
+     * true si el PO (noPedido) de una línea corresponde a una devolución de material —
+     * siempre empieza con "DM" (ej. DM000005). Ver InvoicePdfService::parseDescripcion().
+     */
+    private function esDevolucionPo(?string $noPedido): bool
+    {
+        return $noPedido !== null && str_starts_with(strtoupper(trim($noPedido)), 'DM');
+    }
+
+    /**
+     * Determina si un comprobante cuenta para la venta mensual y con qué signo:
+     *   - Factura                              → cuenta, suma.
+     *   - Nota de Crédito con PO de devolución → cuenta, resta.
+     *   - Nota de Crédito sin PO de devolución → no cuenta (ni suma ni resta).
+     *   - Cualquier otro tipo                  → cuenta, suma (comportamiento histórico).
+     *
+     * @return array{cuenta: bool, signo: int, motivo: string|null}
+     */
+    private function comprobanteRol(string $tipoComprobante, bool $esDevolucion): array
+    {
+        $tipo = strtolower(trim($tipoComprobante));
+
+        if ($tipo === self::TIPO_FACTURA) {
+            return ['cuenta' => true, 'signo' => 1, 'motivo' => null];
+        }
+
+        if ($tipo === self::TIPO_NOTA_CREDITO && $esDevolucion) {
+            return ['cuenta' => true, 'signo' => -1, 'motivo' => 'Nota de crédito de devolución de material'];
+        }
+
+        if ($tipo === self::TIPO_NOTA_CREDITO) {
+            return ['cuenta' => false, 'signo' => 0, 'motivo' => 'Nota de crédito sin relación a devolución de material'];
+        }
+
+        return ['cuenta' => true, 'signo' => 1, 'motivo' => null];
+    }
+
+    /** Folios de un cliente cuyas líneas traen algún PO de devolución (empieza con "DM"). */
+    private function devolucionFolios(string $idClient, array $folios): Collection
+    {
+        return ForecastComprobanteProducto::where('receptorId', $idClient)
+            ->whereIn('folio', $folios)
+            ->whereNotNull('noPedido')
+            ->get(['folio', 'noPedido'])
+            ->filter(fn($p) => $this->esDevolucionPo($p->noPedido))
+            ->pluck('folio')
+            ->unique()
+            ->values();
     }
 
     /** [folio => suma de importe de sus líneas, excluyendo productos No Rodamientos] */
@@ -730,7 +789,7 @@ class ForecastService
             ->whereIn('forecastcomprobanteproductos.receptorId', $receptorIds)
             ->where('forecastcomprobantes.status', 'Emitido')
             ->whereYear('forecastcomprobantes.fechaEmision', $year)
-            ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.noIdentificacion as noIdentificacion, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.subTotal as subTotal, forecastcomprobantes.total as total, forecastcomprobantes.moneda as moneda')
+            ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, forecastcomprobanteproductos.folio as folio, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.noIdentificacion as noIdentificacion, forecastcomprobanteproductos.noPedido as noPedido, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.subTotal as subTotal, forecastcomprobantes.total as total, forecastcomprobantes.moneda as moneda, forecastcomprobantes.tipoComprobante as tipoComprobante')
             ->get();
 
         $productIds = $rows->map(fn($r) => trim($r->noIdentificacion))->unique()->values()->all();
@@ -740,19 +799,31 @@ class ForecastService
             ->pluck('idProducto')
             ->flip();
 
+        // Por comprobante (receptorId+folio): si cuenta para la venta mensual y con qué signo
+        // (Factura suma, Nota de Crédito de devolución resta, cualquier otra Nota de Crédito no cuenta).
+        $folioRol = $rows
+            ->groupBy(fn($r) => "{$r->receptorId}|{$r->folio}")
+            ->map(fn($lines) => $this->comprobanteRol(
+                (string) $lines->first()->tipoComprobante,
+                $lines->contains(fn($r) => $this->esDevolucionPo($r->noPedido))
+            ));
+
         return $rows
             ->reject(fn($r) => isset($excludedProductIds[trim($r->noIdentificacion)]))
+            ->reject(fn($r) => !$folioRol->get("{$r->receptorId}|{$r->folio}")['cuenta'])
             ->groupBy(fn($row) => (string) $row->receptorId)
             ->map(fn($byClient) => $byClient
                 ->groupBy('month')
-                ->map(function ($rows) use ($rate) {
+                ->map(function ($rows) use ($rate, $folioRol) {
                     // El importe de cada línea excluye IVA; se prorratea con el factor
                     // total/subTotal de su factura para que la suma cuadre con el total facturado.
-                    $totalUsd = $rows->sum(function ($r) use ($rate) {
+                    // Las notas de crédito de devolución (signo -1) restan del total del mes.
+                    $totalUsd = $rows->sum(function ($r) use ($rate, $folioRol) {
                         $factor = (float) $r->subTotal > 0 ? (float) $r->total / (float) $r->subTotal : 1;
                         $amount = (float) $r->importe * $factor;
+                        $signo  = $folioRol->get("{$r->receptorId}|{$r->folio}")['signo'];
 
-                        return $r->moneda === 'MXN' ? $amount / $rate : $amount;
+                        return ($r->moneda === 'MXN' ? $amount / $rate : $amount) * $signo;
                     });
                     return (object) ['total' => round($totalUsd, 2)];
                 })
