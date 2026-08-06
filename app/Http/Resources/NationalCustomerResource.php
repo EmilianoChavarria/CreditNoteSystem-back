@@ -15,6 +15,11 @@ class NationalCustomerResource extends JsonResource
             'emails'           => $this->emails,
             'returnPercentage' => $this->returnPercentage,
             'currency'         => $this->currency,
+            // Vienen de la BD externa, resueltos por NationalCustomerService::getPaginated()
+            'razonSocial'      => $this->razonSocial ?? null,
+            'rfc'              => $this->rfc ?? null,
+            'direccion'        => $this->direccion ?? null,
+            'createdAt'        => $this->createdAt,
         ];
     }
 }
