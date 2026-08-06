@@ -110,6 +110,7 @@ class ForecastService
 
             $client->emails           = $nationalCustomer?->emails;
             $client->returnPercentage = $nationalCustomer?->returnPercentage;
+            $client->currency         = $nationalCustomer?->currency;
 
             return $client;
         });

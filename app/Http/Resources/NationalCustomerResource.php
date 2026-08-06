@@ -14,6 +14,7 @@ class NationalCustomerResource extends JsonResource
             'customerNumber'   => $this->customerNumber,
             'emails'           => $this->emails,
             'returnPercentage' => $this->returnPercentage,
+            'currency'         => $this->currency,
         ];
     }
 }
