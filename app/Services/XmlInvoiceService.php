@@ -57,6 +57,7 @@ class XmlInvoiceService
                 'conceptoIndex'     => $index,
                 'claveProdServ'     => (string) $attrs->ClaveProdServ,
                 'noIdentificacion'  => $this->extractNoIdentificacion($descripcion),
+                'noPedido'          => $this->extractNoPedido($descripcion),
                 'cantidad'          => $cantidad,
                 'claveUnidad'       => (string) $attrs->ClaveUnidad,
                 'unidad'            => (string) $attrs->Unidad,
@@ -100,6 +101,7 @@ class XmlInvoiceService
                 'conceptoIndex'     => $index,
                 'claveProdServ'     => (string) $attrs->ClaveProdServ,
                 'noIdentificacion'  => $this->extractNoIdentificacion($descripcion),
+                'noPedido'          => $this->extractNoPedido($descripcion),
                 'cantidad'          => $cantidad,
                 'claveUnidad'       => (string) $attrs->ClaveUnidad,
                 'unidad'            => (string) $attrs->Unidad,
@@ -135,5 +137,18 @@ class XmlInvoiceService
         }
 
         return '';
+    }
+
+    /**
+     * El PO del cliente (No.Pedido / Cust PO Nbr) viene embebido en la Descripcion,
+     * formato "^PARTNUMBER;DESCRIPCION^NOPEDIDO^REMISION^..." — es el 3er segmento
+     * separado por "^" (índice 2). Las devoluciones de material siempre traen un
+     * PO que empieza con "DM" (ver InvoicePdfService::parseDescripcion, mismo formato).
+     */
+    private function extractNoPedido(string $descripcion): string
+    {
+        $parts = explode('^', $descripcion);
+
+        return trim($parts[2] ?? '');
     }
 }
