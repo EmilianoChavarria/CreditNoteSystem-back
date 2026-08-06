@@ -15,7 +15,10 @@ class ClientGroupService
     private const CONNECTION   = 'invoices';
     private const CLIENT_TABLE = 'clientes_TME700618RC7';
 
-    public function __construct(private readonly BanxicoService $banxico) {}
+    public function __construct(
+        private readonly BanxicoService $banxico,
+        private readonly NationalCustomerService $nationalCustomers,
+    ) {}
 
     // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -109,11 +112,8 @@ class ClientGroupService
         // también subcuentas tipo "182042-23040" contra "182042".
         $clientIdStrings = array_values(array_unique(array_map('strval', $clientIds)));
 
-        $existingIds = DB::connection(self::CONNECTION)
-            ->table(self::CLIENT_TABLE)
-            ->whereIn('idCliente', $clientIdStrings)
-            ->pluck('idCliente')
-            ->map(fn($id) => (string) $id)
+        // Solo los clientes del padrón de forecast pueden formar parte de un grupo.
+        $existingIds = collect($this->nationalCustomers->activeClientIds())
             ->intersect($clientIdStrings)
             ->values()
             ->all();
@@ -121,7 +121,7 @@ class ClientGroupService
         $missingIds = array_values(array_diff($clientIdStrings, $existingIds));
 
         if (!empty($missingIds)) {
-            Log::channel('client_group_invalid_ids')->warning('clientId no encontrados en invoices, no se agregaron al grupo', [
+            Log::channel('client_group_invalid_ids')->warning('clientId que no participan en forecast, no se agregaron al grupo', [
                 'groupId'    => $group->id,
                 'groupName'  => $group->name,
                 'missingIds' => $missingIds,

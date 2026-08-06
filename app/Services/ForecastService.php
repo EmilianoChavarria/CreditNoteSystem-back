@@ -25,7 +25,10 @@ class ForecastService
 
     private const TIPO_NOTA_CREDITO = 'nota de credito';
 
-    public function __construct(private readonly BanxicoService $banxico) {}
+    public function __construct(
+        private readonly BanxicoService $banxico,
+        private readonly NationalCustomerService $nationalCustomers,
+    ) {}
 
     public function updateClientExt(int $idCliente, array $data): void
     {
@@ -72,6 +75,8 @@ class ForecastService
             ->where(function ($q) {
                 $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
+            // Solo los clientes dados de alta en el padrón participan en forecast.
+            ->whereIn('cl.idCliente', $this->nationalCustomers->activeClientIds())
             ->when($search !== '', function ($q) use ($search) {
                 $q->where(function ($sub) use ($search) {
                     $sub->where('cl.razonSocial', 'like', "%{$search}%")
@@ -125,6 +130,7 @@ class ForecastService
             ->table(self::CLIENT_TABLE)
             ->where('rfc', '!=', 'XEXX010101000')
             ->whereColumn('idCliente', '!=', 'rfc') // descarta filas fantasma donde idCliente quedó igual al rfc
+            ->whereIn('idCliente', $this->nationalCustomers->activeClientIds())
             ->where(function ($q) use ($term) {
                 $q->where('razonSocial', 'like', "%{$term}%")
                     ->orWhere('idCliente', 'like', "%{$term}%");
@@ -194,6 +200,7 @@ class ForecastService
             ->where(function ($q) {
                 $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
+            ->whereIn('cle.idCliente', $this->nationalCustomers->activeClientIds())
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
@@ -285,6 +292,7 @@ class ForecastService
             ->where(function ($q) {
                 $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
+            ->whereIn('cle.idCliente', $this->nationalCustomers->activeClientIds())
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
@@ -315,6 +323,7 @@ class ForecastService
             ->where(function ($q) {
                $q->where('cl.rfc', '!=', 'XEXX010101000');
             })
+            ->whereIn('cl.idCliente', $this->nationalCustomers->activeClientIds())
             ->when(!empty($groupedClientIds), fn ($q) => $q->whereNotIn('cl.idCliente', $groupedClientIds))
             ->orderBy('cl.idCliente')
             ->select('cl.idCliente', 'cl.razonSocial')
@@ -466,12 +475,16 @@ class ForecastService
             'amount'    => $m['amount'],
             'createdAt' => $now,
             'updatedAt' => $now,
+            'deletedAt' => null,
         ], $months);
 
+        // deletedAt se limpia en el update: el índice único (idClient, year, month) ignora
+        // el borrado lógico, así que si el cliente se dio de baja y se reactivó, cargarle
+        // forecast de nuevo revive la celda con el monto nuevo en vez de chocar.
         ForecastSale::upsert(
             $upserts,
             ['idClient', 'year', 'month'],
-            ['amount', 'updatedAt']
+            ['amount', 'updatedAt', 'deletedAt']
         );
 
         return $this->getByClient($idClient, $year);

@@ -243,6 +243,25 @@ class ForecastCreditNoteService
             ->exists();
     }
 
+    /**
+     * Registro borrado lógicamente del mismo periodo, si lo hay.
+     *
+     * El índice único (entityType, entityId, year, month) no distingue el borrado
+     * lógico: sin esto, un cliente dado de baja y reactivado no podría volver a
+     * generar la nota de ese mes. Se reutiliza la fila (restore + sobrescritura)
+     * en vez de borrarla, para no depender del privilegio DELETE en la BD. La
+     * auditoría de la nota original se conserva en su request, que no se toca.
+     */
+    private function findTrashedNote(string $entityType, string $clientId, int $year, int $month): ?ForecastCreditNote
+    {
+        return ForecastCreditNote::onlyTrashed()
+            ->where('entityType', $entityType)
+            ->where('entityId', (int) $clientId)
+            ->where('year', $year)
+            ->where('month', $month)
+            ->first();
+    }
+
     /** [salesConsiderado, folios[]] de un cliente en un mes, excluyendo lo 100% descontado por clasificación. */
     private function considered(string $clientId, int $year, int $month): array
     {
@@ -325,7 +344,7 @@ class ForecastCreditNoteService
 
             $this->requestAttachmentService->storeAndAttachFiles($request, $files, 'uploadSupport');
 
-            return ForecastCreditNote::create([
+            $attributes = [
                 'requestId'        => $request->id,
                 'entityType'       => 'cliente',
                 'entityId'         => (int) $clientId,
@@ -338,7 +357,18 @@ class ForecastCreditNoteService
                 'totalAmount'      => $totalAmount,
                 'invoiceFolios'    => implode(',', $folios),
                 'generatedBy'      => $authUser->id,
-            ])->load('request');
+            ];
+
+            $trashed = $this->findTrashedNote('cliente', $clientId, $year, $month);
+
+            if ($trashed) {
+                $trashed->restore();
+                $trashed->fill($attributes)->save();
+
+                return $trashed->load('request');
+            }
+
+            return ForecastCreditNote::create($attributes)->load('request');
         });
     }
 
