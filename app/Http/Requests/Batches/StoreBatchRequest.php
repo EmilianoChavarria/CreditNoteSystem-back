@@ -56,6 +56,17 @@ class StoreBatchRequest extends FormRequest
                 return;
             }
 
+            // PHP descarta en silencio los archivos que exceden max_file_uploads,
+            // así que un conteo exactamente igual al límite indica truncamiento.
+            $maxFileUploads = (int) ini_get('max_file_uploads');
+            if ($maxFileUploads > 0 && count($files) >= $maxFileUploads) {
+                $validator->errors()->add(
+                    'file',
+                    "Se alcanzó el límite de {$maxFileUploads} archivos por petición (max_file_uploads de PHP). "
+                    . 'Es probable que el servidor haya descartado archivos; envíe la carga en lotes más pequeños.'
+                );
+            }
+
             if ($batchType === 'uploadSupport' && count($files) > 10) {
                 $validator->errors()->add('file', 'En uploadSupport solo se permiten hasta 10 archivos por carga.');
             }
