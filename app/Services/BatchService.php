@@ -295,7 +295,16 @@ class BatchService
             $extension = strtolower($file->getClientOriginalExtension());
             $path = $targetBasePath . '/' . now()->format('Y/m/d') . '/' . Str::uuid() . '.' . $extension;
 
-            Storage::disk($targetDisk)->put($path, file_get_contents($file->getRealPath()));
+            // Se sube por stream para no cargar el archivo completo en memoria.
+            $stream = fopen($file->getRealPath(), 'rb');
+
+            try {
+                Storage::disk($targetDisk)->put($path, $stream);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
 
             $stored[] = [
                 'originalName' => $file->getClientOriginalName(),

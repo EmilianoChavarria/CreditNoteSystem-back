@@ -82,7 +82,16 @@ class RequestAttachmentService
             $extension  = strtolower((string) $file->getClientOriginalExtension());
             $path       = $basePath . '/' . now()->format('Y/m/d') . '/' . Str::uuid() . '.' . $extension;
 
-            Storage::disk($disk)->put($path, (string) file_get_contents($file->getRealPath()));
+            // Se sube por stream para no cargar el archivo completo en memoria.
+            $stream = fopen($file->getRealPath(), 'rb');
+
+            try {
+                Storage::disk($disk)->put($path, $stream);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
 
             RequestAttachment::create([
                 'requestId'     => $request->id,
