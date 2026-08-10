@@ -78,13 +78,17 @@ class ForecastController extends Controller
     {
         $authUser = $request->attributes->get('authUser');
 
-        // attachments[{clientId}][] — un set de adjuntos por cada NC a generar (clienteId=id para tipo cliente,
-        // o clientId de cada miembro elegible para tipo grupo).
+        // sharedAttachments[] — un solo set de adjuntos que se aplica a todas las NC generadas
+        // (en grupo, la misma documentación soporta la nota de cada cliente miembro).
+        $sharedAttachments = $request->file('sharedAttachments') ?? [];
+        $sharedAttachments = is_array($sharedAttachments) ? $sharedAttachments : [$sharedAttachments];
+
+        // attachments[{clientId}][] — adjuntos específicos por NC; tienen prioridad sobre los compartidos.
         $attachmentsByClient = $request->file('attachments') ?? [];
         $attachmentsByClient = is_array($attachmentsByClient) ? $attachmentsByClient : [];
 
         try {
-            $result = $this->forecastCreditNoteService->generate($tipo, $id, $year, $month, $authUser, $attachmentsByClient);
+            $result = $this->forecastCreditNoteService->generate($tipo, $id, $year, $month, $authUser, $attachmentsByClient, $sharedAttachments);
         } catch (ValidationException $e) {
             $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
             return response()->json(ApiResponse::error($message, $e->errors(), 422), 422);

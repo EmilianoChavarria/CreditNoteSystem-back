@@ -124,11 +124,13 @@ class ForecastCreditNoteService
      * - grupo: el % de retorno es del grupo, pero la NC se reparte una por cada cliente miembro
      *   que aportó ventas consideradas ese mes (cada una a su propio customerId/area).
      *
-     * @param array<string, \Illuminate\Http\UploadedFile[]> $attachmentsByClient Adjuntos por clientId; cada
-     *   NC (cliente o miembro de grupo) requiere al menos uno, el workflow no avanza una solicitud sin adjuntos.
+     * @param array<string, \Illuminate\Http\UploadedFile[]> $attachmentsByClient Adjuntos específicos por clientId.
+     * @param \Illuminate\Http\UploadedFile[] $sharedAttachments Adjuntos que aplican a todas las NC generadas;
+     *   se usan cuando el clientId no trae los suyos. Cada NC requiere al menos un archivo, el workflow no
+     *   avanza una solicitud sin adjuntos.
      * @return array{created: ForecastCreditNote[], skipped: array<int, array{clientId: string, reason: string}>}
      */
-    public function generate(string $tipo, string $id, int $year, int $month, mixed $authUser, array $attachmentsByClient = []): array
+    public function generate(string $tipo, string $id, int $year, int $month, mixed $authUser, array $attachmentsByClient = [], array $sharedAttachments = []): array
     {
         if (!in_array($tipo, ['cliente', 'grupo'], true)) {
             throw ValidationException::withMessages(['tipo' => 'Solo se pueden generar notas de crédito para cliente o grupo.']);
@@ -153,7 +155,7 @@ class ForecastCreditNoteService
                 throw ValidationException::withMessages(['invoices' => 'No hay facturas consideradas para este periodo (todo excluido por clasificación de producto).']);
             }
 
-            $files = $this->validFiles($attachmentsByClient[(string) $id] ?? []);
+            $files = $this->validFiles($attachmentsByClient[(string) $id] ?? $sharedAttachments);
 
             if (empty($files)) {
                 throw ValidationException::withMessages(['attachments' => 'Debes adjuntar al menos un archivo de soporte para generar la nota de crédito.']);
@@ -197,7 +199,7 @@ class ForecastCreditNoteService
                 continue;
             }
 
-            $files = $this->validFiles($attachmentsByClient[(string) $memberId] ?? []);
+            $files = $this->validFiles($attachmentsByClient[(string) $memberId] ?? $sharedAttachments);
 
             if (empty($files)) {
                 $skipped[] = ['clientId' => (string) $memberId, 'reason' => 'Falta adjuntar el archivo de soporte de esta nota.'];
