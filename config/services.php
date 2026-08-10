@@ -47,6 +47,15 @@ return [
         'nombre_sucursal'  => env('FESA_NOMBRE_SUCURSAL', 'MATRIZ'),
     ],
 
+    /*
+     * Usuario a cuyo nombre se registran las NC del programa forecast: siempre las genera
+     * el mismo requester, aunque quien dispare la generación sea un forecast admin. Los
+     * pasos del workflow con rol REQUESTER se asignan al creador de la solicitud.
+     */
+    'forecast' => [
+        'credit_note_requester_id' => env('FORECAST_CREDIT_NOTE_REQUESTER_ID', 36),
+    ],
+
     'deploy_token' => env('DEPLOY_TOKEN'),
 
 ];
