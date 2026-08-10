@@ -7,10 +7,8 @@ use App\Models\ForecastCreditNote;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\RequestType;
-use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class ForecastCreditNoteService
@@ -333,11 +331,7 @@ class ForecastCreditNoteService
             $requestTypeId, $classificationId, $reasonId, $amount, $totalAmount, $area, $exchangeRate,
             $comments, $invoiceNumber
         ) {
-            // Las NC de forecast siempre se registran a nombre del mismo requester, aunque las
-            // dispare un forecast admin: los pasos con rol REQUESTER se asignan al creador.
-            $requester = $this->resolveRequesterUser($authUser);
-
-            $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $requester->id);
+            $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
 
             $request = $this->requestCrudService->createRequest([
                 'requestNumber'    => $reserved['requestNumber'],
@@ -354,7 +348,7 @@ class ForecastCreditNoteService
                 'totalAmount'      => $totalAmount,
                 'hasIva'           => true,
                 'comments'         => $comments,
-            ], $requester);
+            ], $authUser);
 
             $this->requestAttachmentService->storeAndAttachFiles($request, $files, 'uploadSupport');
 
@@ -384,39 +378,6 @@ class ForecastCreditNoteService
 
             return ForecastCreditNote::create($attributes)->load('request');
         });
-    }
-
-    /**
-     * Usuario a cuyo nombre se crea la solicitud de la NC (services.forecast.credit_note_requester_id).
-     *
-     * El workflow asigna los pasos con rol REQUESTER al creador de la solicitud, y quien dispara la
-     * generación es un forecast admin, no un requester. Si el usuario configurado no existe o está
-     * inactivo se cae al usuario autenticado para no bloquear la generación.
-     */
-    private function resolveRequesterUser(mixed $authUser): mixed
-    {
-        $requesterId = (int) config('services.forecast.credit_note_requester_id');
-
-        if ($requesterId <= 0 || $requesterId === (int) $authUser->id) {
-            return $authUser;
-        }
-
-        $requester = User::query()
-            ->where('id', $requesterId)
-            ->where('isActive', true)
-            ->whereNull('deletedAt')
-            ->first();
-
-        if (!$requester) {
-            Log::warning('[forecast-nc] requester configurado no disponible, se usa el usuario autenticado', [
-                'configuredRequesterId' => $requesterId,
-                'authUserId'            => (int) $authUser->id,
-            ]);
-
-            return $authUser;
-        }
-
-        return $requester;
     }
 
     /** Área del cliente registrada en clientes_TME700618RC7_ext (misma fuente que autocompleta el campo al crear un request normal). */
