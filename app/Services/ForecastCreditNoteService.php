@@ -14,6 +14,7 @@ use Illuminate\Validation\ValidationException;
 class ForecastCreditNoteService
 {
     private const CUMPLIMIENTO_THRESHOLD = 97.0;
+    private const IVA_RATE               = 0.16;
 
     private const REQUEST_TYPE_NAME   = 'auditor credits';
     private const CLASSIFICATION_NAME = 'SALES FORECAST';
@@ -304,14 +305,17 @@ class ForecastCreditNoteService
         int $classificationId,
         int $reasonId
     ): ForecastCreditNote {
-        $totalAmount = round($sales * $returnPercentage / 100, 2);
+        // El retorno es el subtotal; la NC del programa forecast siempre lleva IVA.
+        $amount      = round($sales * $returnPercentage / 100, 2);
+        $totalAmount = round($amount * (1 + self::IVA_RATE), 2);
 
-        if ($totalAmount <= 0) {
+        if ($amount <= 0) {
             throw ValidationException::withMessages(['amount' => "Monto de nota de crédito inválido para el cliente {$clientId}."]);
         }
 
-        $area         = $this->resolveArea($clientId);
-        $exchangeRate = $this->banxico->getCurrentUsdRate();
+        $area          = $this->resolveArea($clientId);
+        $exchangeRate  = $this->banxico->getCurrentUsdRate();
+        $invoiceNumber = self::MESES_ES[$month] . '/' . $year;
 
         $comments = sprintf(
             '01 Nota de credito del Programa Forecast %d , %s%% de reembolso de las compras totales participantes facturadas durante %s/%d aplicado a las siguientes facturas:%s',
@@ -324,7 +328,8 @@ class ForecastCreditNoteService
 
         return DB::transaction(function () use (
             $clientId, $year, $month, $sales, $returnPercentage, $folios, $groupId, $authUser, $files,
-            $requestTypeId, $classificationId, $reasonId, $totalAmount, $area, $exchangeRate, $comments
+            $requestTypeId, $classificationId, $reasonId, $amount, $totalAmount, $area, $exchangeRate,
+            $comments, $invoiceNumber
         ) {
             $reserved = $this->requestNumberService->reserveRequestNumber($requestTypeId, (int) $authUser->id);
 
@@ -338,9 +343,10 @@ class ForecastCreditNoteService
                 'exchangeRate'     => $exchangeRate,
                 'reasonId'         => $reasonId,
                 'classificationId' => $classificationId,
-                'amount'           => $totalAmount,
+                'invoiceNumber'    => $invoiceNumber,
+                'amount'           => $amount,
                 'totalAmount'      => $totalAmount,
-                'hasIva'           => false,
+                'hasIva'           => true,
                 'comments'         => $comments,
             ], $authUser);
 
