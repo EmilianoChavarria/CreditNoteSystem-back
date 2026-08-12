@@ -108,6 +108,9 @@ class DistributorForecastService
                 'mes'                    => $month,
                 'objetivo'               => $objetivo,
                 'ventaMensual'           => $ventaMensual,
+                // El cliente extranjero no tiene moneda asignada: su forecast siempre es USD.
+                'ventaMensualMoneda'     => $ventaMensual,
+                'moneda'                 => ForecastService::DEFAULT_CURRENCY,
                 'porcentajeCumplimiento' => ($objetivo > 0 && $ventaMensual !== null)
                     ? round($ventaMensual / $objetivo * 100, 2)
                     : null,
@@ -119,6 +122,7 @@ class DistributorForecastService
             'numeroCliente' => $distributor->clientNumber,
             'nombre'        => $distributor->businessName,
             'anio'          => $year,
+            'moneda'        => ForecastService::DEFAULT_CURRENCY,
             'meses'         => $meses,
         ];
     }
