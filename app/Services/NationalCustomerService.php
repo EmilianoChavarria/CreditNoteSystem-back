@@ -46,6 +46,37 @@ class NationalCustomerService
             ->all();
     }
 
+    /**
+     * Moneda en la que participa un cliente del padrón. USD cuando no tiene una
+     * asignada: es la moneda por defecto del programa forecast.
+     */
+    public function currencyFor(string $customerNumber): string
+    {
+        return $this->currenciesFor([$customerNumber])[$customerNumber] ?? NationalCustomer::CURRENCY_USD;
+    }
+
+    /**
+     * @param  array<int, string|int> $customerNumbers
+     * @return array<string, string> [customerNumber => moneda]
+     */
+    public function currenciesFor(array $customerNumbers): array
+    {
+        $numbers = collect($customerNumbers)->map(fn ($n) => (string) $n)->unique()->values();
+
+        if ($numbers->isEmpty()) {
+            return [];
+        }
+
+        $stored = NationalCustomer::whereIn('customerNumber', $numbers->all())
+            ->pluck('currency', 'customerNumber');
+
+        return $numbers
+            ->mapWithKeys(fn ($number) => [
+                $number => $stored->get($number) ?: NationalCustomer::CURRENCY_USD,
+            ])
+            ->all();
+    }
+
     /** Valida que el cliente exista en la BD externa con un RFC utilizable. */
     public function existsInInvoices(string $customerNumber): bool
     {
