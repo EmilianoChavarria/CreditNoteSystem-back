@@ -10,6 +10,7 @@ use App\Models\Distributor;
 use App\Services\DistributorForecastService;
 use App\Services\ForecastApprovalService;
 use App\Support\ApiResponse;
+use Illuminate\Http\Request;
 
 class DistributorForecastController extends Controller
 {
@@ -35,6 +36,16 @@ class DistributorForecastController extends Controller
     public function indexBySalesEngineer(int $salesEngineerId, int $year)
     {
         $result = $this->forecastService->getBySalesEngineer($salesEngineerId, $year);
+
+        return response()->json(ApiResponse::success('Distribuidores con forecast', $result));
+    }
+
+    /** Todos los distribuidores con forecast, sin filtrar por sales engineer. `?year=` (default: año actual). */
+    public function indexAll(Request $request)
+    {
+        $year = $request->integer('year') ?: now()->year;
+
+        $result = $this->forecastService->getAll($year);
 
         return response()->json(ApiResponse::success('Distribuidores con forecast', $result));
     }

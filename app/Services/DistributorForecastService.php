@@ -33,10 +33,26 @@ class DistributorForecastService
      */
     public function getBySalesEngineer(int $salesEngineerId, int $year): Collection
     {
-        $distributors = Distributor::where('salesEngineerId', $salesEngineerId)
-            ->orderBy('businessName')
-            ->get(['id', 'businessName']);
+        return $this->buildForecastRows(
+            Distributor::where('salesEngineerId', $salesEngineerId)
+                ->orderBy('businessName')
+                ->get(['id', 'businessName']),
+            $year
+        );
+    }
 
+    /** Todos los distribuidores, sin filtrar por sales engineer. Mismo formato que getBySalesEngineer(). */
+    public function getAll(int $year): Collection
+    {
+        return $this->buildForecastRows(
+            Distributor::orderBy('businessName')->get(['id', 'businessName']),
+            $year
+        );
+    }
+
+    /** @param Collection<int, Distributor> $distributors */
+    private function buildForecastRows(Collection $distributors, int $year): Collection
+    {
         if ($distributors->isEmpty()) {
             return collect();
         }
