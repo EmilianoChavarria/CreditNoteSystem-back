@@ -40,14 +40,19 @@ class ForecastGroupSummarySheet implements
                 $section['razonSocial'],
                 $invoices->count(),
                 round((float) $invoices->sum('total'), 2),
+                $section['moneda'] ?? '',
             ];
         }
+
+        $monedas = array_values(array_unique(array_filter(array_column($rows, 4))));
 
         $rows[] = [
             '',
             'TOTAL GRUPO',
             array_sum(array_column($rows, 2)),
             round(array_sum(array_column($rows, 3)), 2),
+            // Con monedas mixtas el total del grupo no es sumable: se marca en vez de fingir una moneda.
+            count($monedas) === 1 ? $monedas[0] : 'MIXTO',
         ];
 
         return $rows;
@@ -60,7 +65,7 @@ class ForecastGroupSummarySheet implements
 
     public function headings(): array
     {
-        return ['ID Cliente', 'Cliente', 'No. Facturas', 'Total (USD)'];
+        return ['ID Cliente', 'Cliente', 'No. Facturas', 'Total', 'Moneda'];
     }
 
     public function columnWidths(): array
@@ -70,6 +75,7 @@ class ForecastGroupSummarySheet implements
             'B' => 40,
             'C' => 14,
             'D' => 18,
+            'E' => 10,
         ];
     }
 
@@ -77,7 +83,7 @@ class ForecastGroupSummarySheet implements
     {
         $lastRow = count($this->sections) + 2; // +1 heading, +1 total row
 
-        $sheet->getStyle('A1:D1')->applyFromArray([
+        $sheet->getStyle('A1:E1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
@@ -91,7 +97,7 @@ class ForecastGroupSummarySheet implements
             ->getNumberFormat()
             ->setFormatCode('#,##0.00');
 
-        $sheet->getStyle("A{$lastRow}:D{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A{$lastRow}:E{$lastRow}")->applyFromArray([
             'font' => ['bold' => true],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9E1F2']],
         ]);

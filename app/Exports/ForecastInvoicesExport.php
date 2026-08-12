@@ -40,6 +40,8 @@ class ForecastInvoicesExport implements
         private readonly ?string $sheetTitle = null,
         private readonly Collection $productsByFolio = new Collection(),
         private readonly string|int|null $clientId = null,
+        /** Moneda a la que ya vienen convertidos los importes (la asignada al cliente). */
+        private readonly string $currency = 'USD',
     ) {}
 
     public function collection(): Collection
@@ -80,9 +82,9 @@ class ForecastInvoicesExport implements
         return [
             'Folio',
             'Fecha Emisión',
-            'SubTotal (USD)',
-            'IVA (USD)',
-            'Total (USD)',
+            "SubTotal ({$this->currency})",
+            "IVA ({$this->currency})",
+            "Total ({$this->currency})",
             'SubTotal Original',
             'IVA Original',
             'Total Original',
@@ -91,7 +93,7 @@ class ForecastInvoicesExport implements
             'Producto',
             'Descripción',
             'Cantidad',
-            'Importe (USD)',
+            "Importe ({$this->currency})",
             'Clasificación',
             'Excluido',
         ];
@@ -123,7 +125,7 @@ class ForecastInvoicesExport implements
                 $product['noIdentificacion'],
                 $product['descripcion'],
                 (float) $product['cantidad'],
-                (float) $product['importeUsd'],
+                (float) $product['importeConvertido'],
                 $product['clasificacion'] ?? 'Sin clasificar',
                 $product['excluido'] ? 'Sí' : 'No',
             ])
@@ -214,7 +216,7 @@ class ForecastInvoicesExport implements
         return [];
     }
 
-    /** @return Collection<int, array{noIdentificacion: string, descripcion: string, cantidad: mixed, importeUsd: float, clasificacion: ?string, excluido: bool}> */
+    /** @return Collection<int, array{noIdentificacion: string, descripcion: string, cantidad: mixed, importeConvertido: float, clasificacion: ?string, excluido: bool}> */
     private function productsForFolio(string $folio): Collection
     {
         $products = $this->productsByFolio->get($folio);

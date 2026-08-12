@@ -51,9 +51,10 @@ class ForecastGroupAllInvoicesSheet implements
             'ID Cliente',
             'Folio',
             'Fecha Emisión',
-            'SubTotal (USD)',
-            'IVA (USD)',
-            'Total (USD)',
+            'SubTotal',
+            'IVA',
+            'Total',
+            'Moneda',
             'SubTotal Original',
             'IVA Original',
             'Total Original',
@@ -76,6 +77,7 @@ class ForecastGroupAllInvoicesSheet implements
             $invoice->subTotal,
             $invoice->iva,
             $invoice->total,
+            $invoice->moneda,
             $converted ? $invoice->originalSubTotal : '',
             $converted ? $invoice->originalIva      : '',
             $converted ? $invoice->originalTotal     : '',
@@ -91,14 +93,15 @@ class ForecastGroupAllInvoicesSheet implements
             'B' => 12,  // ID Cliente
             'C' => 14,  // Folio
             'D' => 22,  // Fecha
-            'E' => 16,  // SubTotal USD
-            'F' => 14,  // IVA USD
-            'G' => 16,  // Total USD
-            'H' => 18,  // SubTotal original
-            'I' => 14,  // IVA original
-            'J' => 16,  // Total original
-            'K' => 14,  // Moneda original
-            'L' => 14,  // Tipo de cambio
+            'E' => 16,  // SubTotal
+            'F' => 14,  // IVA
+            'G' => 16,  // Total
+            'H' => 10,  // Moneda
+            'I' => 18,  // SubTotal original
+            'J' => 14,  // IVA original
+            'K' => 16,  // Total original
+            'L' => 14,  // Moneda original
+            'M' => 14,  // Tipo de cambio
         ];
     }
 
@@ -107,17 +110,17 @@ class ForecastGroupAllInvoicesSheet implements
         $invoices = $this->collection();
         $lastRow  = $invoices->count() + 1;
 
-        $sheet->getStyle('A1:L1')->applyFromArray([
+        $sheet->getStyle('A1:M1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        $sheet->getStyle("B2:L{$lastRow}")->applyFromArray([
+        $sheet->getStyle("B2:M{$lastRow}")->applyFromArray([
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT],
         ]);
 
-        foreach (['E', 'F', 'G', 'H', 'I', 'J'] as $col) {
+        foreach (['E', 'F', 'G', 'I', 'J', 'K'] as $col) {
             $sheet->getStyle("{$col}2:{$col}{$lastRow}")
                 ->getNumberFormat()
                 ->setFormatCode('#,##0.00');
@@ -126,7 +129,7 @@ class ForecastGroupAllInvoicesSheet implements
         foreach ($invoices as $i => $invoice) {
             if (isset($invoice->originalMoneda)) {
                 $row = $i + 2;
-                $sheet->getStyle("A{$row}:L{$row}")->applyFromArray([
+                $sheet->getStyle("A{$row}:M{$row}")->applyFromArray([
                     'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF3CD']],
                 ]);
             }

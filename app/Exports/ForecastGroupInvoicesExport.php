@@ -35,6 +35,7 @@ class ForecastGroupInvoicesExport implements WithMultipleSheets
                 $title,
                 $section['products'] ?? new \Illuminate\Support\Collection(),
                 $section['clientId'] ?? null,
+                $section['moneda'] ?? 'USD',
             );
         }
 
