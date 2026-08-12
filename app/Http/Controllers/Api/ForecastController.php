@@ -150,6 +150,16 @@ class ForecastController extends Controller
         return response()->json(ApiResponse::success('Clientes con forecast', $result));
     }
 
+    /** Todos los clientes y grupos con forecast, sin filtrar por sales engineer. `?year=` (default: año actual). */
+    public function indexAll(Request $request)
+    {
+        $year = $request->integer('year') ?: now()->year;
+
+        $result = $this->forecastService->getAll($year);
+
+        return response()->json(ApiResponse::success('Clientes con forecast', $result));
+    }
+
     private const TEMPLATE_MONTHS = [
         'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December',

@@ -240,11 +240,6 @@ class ForecastService
             ->with('members')
             ->get();
 
-        $myGroupClientIds = $myGroups->flatMap(fn($g) => $g->members->pluck('clientId'))->unique()->values();
-
-        // Clients belonging to ANY group (any responsible) are never listed as individual entries.
-        $allGroupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values();
-
         $extClients = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_EXT_TABLE . ' as cle')
             ->join(self::CLIENT_TABLE . ' as cl', 'cl.idCliente', '=', 'cle.idCliente')
@@ -256,13 +251,52 @@ class ForecastService
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
-        if ($extClients->isEmpty() && $myGroupClientIds->isEmpty()) {
+        return $this->buildForecastRows($myGroups, $extClients, $year);
+    }
+
+    /**
+     * Todos los grupos y todos los clientes del padrón, sin filtrar por sales engineer.
+     * Mismo formato que getBySalesEngineer() para que el frontend reutilice la tabla.
+     */
+    public function getAll(int $year): Collection
+    {
+        $groups = ClientGroup::with('members')->orderBy('name')->get();
+
+        $clients = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_TABLE . ' as cl')
+            ->where(function ($q) {
+                $q->where('cl.rfc', '!=', 'XEXX010101000');
+            })
+            ->whereIn('cl.idCliente', $this->nationalCustomers->activeClientIds())
+            ->orderBy('cl.razonSocial')
+            ->select('cl.idCliente', 'cl.razonSocial')
+            ->get();
+
+        return $this->buildForecastRows($groups, $clients, $year);
+    }
+
+    /**
+     * Arma las filas de forecast: primero un renglón por grupo (con sus miembros) y
+     * después los clientes que no pertenecen a ninguno — un cliente agrupado nunca se
+     * lista aparte, su forecast vive en el grupo.
+     *
+     * @param Collection<int, ClientGroup> $groups
+     * @param Collection<int, object> $clients Candidatos a fila individual (idCliente + razonSocial).
+     */
+    private function buildForecastRows(Collection $groups, Collection $clients, int $year): Collection
+    {
+        $groupClientIds = $groups->flatMap(fn($g) => $g->members->pluck('clientId'))->unique()->values();
+
+        if ($clients->isEmpty() && $groupClientIds->isEmpty()) {
             return collect();
         }
 
-        $groupClientNames = $myGroupClientIds->isEmpty() ? [] : $this->fetchClientNames($myGroupClientIds->all());
+        // Clients belonging to ANY group (any responsible) are never listed as individual entries.
+        $allGroupedClientIds = ClientGroupMember::pluck('clientId')->unique()->values();
 
-        $allClientIds = $extClients->pluck('idCliente')->merge($myGroupClientIds)->unique()->values()->all();
+        $groupClientNames = $groupClientIds->isEmpty() ? [] : $this->fetchClientNames($groupClientIds->all());
+
+        $allClientIds = $clients->pluck('idCliente')->merge($groupClientIds)->unique()->values()->all();
 
         $forecastMap     = $this->fetchForecast($allClientIds, $year);
         $modificationMap = $this->fetchModifications($allClientIds, $year);
@@ -270,15 +304,15 @@ class ForecastService
 
         $result = collect();
 
-        foreach ($myGroups as $group) {
+        foreach ($groups as $group) {
             $memberIds = $group->members->pluck('clientId')->unique()->values();
 
             if ($memberIds->isEmpty()) {
                 continue;
             }
 
-            $groupClients = $memberIds->map(function ($cid) use ($extClients, $groupClientNames) {
-                $known = $extClients->firstWhere('idCliente', $cid);
+            $groupClients = $memberIds->map(function ($cid) use ($clients, $groupClientNames) {
+                $known = $clients->firstWhere('idCliente', $cid);
 
                 return (object) [
                     'idCliente'   => $cid,
@@ -289,7 +323,7 @@ class ForecastService
             $result->push($this->buildGroupEntry($group, $groupClients, $year, $salesMap));
         }
 
-        foreach ($extClients as $client) {
+        foreach ($clients as $client) {
             if ($allGroupedClientIds->contains($client->idCliente)) {
                 continue; // belongs to a group — shown above (or under another engineer's group)
             }

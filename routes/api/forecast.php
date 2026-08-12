@@ -9,6 +9,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::put('forecast/clients/{idCliente}/emails', [ForecastController::class, 'updateClientEmails'])->whereNumber('idCliente');
     Route::put('forecast/clients/{idCliente}/ext', [ForecastController::class, 'updateClientExt'])->whereNumber('idCliente');
     Route::get('forecast/sales-engineer/{salesEngineerId}/{year}', [ForecastController::class, 'indexBySalesEngineer'])->whereNumber(['salesEngineerId', 'year']);
+    Route::get('forecast/all', [ForecastController::class, 'indexAll']);
     Route::get('forecast/summary/{tipo}/{id}/{year}', [ForecastController::class, 'summary'])
         ->whereIn('tipo', ['cliente', 'clienteExtranjero', 'grupo'])
         ->whereNumber('year');
