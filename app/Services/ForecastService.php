@@ -31,6 +31,9 @@ class ForecastService
     /** Únicas monedas entre las que se convierte con el FIX del comprobante. */
     private const CONVERTIBLE_CURRENCIES = ['USD', 'MXN'];
 
+    /** Clientes por lote al calcular ventas del año: acota el pico de memoria. Ver fetchSales(). */
+    private const SALES_CHUNK_SIZE = 10;
+
     public function __construct(
         private readonly BanxicoService $banxico,
         private readonly NationalCustomerService $nationalCustomers,
@@ -938,8 +941,21 @@ class ForecastService
     {
         // Solo para comprobantes antiguos que se sincronizaron sin tipoCambio.
         $fallbackRate = $this->banxico->getCurrentUsdRate();
-        $receptorIds  = array_map('strval', $clientIds);
+        $receptorIds  = array_map('strval', array_values(array_unique($clientIds)));
 
+        // Se procesa por lotes de clientes: el detalle de líneas de un año completo para todo
+        // el padrón no cabe en el memory_limit de PHP-FPM. Lo que sobrevive a cada lote es
+        // solo el agregado por cliente/mes, que es diminuto.
+        return collect(array_chunk($receptorIds, self::SALES_CHUNK_SIZE))
+            ->reduce(
+                fn (Collection $carry, array $chunk) => $carry->union($this->fetchSalesChunk($chunk, $year, $currency, $fallbackRate)),
+                collect()
+            );
+    }
+
+    /** Un lote de clientes de fetchSales(). Ver su docblock. */
+    private function fetchSalesChunk(array $receptorIds, int $year, string $currency, float $fallbackRate): Collection
+    {
         $rows = ForecastComprobanteProducto::query()
             ->join('forecastcomprobantes', function ($join) {
                 $join->on('forecastcomprobantes.receptorId', '=', 'forecastcomprobanteproductos.receptorId')
@@ -947,8 +963,12 @@ class ForecastService
             })
             ->whereIn('forecastcomprobanteproductos.receptorId', $receptorIds)
             ->where('forecastcomprobantes.status', 'Emitido')
-            ->whereYear('forecastcomprobantes.fechaEmision', $year)
+            // Rango en vez de whereYear() para que el índice de fechaEmision sí se use.
+            ->whereBetween('forecastcomprobantes.fechaEmision', ["{$year}-01-01 00:00:00", "{$year}-12-31 23:59:59"])
             ->selectRaw('forecastcomprobanteproductos.receptorId as receptorId, forecastcomprobanteproductos.folio as folio, MONTH(forecastcomprobantes.fechaEmision) as month, forecastcomprobanteproductos.noIdentificacion as noIdentificacion, forecastcomprobanteproductos.noPedido as noPedido, forecastcomprobanteproductos.importe as importe, forecastcomprobantes.subTotal as subTotal, forecastcomprobantes.total as total, forecastcomprobantes.moneda as moneda, forecastcomprobantes.tipoCambio as tipoCambio, forecastcomprobantes.tipoComprobante as tipoComprobante')
+            // toBase(): filas planas en vez de modelos Eloquent. Ninguno de los dos modelos usa
+            // scopes globales, y hidratar decenas de miles de modelos es lo que reventaba la memoria.
+            ->toBase()
             ->get();
 
         $productIds = $rows->map(fn($r) => trim($r->noIdentificacion))->unique()->values()->all();
