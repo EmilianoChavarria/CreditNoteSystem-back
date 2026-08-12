@@ -25,6 +25,12 @@ class ForecastService
 
     private const TIPO_NOTA_CREDITO = 'nota de credito';
 
+    /** Moneda por defecto del programa forecast, cuando el cliente no tiene una asignada. */
+    public const DEFAULT_CURRENCY = 'USD';
+
+    /** Únicas monedas entre las que se convierte con el FIX del comprobante. */
+    private const CONVERTIBLE_CURRENCIES = ['USD', 'MXN'];
+
     public function __construct(
         private readonly BanxicoService $banxico,
         private readonly NationalCustomerService $nationalCustomers,
@@ -159,6 +165,52 @@ class ForecastService
                 'numeroCliente' => $group->id,
                 'nombre'        => $group->name,
             ]);
+    }
+
+    /** Moneda asignada al cliente nacional en el padrón (USD si no tiene). */
+    public function resolveClientCurrency(string $clientId): string
+    {
+        return $this->nationalCustomers->currencyFor($clientId);
+    }
+
+    /**
+     * Moneda de un grupo: la de sus miembros cuando todos comparten la misma.
+     * Con monedas mixtas cae a USD, la única en la que los totales del grupo son
+     * comparables entre sí (cada NC se sigue generando en la moneda de su cliente).
+     */
+    public function resolveGroupCurrency(string $groupId): string
+    {
+        $memberIds = ClientGroupMember::where('groupId', $groupId)->pluck('clientId')->all();
+
+        if (empty($memberIds)) {
+            return self::DEFAULT_CURRENCY;
+        }
+
+        $currencies = array_unique(array_values($this->nationalCustomers->currenciesFor($memberIds)));
+
+        return count($currencies) === 1 ? $currencies[0] : self::DEFAULT_CURRENCY;
+    }
+
+    /**
+     * Convierte entre USD y MXN con el tipo de cambio del comprobante (FIX del día de
+     * emisión, MXN por USD). Devuelve null si el par no es convertible: el importe se
+     * deja tal cual y conserva su moneda original.
+     */
+    private function convertAmount(float $amount, string $from, string $to, ?float $rate): ?float
+    {
+        if ($from === $to) {
+            return $amount;
+        }
+
+        if (
+            $rate === null || $rate <= 0
+            || !in_array($from, self::CONVERTIBLE_CURRENCIES, true)
+            || !in_array($to, self::CONVERTIBLE_CURRENCIES, true)
+        ) {
+            return null;
+        }
+
+        return $to === self::DEFAULT_CURRENCY ? $amount / $rate : $amount * $rate;
     }
 
     public function getByClient(int $idClient, int $year): Collection
@@ -398,8 +450,10 @@ class ForecastService
     /** Resumen de 12 meses de un cliente nacional: objetivo, venta mensual, %cumplimiento, %retorno (null por ahora). */
     public function getClientSummary(int $idClient, int $year): array
     {
+        $currency = $this->resolveClientCurrency((string) $idClient);
+
         $forecast = $this->fetchForecast([$idClient], $year)->get((string) $idClient, collect());
-        $sales    = $this->fetchSales([$idClient], $year)->get((string) $idClient, collect());
+        $sales    = $this->fetchSales([$idClient], $year, $currency)->get((string) $idClient, collect());
 
         $returnPercentage = NationalCustomer::where('customerNumber', (string) $idClient)->value('returnPercentage');
 
@@ -407,7 +461,8 @@ class ForecastService
             'numeroCliente' => $idClient,
             'nombre'        => $this->getClientName($idClient),
             'anio'          => $year,
-            'meses'         => $this->buildSummaryMonths($forecast, $sales, $returnPercentage !== null ? (float) $returnPercentage : null),
+            'moneda'        => $currency,
+            'meses'         => $this->buildSummaryMonths($forecast, $sales, $returnPercentage !== null ? (float) $returnPercentage : null, $currency),
         ];
     }
 
@@ -417,8 +472,10 @@ class ForecastService
         $group     = ClientGroup::with('members')->findOrFail($groupId);
         $memberIds = $group->members->pluck('clientId')->unique()->values()->all();
 
+        $currency = $this->resolveGroupCurrency($groupId);
+
         $forecast      = $this->fetchForecast([$groupId], $year)->get((string) $groupId, collect());
-        $salesByClient = empty($memberIds) ? collect() : $this->fetchSales($memberIds, $year);
+        $salesByClient = empty($memberIds) ? collect() : $this->fetchSales($memberIds, $year, $currency);
 
         $sales = collect();
         for ($month = 1; $month <= 12; $month++) {
@@ -426,8 +483,15 @@ class ForecastService
                 fn($cid) => (float) ($salesByClient->get((string) $cid)?->get($month)?->total ?? 0)
             );
 
+            $totalCurrency = collect($memberIds)->sum(
+                fn($cid) => (float) ($salesByClient->get((string) $cid)?->get($month)?->totalCurrency ?? 0)
+            );
+
             if ($total > 0) {
-                $sales->put($month, (object) ['total' => round($total, 2)]);
+                $sales->put($month, (object) [
+                    'total'         => round($total, 2),
+                    'totalCurrency' => round($totalCurrency, 2),
+                ]);
             }
         }
 
@@ -435,13 +499,22 @@ class ForecastService
             'numeroCliente' => $group->id,
             'nombre'        => $group->name,
             'anio'          => $year,
-            'meses'         => $this->buildSummaryMonths($forecast, $sales, $group->returnPercentage !== null ? (float) $group->returnPercentage : null),
+            'moneda'        => $currency,
+            'meses'         => $this->buildSummaryMonths($forecast, $sales, $group->returnPercentage !== null ? (float) $group->returnPercentage : null, $currency),
         ];
     }
 
-    /** Arma los 12 meses de un resumen con objetivo/ventaMensual/%cumplimiento/%retorno. */
-    private function buildSummaryMonths(Collection $forecast, Collection $sales, ?float $returnPercentage = null): array
-    {
+    /**
+     * Arma los 12 meses de un resumen con objetivo/ventaMensual/%cumplimiento/%retorno.
+     * `ventaMensual` va en USD (el objetivo está en USD, así que el cumplimiento se mide ahí);
+     * `ventaMensualMoneda` es la misma venta en la moneda del cliente/grupo, base del retorno.
+     */
+    private function buildSummaryMonths(
+        Collection $forecast,
+        Collection $sales,
+        ?float $returnPercentage,
+        string $currency
+    ): array {
         $meses = [];
 
         for ($month = 1; $month <= 12; $month++) {
@@ -449,11 +522,15 @@ class ForecastService
             $objetivo     = $objetivo !== null ? (float) $objetivo : null;
             $ventaMensual = $sales->get($month)?->total;
             $ventaMensual = $ventaMensual !== null ? (float) $ventaMensual : null;
+            $ventaMoneda  = $sales->get($month)?->totalCurrency;
+            $ventaMoneda  = $ventaMoneda !== null ? (float) $ventaMoneda : null;
 
             $meses[] = [
                 'mes'                    => $month,
                 'objetivo'               => $objetivo,
                 'ventaMensual'           => $ventaMensual,
+                'ventaMensualMoneda'     => $ventaMoneda,
+                'moneda'                 => $currency,
                 'porcentajeCumplimiento' => ($objetivo > 0 && $ventaMensual !== null)
                     ? round($ventaMensual / $objetivo * 100, 2)
                     : null,
@@ -541,9 +618,11 @@ class ForecastService
             ->pluck('razonSocial', 'idCliente')
             ->all();
 
+        // Cada sección va en la moneda de su propio cliente: es la que manda en su nota de crédito.
         $sections = $members->map(fn($m) => [
             'clientId'    => $m->clientId,
             'razonSocial' => $clientNames[$m->clientId] ?? (string) $m->clientId,
+            'moneda'      => $this->resolveClientCurrency((string) $m->clientId),
             'invoices'    => $this->getInvoicesByMonth($m->clientId, $month, $year),
         ])->values()->all();
 
@@ -557,8 +636,11 @@ class ForecastService
         ];
     }
 
-    public function getInvoicesByMonth(string $idClient, int $month, int $year): Collection
+    /** Facturas de un cliente en un mes, expresadas en la moneda que tiene asignada (por defecto la suya). */
+    public function getInvoicesByMonth(string $idClient, int $month, int $year, ?string $currency = null): Collection
     {
+        $target = $currency ?? $this->resolveClientCurrency((string) $idClient);
+
         $invoices = ForecastComprobante::where('receptorId', (string) $idClient)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
@@ -585,7 +667,7 @@ class ForecastService
             $invoice->signo = $rol['signo'];
 
             return $rol['cuenta'];
-        })->values()->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio) {
+        })->values()->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio, $target) {
             $originalSubTotal = (float) $invoice->subTotal;
             $originalTotal    = (float) $invoice->total;
             // Reconstruye subTotal/iva/total desde las líneas de producto (excluyendo No Rodamientos),
@@ -600,22 +682,28 @@ class ForecastService
             $invoice->iva      = $iva;
             $invoice->total    = $total;
 
-            if ($invoice->moneda === 'MXN') {
+            $moneda = (string) $invoice->moneda;
+
+            if ($moneda !== $target) {
                 // Use rate stored at sync time; fall back to current rate for legacy rows
                 $rate = $invoice->tipoCambio
                     ? (float) $invoice->tipoCambio
                     : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
 
-                $invoice->originalSubTotal = $invoice->subTotal;
-                $invoice->originalIva      = $invoice->iva;
-                $invoice->originalTotal    = $invoice->total;
-                $invoice->originalMoneda   = 'MXN';
-                $invoice->tipoCambio       = $rate;
+                $convertedSubTotal = $this->convertAmount((float) $invoice->subTotal, $moneda, $target, $rate);
 
-                $invoice->subTotal = round($invoice->subTotal / $rate, 2);
-                $invoice->iva      = round($invoice->iva / $rate, 2);
-                $invoice->total    = round($invoice->total / $rate, 2);
-                $invoice->moneda   = 'USD';
+                if ($convertedSubTotal !== null) {
+                    $invoice->originalSubTotal = $invoice->subTotal;
+                    $invoice->originalIva      = $invoice->iva;
+                    $invoice->originalTotal    = $invoice->total;
+                    $invoice->originalMoneda   = $moneda;
+                    $invoice->tipoCambio       = $rate;
+
+                    $invoice->subTotal = round($convertedSubTotal, 2);
+                    $invoice->iva      = round((float) $this->convertAmount((float) $invoice->iva, $moneda, $target, $rate), 2);
+                    $invoice->total    = round((float) $this->convertAmount((float) $invoice->total, $moneda, $target, $rate), 2);
+                    $invoice->moneda   = $target;
+                }
             }
             return $invoice;
         });
@@ -688,9 +776,12 @@ class ForecastService
      * Desglose de productos por factura de un cliente en un mes/año.
      * Cada línea trae su clasificación (Rodamientos / No Rodamientos / null si no está clasificada);
      * el `breakdown` de cada factura resta lo marcado como No Rodamientos del total facturado.
+     * Los importes convertidos van en la moneda asignada al cliente (por defecto la suya).
      */
-    public function getInvoiceProductsByMonth(string $idClient, int $month, int $year): Collection
+    public function getInvoiceProductsByMonth(string $idClient, int $month, int $year, ?string $currency = null): Collection
     {
+        $target = $currency ?? $this->resolveClientCurrency((string) $idClient);
+
         $invoices = ForecastComprobante::where('receptorId', (string) $idClient)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
@@ -704,11 +795,15 @@ class ForecastService
 
         $devolucionFolios = $this->devolucionFolios((string) $idClient, $invoices->pluck('folio')->all());
 
+        $roles = $invoices->mapWithKeys(fn($invoice) => [
+            (string) $invoice->folio => $this->comprobanteRol(
+                (string) $invoice->tipoComprobante,
+                $devolucionFolios->contains($invoice->folio)
+            ),
+        ]);
+
         // Mismo criterio que getInvoicesByMonth(): lo que no cuenta para la venta no se lista.
-        $invoices = $invoices->filter(fn($invoice) => $this->comprobanteRol(
-            (string) $invoice->tipoComprobante,
-            $devolucionFolios->contains($invoice->folio)
-        )['cuenta'])->values();
+        $invoices = $invoices->filter(fn($invoice) => $roles[(string) $invoice->folio]['cuenta'])->values();
 
         if ($invoices->isEmpty()) {
             return collect();
@@ -733,45 +828,52 @@ class ForecastService
 
         $fallbackRate = null;
 
-        return $invoices->map(function ($invoice) use ($productsByFolio, $classifications, &$fallbackRate) {
+        return $invoices->map(function ($invoice) use ($productsByFolio, $classifications, &$fallbackRate, $target, $roles) {
             $subTotal = (float) $invoice->subTotal;
             $total    = (float) $invoice->total;
             // Las líneas de producto no traen IVA; se prorratea con el mismo factor que fetchSales().
             $factor   = $subTotal > 0 ? $total / $subTotal : 1;
 
-            $rate = null;
-            if ($invoice->moneda === 'MXN') {
-                $rate = $invoice->tipoCambio
+            $moneda = (string) $invoice->moneda;
+            $rate   = null;
+
+            if ($moneda !== $target) {
+                $candidate = $invoice->tipoCambio
                     ? (float) $invoice->tipoCambio
                     : ($fallbackRate ??= $this->banxico->getCurrentUsdRate());
+
+                // Solo se marca como convertida si el par de monedas sí es convertible.
+                $rate = $this->convertAmount(1.0, $moneda, $target, $candidate) !== null ? $candidate : null;
             }
 
-            $lines = $productsByFolio->get($invoice->folio, collect())->map(function ($p) use ($classifications, $factor, $rate) {
+            $lines = $productsByFolio->get($invoice->folio, collect())->map(function ($p) use ($classifications, $factor, $rate, $moneda, $target) {
                 $clasificacion = $classifications[trim($p->noIdentificacion)] ?? null;
                 $importeConIva = (float) $p->importe * $factor;
-                $importeUsd    = round($rate ? $importeConIva / $rate : $importeConIva, 2);
+                $convertido    = $rate ? (float) $this->convertAmount($importeConIva, $moneda, $target, $rate) : $importeConIva;
 
                 return [
-                    'noIdentificacion' => $p->noIdentificacion,
-                    'descripcion'      => $p->descripcion,
-                    'cantidad'         => (float) $p->cantidad,
-                    'valorUnitario'    => (float) $p->valorUnitario,
-                    'importe'          => round((float) $p->importe, 2),
-                    'importeUsd'       => $importeUsd,
-                    'clasificacion'    => $clasificacion,
-                    'excluido'         => $clasificacion === ProductClassification::NO_RODAMIENTOS,
+                    'noIdentificacion'  => $p->noIdentificacion,
+                    'descripcion'       => $p->descripcion,
+                    'cantidad'          => (float) $p->cantidad,
+                    'valorUnitario'     => (float) $p->valorUnitario,
+                    'importe'           => round((float) $p->importe, 2),
+                    'importeConvertido' => round($convertido, 2),
+                    'clasificacion'     => $clasificacion,
+                    'excluido'          => $clasificacion === ProductClassification::NO_RODAMIENTOS,
                 ];
             })->values();
 
-            $totalFacturado     = round($lines->sum('importeUsd'), 2);
-            $totalNoRodamientos = round($lines->where('excluido', true)->sum('importeUsd'), 2);
+            $totalFacturado     = round($lines->sum('importeConvertido'), 2);
+            $totalNoRodamientos = round($lines->where('excluido', true)->sum('importeConvertido'), 2);
             $totalConsiderado   = round($totalFacturado - $totalNoRodamientos, 2);
 
             return [
                 'folio'        => $invoice->folio,
                 'fechaEmision' => $invoice->fechaEmision,
-                'moneda'       => $rate ? 'USD' : $invoice->moneda,
+                'moneda'       => $rate ? $target : $moneda,
                 'tipoCambio'   => $rate,
+                // 1 = factura (suma), -1 = nota de crédito de devolución (resta del total del mes).
+                'signo'        => $roles[(string) $invoice->folio]['signo'],
                 'products'     => $lines,
                 'breakdown'    => [
                     'totalFacturado'     => $totalFacturado,
@@ -793,10 +895,12 @@ class ForecastService
     }
 
     /**
-     * Retorna ventas reales (suma de las líneas de producto por factura, en USD) indexado por [idClient][month].
+     * Retorna ventas reales (suma de las líneas de producto por factura) indexado por [idClient][month].
+     * Cada mes trae `total` en USD —con el que se mide el cumplimiento contra el objetivo— y
+     * `totalCurrency`, el mismo importe en $currency, que es sobre el que se calcula el retorno.
      * Excluye las líneas cuyo producto esté clasificado como No Rodamientos.
      */
-    private function fetchSales(array $clientIds, int $year): Collection
+    private function fetchSales(array $clientIds, int $year, string $currency = self::DEFAULT_CURRENCY): Collection
     {
         // Solo para comprobantes antiguos que se sincronizaron sin tipoCambio.
         $fallbackRate = $this->banxico->getCurrentUsdRate();
@@ -835,12 +939,12 @@ class ForecastService
             ->groupBy(fn($row) => (string) $row->receptorId)
             ->map(fn($byClient) => $byClient
                 ->groupBy('month')
-                ->map(function ($rows) use ($fallbackRate, $folioRol) {
+                ->map(function ($rows) use ($fallbackRate, $folioRol, $currency) {
                     // Se agrega por comprobante y se redondea igual que getInvoicesByMonth()
                     // para que el total del mes ate al centavo con su desglose.
-                    $totalUsd = $rows
+                    $totals = $rows
                         ->groupBy(fn($r) => "{$r->receptorId}|{$r->folio}")
-                        ->sum(function ($lines) use ($fallbackRate, $folioRol) {
+                        ->reduce(function (array $carry, $lines) use ($fallbackRate, $folioRol, $currency) {
                             $first = $lines->first();
 
                             // El importe de cada línea excluye IVA; se prorratea con el factor
@@ -851,18 +955,24 @@ class ForecastService
 
                             $subTotal = round((float) $lines->sum('importe'), 2);
                             $total    = round($subTotal * $factor, 2);
+                            $moneda   = (string) $first->moneda;
 
-                            if ($first->moneda === 'MXN') {
-                                // Con el tipo de cambio con el que se timbró, no con el actual.
-                                $rate  = $first->tipoCambio ? (float) $first->tipoCambio : $fallbackRate;
-                                $total = round($total / $rate, 2);
-                            }
+                            // Con el tipo de cambio con el que se timbró, no con el actual.
+                            $rate = $first->tipoCambio ? (float) $first->tipoCambio : $fallbackRate;
 
                             // Las notas de crédito de devolución (signo -1) restan del mes.
-                            return $total * $folioRol->get("{$first->receptorId}|{$first->folio}")['signo'];
-                        });
+                            $signo = $folioRol->get("{$first->receptorId}|{$first->folio}")['signo'];
 
-                    return (object) ['total' => round($totalUsd, 2)];
+                            $carry['usd'] += round($this->convertAmount($total, $moneda, self::DEFAULT_CURRENCY, $rate) ?? $total, 2) * $signo;
+                            $carry['currency'] += round($this->convertAmount($total, $moneda, $currency, $rate) ?? $total, 2) * $signo;
+
+                            return $carry;
+                        }, ['usd' => 0.0, 'currency' => 0.0]);
+
+                    return (object) [
+                        'total'         => round($totals['usd'], 2),
+                        'totalCurrency' => round($totals['currency'], 2),
+                    ];
                 })
             );
     }
