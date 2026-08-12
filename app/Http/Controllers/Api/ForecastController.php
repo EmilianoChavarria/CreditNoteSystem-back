@@ -227,7 +227,7 @@ class ForecastController extends Controller
             $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
 
             $sections = collect($data['sections'])->map(function ($section) use ($month, $year) {
-                $section['products'] = $this->productsByFolio((string) $section['clientId'], $month, $year);
+                $section['products'] = $this->productsByFolio((string) $section['clientId'], $month, $year, $section['moneda'] ?? null);
 
                 return $section;
             })->all();
@@ -240,21 +240,22 @@ class ForecastController extends Controller
             );
         }
 
-        $invoices   = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
+        $currency   = $this->forecastService->resolveClientCurrency($idClient);
+        $invoices   = $this->forecastService->getInvoicesByMonth($idClient, $month, $year, $currency);
         $clientName = $this->forecastService->getClientName($idClient);
 
         $filename = "facturas_{$clientName}_{$year}_{$month}.xlsx";
 
         return Excel::download(
-            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year), $idClient),
+            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year), $idClient, $currency),
             $filename
         );
     }
 
     /** [folio => Collection de líneas de producto] para el export en Excel. */
-    private function productsByFolio(string $idClient, int $month, int $year): \Illuminate\Support\Collection
+    private function productsByFolio(string $idClient, int $month, int $year, ?string $currency = null): \Illuminate\Support\Collection
     {
-        return $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year)
+        return $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year, $currency)
             ->keyBy('folio')
             ->map(fn($invoice) => collect($invoice['products']));
     }
