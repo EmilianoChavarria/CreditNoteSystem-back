@@ -28,6 +28,9 @@ class ForecastCreditNoteService
         7 => 'JULIO', 8 => 'AGOSTO', 9 => 'SEPTIEMBRE', 10 => 'OCTUBRE', 11 => 'NOVIEMBRE', 12 => 'DICIEMBRE',
     ];
 
+    /** @var array<string, array{0: float, 1: string[]}> Memo de considered(), por cliente/periodo/moneda. */
+    private array $consideredCache = [];
+
     public function __construct(
         private readonly ForecastService $forecastService,
         private readonly RequestCrudService $requestCrudService,
@@ -64,27 +67,38 @@ class ForecastCreditNoteService
 
         $returnPercentage = $group->returnPercentage !== null ? (float) $group->returnPercentage : null;
 
+        // Los totales del grupo van en su moneda; la aportación y el retorno de cada
+        // cliente, en la suya, que es la que se usará en su nota de crédito.
+        $groupCurrency = $this->forecastService->resolveGroupCurrency($groupId);
+
         $rows       = [];
         $totalSales = 0.0;
 
         foreach ($members as $memberId) {
-            [$sales, $folios] = $this->considered((string) $memberId, $year, $month);
-            $totalSales += $sales;
+            $memberCurrency = $this->forecastService->resolveClientCurrency((string) $memberId);
+
+            [$sales, $folios] = $this->considered((string) $memberId, $year, $month, $memberCurrency);
+            $groupSales       = $this->considered((string) $memberId, $year, $month, $groupCurrency)[0];
+
+            $totalSales += $groupSales;
 
             $rows[(string) $memberId] = [
-                'clientId'      => (string) $memberId,
-                'name'          => $this->forecastService->getClientName((int) $memberId),
-                'folioCount'    => count($folios),
-                'salesAmount'   => $sales,
-                'participation' => null,
-                'returnAmount'  => $returnPercentage !== null ? round($sales * $returnPercentage / 100, 2) : null,
-                'note'          => null,
+                'clientId'         => (string) $memberId,
+                'name'             => $this->forecastService->getClientName((int) $memberId),
+                'folioCount'       => count($folios),
+                'currency'         => $memberCurrency,
+                'salesAmount'      => $sales,
+                // La misma aportación en la moneda del grupo: es la que hace comparable el %.
+                'salesAmountGroup' => $groupSales,
+                'participation'    => null,
+                'returnAmount'     => $returnPercentage !== null ? round($sales * $returnPercentage / 100, 2) : null,
+                'note'             => null,
             ];
         }
 
         if ($totalSales > 0) {
             foreach ($rows as &$row) {
-                $row['participation'] = round($row['salesAmount'] / $totalSales * 100, 2);
+                $row['participation'] = round($row['salesAmountGroup'] / $totalSales * 100, 2);
             }
             unset($row);
         }
@@ -113,6 +127,7 @@ class ForecastCreditNoteService
             'year'             => $year,
             'month'            => $month,
             'returnPercentage' => $returnPercentage,
+            'currency'         => $groupCurrency,
             'totalSales'       => round($totalSales, 2),
             'members'          => array_values($rows),
         ];
@@ -150,7 +165,9 @@ class ForecastCreditNoteService
                 throw ValidationException::withMessages(['month' => 'Ya se generó una nota de crédito para este cliente en este periodo.']);
             }
 
-            [$sales, $folios] = $this->considered((string) $id, $year, $month);
+            $currency = $this->forecastService->resolveClientCurrency((string) $id);
+
+            [$sales, $folios] = $this->considered((string) $id, $year, $month, $currency);
 
             if ($sales <= 0 || empty($folios)) {
                 throw ValidationException::withMessages(['invoices' => 'No hay facturas consideradas para este periodo (todo excluido por clasificación de producto).']);
@@ -162,7 +179,7 @@ class ForecastCreditNoteService
                 throw ValidationException::withMessages(['attachments' => 'Debes adjuntar al menos un archivo de soporte para generar la nota de crédito.']);
             }
 
-            $note = $this->createNote((string) $id, $year, $month, $sales, $returnPercentage, $folios, null, $authUser, $files, ...$catalogIds);
+            $note = $this->createNote((string) $id, $year, $month, $sales, $returnPercentage, $currency, $folios, null, $authUser, $files, ...$catalogIds);
 
             return ['created' => [$note], 'skipped' => []];
         }
@@ -193,7 +210,10 @@ class ForecastCreditNoteService
                 continue;
             }
 
-            [$sales, $folios] = $this->considered((string) $memberId, $year, $month);
+            // Cada NC se calcula y emite en la moneda de su propio cliente, no en la del grupo.
+            $currency = $this->forecastService->resolveClientCurrency((string) $memberId);
+
+            [$sales, $folios] = $this->considered((string) $memberId, $year, $month, $currency);
 
             if ($sales <= 0 || empty($folios)) {
                 $skipped[] = ['clientId' => (string) $memberId, 'reason' => 'Sin ventas consideradas este periodo.'];
@@ -207,7 +227,7 @@ class ForecastCreditNoteService
                 continue;
             }
 
-            $created[] = $this->createNote((string) $memberId, $year, $month, $sales, $returnPercentage, $folios, (int) $group->id, $authUser, $files, ...$catalogIds);
+            $created[] = $this->createNote((string) $memberId, $year, $month, $sales, $returnPercentage, $currency, $folios, (int) $group->id, $authUser, $files, ...$catalogIds);
         }
 
         if (empty($created)) {
@@ -265,23 +285,35 @@ class ForecastCreditNoteService
             ->first();
     }
 
-    /** [salesConsiderado, folios[]] de un cliente en un mes, excluyendo lo 100% descontado por clasificación. */
-    private function considered(string $clientId, int $year, int $month): array
+    /**
+     * [salesConsiderado, folios[]] de un cliente en un mes, en $currency y excluyendo
+     * lo 100% descontado por clasificación. Se memoiza porque el desglose de un grupo
+     * pide la misma aportación dos veces (en la moneda del cliente y en la del grupo).
+     */
+    private function considered(string $clientId, int $year, int $month, string $currency): array
     {
-        $entries = $this->forecastService->getInvoiceProductsByMonth($clientId, $month, $year);
+        $key = "{$clientId}|{$year}|{$month}|{$currency}";
+
+        if (isset($this->consideredCache[$key])) {
+            return $this->consideredCache[$key];
+        }
+
+        $entries = $this->forecastService->getInvoiceProductsByMonth($clientId, $month, $year, $currency);
 
         $sales  = 0.0;
         $folios = [];
 
         foreach ($entries as $entry) {
             $totalConsiderado = (float) ($entry['breakdown']['totalConsiderado'] ?? 0);
+
             if ($totalConsiderado > 0) {
-                $sales += $totalConsiderado;
+                // Las notas de crédito de devolución restan, igual que en la venta del mes.
+                $sales += $totalConsiderado * (int) ($entry['signo'] ?? 1);
                 $folios[] = $entry['folio'];
             }
         }
 
-        return [round($sales, 2), array_values(array_unique($folios))];
+        return $this->consideredCache[$key] = [round($sales, 2), array_values(array_unique($folios))];
     }
 
     /** Filtra a solo UploadedFile válidos (descarta entradas vacías/corruptas). */
@@ -297,6 +329,7 @@ class ForecastCreditNoteService
         int $month,
         float $sales,
         float $returnPercentage,
+        string $currency,
         array $folios,
         ?int $groupId,
         mixed $authUser,
@@ -327,7 +360,7 @@ class ForecastCreditNoteService
         );
 
         return DB::transaction(function () use (
-            $clientId, $year, $month, $sales, $returnPercentage, $folios, $groupId, $authUser, $files,
+            $clientId, $year, $month, $sales, $returnPercentage, $currency, $folios, $groupId, $authUser, $files,
             $requestTypeId, $classificationId, $reasonId, $amount, $totalAmount, $area, $exchangeRate,
             $comments, $invoiceNumber
         ) {
@@ -338,7 +371,7 @@ class ForecastCreditNoteService
                 'requestTypeId'    => $requestTypeId,
                 'customerId'       => $clientId,
                 'requestDate'      => now()->toDateString(),
-                'currency'         => 'USD',
+                'currency'         => $currency,
                 'area'             => $area,
                 'exchangeRate'     => $exchangeRate,
                 'reasonId'         => $reasonId,
@@ -361,6 +394,7 @@ class ForecastCreditNoteService
                 'year'             => $year,
                 'month'            => $month,
                 'returnPercentage' => $returnPercentage,
+                'currency'         => $currency,
                 'salesAmount'      => $sales,
                 'totalAmount'      => $totalAmount,
                 'invoiceFolios'    => implode(',', $folios),
