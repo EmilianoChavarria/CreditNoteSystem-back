@@ -336,16 +336,23 @@ Carga masiva exclusiva para clientes nacionales (deben existir en `invoices.clie
 
 Archivo CSV/XML/XLS/XLSX con columnas:
 
-- `customerNumber` (alias: `clientNumber`, `idCliente`)
-- `emails` (uno o varios, separados por coma o `;`)
-- `returnPercentage` (decimal, ej. `1.50`, `4.00`)
+- `customerNumber` (alias: `clientNumber`, `idCliente`) — **único obligatorio**
+- `emails` (opcional; uno o varios, separados por coma o `;`)
+- `returnPercentage` (opcional; decimal, ej. `1.50`, `4.00`)
+- `currency` (opcional; alias: `moneda`, `divisa`. Solo `USD` o `MXN`)
+
+Los tres campos actualizables son independientes entre sí: la celda que se deje vacía
+no se toca y el cliente conserva el valor que ya tenía. Así una fila puede actualizar
+solo la moneda, solo el correo o solo el porcentaje. Una fila con solo `customerNumber`
+únicamente da de alta al cliente en el padrón.
 
 ### Validación y errores
 
 - `customerNumber` debe existir en `invoices.clientes_TME700618RC7`; si no existe, la fila queda en error.
 - `customerNumber` repetido dentro del mismo archivo produce error en esa fila.
-- Cada correo en `emails` se valida individualmente (formato de email).
-- Si `customerNumber` ya tiene un registro en `national_customers`, se actualiza (`emails` y `returnPercentage` se sobreescriben con el valor más reciente).
+- Cada correo en `emails` se valida individualmente (formato de email), solo si la celda trae algo.
+- `returnPercentage` debe ser numérico entre 0 y 100; `currency` debe ser `USD` o `MXN`.
+- Si `customerNumber` ya tiene un registro en `national_customers`, se actualiza solo con los campos que vengan en la fila.
 
 ### Ejemplo
 
@@ -353,9 +360,11 @@ Archivo CSV/XML/XLS/XLSX con columnas:
 - `file`: `national_customers.csv`
 
 ```csv
-customerNumber,emails,returnPercentage
-10023,contacto@cliente10023.com,1.50
-10088,ventas@cliente10088.com;compras@cliente10088.com,4.00
+customerNumber,emails,returnPercentage,currency
+10023,contacto@cliente10023.com,1.50,USD
+10088,ventas@cliente10088.com;compras@cliente10088.com,4.00,MXN
+10099,,,MXN
+10100,compras@cliente10100.com,,
 ```
 
 ---

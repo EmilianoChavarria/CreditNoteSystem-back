@@ -33,24 +33,28 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
         return $this->fileParser->parseByStoredFile((string) $file['storedPath'], (string) $file['extension']);
     }
 
+    /**
+     * Cada campo actualizable es opcional e independiente: una fila puede traer solo la
+     * moneda, solo el correo o solo el porcentaje. Lo que venga vacío no se toca, así que
+     * el cliente conserva el valor que ya tenía guardado.
+     */
     public function process(array $row, Batch $batch): ?int
     {
-        $rawCurrency = $this->value($row, ['currency', 'moneda', 'divisa']);
-
         $payload = [
             'customerNumber'   => $this->value($row, ['customernumber', 'customer_number', 'clientnumber', 'client_number', 'idcliente']),
-            'emails'           => $this->value($row, ['emails', 'correos', 'email', 'correo']),
-            'returnPercentage' => $this->value($row, ['returnpercentage', 'return_percentage', 'porcentajeretorno', 'porcentaje_retorno', 'porcentaje']),
+            'emails'           => $this->blankToNull($this->value($row, ['emails', 'correos', 'email', 'correo'])),
+            'returnPercentage' => $this->blankToNull($this->value($row, ['returnpercentage', 'return_percentage', 'porcentajeretorno', 'porcentaje_retorno', 'porcentaje'])),
+            'currency'         => $this->blankToNull($this->value($row, ['currency', 'moneda', 'divisa'])),
         ];
 
         $validated = $this->validateRow($payload, [
             'customerNumber'   => ['required', 'string', 'max:50'],
-            'emails'           => ['required', 'string'],
-            'returnPercentage' => ['required', 'numeric', 'between:0,100'],
+            'emails'           => ['nullable', 'string'],
+            'returnPercentage' => ['nullable', 'numeric', 'between:0,100'],
+            'currency'         => ['nullable', 'string'],
         ]);
 
         $customerNumber = trim((string) $validated['customerNumber']);
-        $emails = $this->validateEmails((string) $validated['emails']);
 
         $this->ensureCustomerNumberIsNotDuplicatedInBatch($batch, $customerNumber);
 
@@ -58,20 +62,31 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
             throw new RuntimeException("El customer number '{$customerNumber}' no existe en la base de datos de invoices.");
         }
 
-        $data = [
-            'emails'           => $emails,
-            'returnPercentage' => (float) $validated['returnPercentage'],
-        ];
+        $data = [];
 
-        // La columna es opcional: si el archivo no la trae, se conserva la moneda ya guardada.
-        $currency = $this->normalizeCurrency($rawCurrency);
+        if (($validated['emails'] ?? null) !== null) {
+            $data['emails'] = $this->validateEmails((string) $validated['emails']);
+        }
+
+        if (($validated['returnPercentage'] ?? null) !== null) {
+            $data['returnPercentage'] = (float) $validated['returnPercentage'];
+        }
+
+        $currency = $this->normalizeCurrency($validated['currency'] ?? null);
         if ($currency !== null) {
             $data['currency'] = $currency;
         }
 
+        // Sin campos: la fila solo da de alta al cliente en el padrón (o lo deja como está).
         $this->nationalCustomerService->upsertByCustomerNumber($customerNumber, $data);
 
         return null;
+    }
+
+    /** Celda vacía = campo no enviado; una cadena en blanco no debe borrar lo ya guardado. */
+    private function blankToNull(mixed $value): mixed
+    {
+        return is_string($value) && trim($value) === '' ? null : $value;
     }
 
     private function normalizeCurrency(mixed $rawCurrency): ?string
