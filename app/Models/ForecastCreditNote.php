@@ -25,6 +25,7 @@ class ForecastCreditNote extends Model
         'year',
         'month',
         'returnPercentage',
+        'currency',
         'salesAmount',
         'totalAmount',
         'invoiceFolios',

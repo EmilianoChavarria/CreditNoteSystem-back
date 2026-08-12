@@ -20,6 +20,7 @@ class ForecastCreditNoteResource extends JsonResource
             'year'             => $this->year,
             'month'            => $this->month,
             'returnPercentage' => $this->returnPercentage,
+            'currency'         => $this->currency,
             'salesAmount'      => $this->salesAmount,
             'totalAmount'      => $this->totalAmount,
             'invoiceFolios'    => $this->invoiceFolios,
