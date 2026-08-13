@@ -7,6 +7,7 @@ use App\Models\ProductCatalogSyncLog;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class SyncProductCatalog extends Command
@@ -20,9 +21,15 @@ class SyncProductCatalog extends Command
     private const LOG_RETENTION_DAYS = 10;
     private const CHUNK_SIZE    = 1000;
 
+    /** Contador del corrido actual; se vuelca en el resumen final. */
+    private int $productosSynced = 0;
+
     public function handle(): int
     {
-        $this->info('Syncing product catalog...');
+        $startedAt = microtime(true);
+
+        $this->info('['.Carbon::now()->format('Y-m-d H:i:s').'] Syncing product catalog...');
+        Log::info('products:sync-catalog started');
 
         try {
             $count = $this->syncAll();
@@ -32,9 +39,9 @@ class SyncProductCatalog extends Command
                 'status'        => 'success',
             ]);
 
-            $this->info("Done. {$count} records synced.");
-
             $this->pruneOldLogs();
+
+            $this->summarize($startedAt, 'success');
 
             return Command::SUCCESS;
         } catch (Throwable $e) {
@@ -50,14 +57,63 @@ class SyncProductCatalog extends Command
 
             $this->error("Sync failed: {$e->getMessage()}");
 
+            $this->summarize($startedAt, 'failed', $e);
+
             return Command::FAILURE;
         }
     }
 
+    /**
+     * Resumen del corrido. Va tanto a la salida del command (que el scheduler redirige
+     * a logs/sync-product-catalog.log vía appendOutputTo) como al log de Laravel, para
+     * que quede rastro aunque se pierda el stdout del cron.
+     */
+    private function summarize(float $startedAt, string $status, ?Throwable $e = null): void
+    {
+        $context = [
+            'status'       => $status,
+            'productos'    => $this->productosSynced,
+            'duration'     => $this->formatDuration(microtime(true) - $startedAt),
+            'peakMemoryMb' => round(memory_get_peak_usage(true) / 1048576, 1),
+        ];
+
+        if ($e !== null) {
+            $context['error'] = $e->getMessage();
+        }
+
+        $this->newLine();
+        $this->line('=== products:sync-catalog '.strtoupper($status).' @ '.Carbon::now()->format('Y-m-d H:i:s').' ===');
+        $this->line("  Productos copiados: {$context['productos']}");
+        $this->line("  Duración:           {$context['duration']}");
+        $this->line("  Memoria pico:       {$context['peakMemoryMb']} MB");
+
+        if ($e !== null) {
+            $this->line("  Error:              {$e->getMessage()}");
+        }
+
+        if ($status === 'success') {
+            Log::info('products:sync-catalog finished', $context);
+        } else {
+            Log::error('products:sync-catalog failed', $context);
+        }
+    }
+
+    private function formatDuration(float $seconds): string
+    {
+        $minutes = (int) floor($seconds / 60);
+
+        if ($minutes === 0) {
+            return \sprintf('%.1fs', $seconds);
+        }
+
+        return \sprintf('%dm %ds', $minutes, (int) round($seconds - $minutes * 60));
+    }
+
     private function syncAll(): int
     {
-        $now   = Carbon::now();
-        $total = 0;
+        $now = Carbon::now();
+
+        $this->productosSynced = 0;
 
         DB::connection(self::CONNECTION)
             ->table(self::PRODUCTS_TABLE)
@@ -67,7 +123,7 @@ class SyncProductCatalog extends Command
                 'Descuento', 'CuentaPredial', 'idUsuarioCc', 'ulActualizacionCc',
             ])
             ->orderBy('idProducto')
-            ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, &$total) {
+            ->chunk(self::CHUNK_SIZE, function ($rows) use ($now) {
                 $records = $rows->map(fn ($r) => [
                     'idProducto'        => (string) $r->idProducto,
                     'rfc'               => (string) $r->rfc,
@@ -96,11 +152,11 @@ class SyncProductCatalog extends Command
                     ]
                 );
 
-                $total += \count($records);
-                $this->line("  Processed {$total} rows...");
+                $this->productosSynced += \count($records);
+                $this->line("  Processed {$this->productosSynced} rows...");
             });
 
-        return $total;
+        return $this->productosSynced;
     }
 
     /**

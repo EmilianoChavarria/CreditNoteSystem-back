@@ -19,7 +19,7 @@ Artisan::command('inspire', function () {
 Schedule::command(SyncForecastSales::class)
     ->dailyAt('02:00')
     ->timezone('America/Mexico_City')
-    ->withoutOverlapping()
+    ->withoutOverlapping(60)
     ->appendOutputTo(storage_path('logs/sync-forecast.log'));
 
 // Schedule::command(ReleaseStaleRequestNumberReservations::class)
@@ -27,7 +27,7 @@ Schedule::command(SyncForecastSales::class)
 //     ->withoutOverlapping();
 
 Schedule::command(SyncProductCatalog::class)
-    ->dailyAt('02:30')
+    ->dailyAt('02:00')
     ->timezone('America/Mexico_City')
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/sync-product-catalog.log'));
