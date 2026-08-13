@@ -11,6 +11,7 @@ use App\Services\XmlInvoiceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class SyncForecastSales extends Command
@@ -28,6 +29,11 @@ class SyncForecastSales extends Command
     /** Días hacia atrás que se buscan para hallar el FIX aplicable a un comprobante. */
     private const RATE_LOOKBACK_DAYS = 10;
 
+    /** Contadores del corrido actual; se vuelcan en el resumen final. */
+    private int $comprobantesSynced = 0;
+    private int $productosSynced    = 0;
+    private int $xmlFailures        = 0;
+
     public function __construct(
         private readonly BanxicoService $banxico,
         private readonly FesaWsService $fesaWsService,
@@ -38,9 +44,11 @@ class SyncForecastSales extends Command
 
     public function handle(): int
     {
-        $year = (int) ($this->option('year') ?? Carbon::now()->year);
+        $year      = (int) ($this->option('year') ?? Carbon::now()->year);
+        $startedAt = microtime(true);
 
-        $this->info("Syncing comprobantes for year {$year}...");
+        $this->info('['.Carbon::now()->format('Y-m-d H:i:s')."] Syncing comprobantes for year {$year}...");
+        Log::info('forecast:sync-sales started', ['year' => $year]);
 
         try {
             $count = $this->syncYear($year);
@@ -51,9 +59,9 @@ class SyncForecastSales extends Command
                 'status'        => 'success',
             ]);
 
-            $this->info("Done. {$count} records synced.");
-
             $this->pruneOldLogs();
+
+            $this->summarize($year, $startedAt, 'success');
 
             return Command::SUCCESS;
         } catch (Throwable $e) {
@@ -70,8 +78,62 @@ class SyncForecastSales extends Command
 
             $this->error("Sync failed: {$e->getMessage()}");
 
+            $this->summarize($year, $startedAt, 'failed', $e);
+
             return Command::FAILURE;
         }
+    }
+
+    /**
+     * Resumen del corrido. Va tanto a la salida del command (que el scheduler redirige
+     * a logs/sync-forecast.log vía appendOutputTo) como al log de Laravel, para que
+     * quede rastro aunque se pierda el stdout del cron.
+     */
+    private function summarize(int $year, float $startedAt, string $status, ?Throwable $e = null): void
+    {
+        $context = [
+            'year'         => $year,
+            'status'       => $status,
+            'comprobantes' => $this->comprobantesSynced,
+            'productos'    => $this->productosSynced,
+            'xmlFailures'  => $this->xmlFailures,
+            'duration'     => $this->formatDuration(microtime(true) - $startedAt),
+            'peakMemoryMb' => round(memory_get_peak_usage(true) / 1048576, 1),
+        ];
+
+        if ($e !== null) {
+            $context['error'] = $e->getMessage();
+        }
+
+        $this->newLine();
+        $this->line('=== forecast:sync-sales '.strtoupper($status).' @ '.Carbon::now()->format('Y-m-d H:i:s').' ===');
+        $this->line("  Año:                   {$year}");
+        $this->line("  Comprobantes copiados: {$context['comprobantes']}");
+        $this->line("  Productos copiados:    {$context['productos']}");
+        $this->line("  XML fallidos:          {$context['xmlFailures']}");
+        $this->line("  Duración:              {$context['duration']}");
+        $this->line("  Memoria pico:          {$context['peakMemoryMb']} MB");
+
+        if ($e !== null) {
+            $this->line("  Error:                 {$e->getMessage()}");
+        }
+
+        if ($status === 'success') {
+            Log::info('forecast:sync-sales finished', $context);
+        } else {
+            Log::error('forecast:sync-sales failed', $context);
+        }
+    }
+
+    private function formatDuration(float $seconds): string
+    {
+        $minutes = (int) floor($seconds / 60);
+
+        if ($minutes === 0) {
+            return \sprintf('%.1fs', $seconds);
+        }
+
+        return \sprintf('%dm %ds', $minutes, (int) round($seconds - $minutes * 60));
     }
 
     private function syncYear(int $year): int
@@ -79,7 +141,8 @@ class SyncForecastSales extends Command
         $now         = Carbon::now();
         $startOfYear = Carbon::create($year)->startOfYear();
         $endOfYear   = Carbon::create($year)->endOfYear();
-        $total       = 0;
+
+        $this->comprobantesSynced = 0;
 
         // Single Banxico call for the entire year — map [Y-m-d => rate].
         // Se piden días extra antes del 1 de enero porque cada comprobante se liga
@@ -96,7 +159,7 @@ class SyncForecastSales extends Command
             ->whereBetween('fechaEmision', [$startOfYear, $endOfYear])
             ->select(['receptorId', 'folio', 'serie', 'subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'status', 'tipoComprobante'])
             ->orderBy('receptorId')
-            ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, $rates, &$total) {
+            ->chunk(self::CHUNK_SIZE, function ($rows) use ($now, $rates) {
                 $records = $rows->map(function ($r) use ($now, $rates) {
                     $tipoCambio = $this->resolveRate($rates, Carbon::parse($r->fechaEmision));
 
@@ -125,13 +188,13 @@ class SyncForecastSales extends Command
                     ['subTotal', 'iva', 'total', 'fechaEmision', 'moneda', 'tipoCambio', 'status', 'tipoComprobante', 'updatedAt']
                 );
 
-                $total += \count($records);
-                $this->line("  Processed {$total} rows...");
+                $this->comprobantesSynced += \count($records);
+                $this->line("  Processed {$this->comprobantesSynced} rows...");
 
                 $this->syncProductsForRecords($records);
             });
 
-        return $total;
+        return $this->comprobantesSynced;
     }
 
     /**
@@ -189,6 +252,7 @@ class SyncForecastSales extends Command
                 $xmlContent = $this->fesaWsService->fetchXmlString($r['folio']);
                 $conceptos  = $this->xmlInvoiceService->getConceptosFromXmlString($xmlContent);
             } catch (Throwable $e) {
+                $this->xmlFailures++;
                 $this->warn("  No se pudo obtener XML de folio {$r['folio']} (receptor {$r['receptorId']}): {$e->getMessage()}");
 
                 continue;
@@ -220,6 +284,8 @@ class SyncForecastSales extends Command
                 ['receptorId', 'folio', 'conceptoIndex'],
                 ['claveProdServ', 'noIdentificacion', 'noPedido', 'cantidad', 'claveUnidad', 'unidad', 'descripcion', 'valorUnitario', 'importe', 'updatedAt']
             );
+
+            $this->productosSynced += \count($rows);
         }
     }
 
