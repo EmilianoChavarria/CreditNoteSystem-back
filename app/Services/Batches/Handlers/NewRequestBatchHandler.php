@@ -33,7 +33,7 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         return 'newRequest';
     }
 
-    public function buildRows(BatchInputContext $context): array
+    public function buildRows(BatchInputContext $context): iterable
     {
         $file = $context->storedFiles[0] ?? null;
         if (!$file) {
@@ -41,13 +41,13 @@ class NewRequestBatchHandler extends AbstractBatchHandler
         }
 
         $rows = $this->fileParser->parseByStoredFile((string) $file['storedPath'], (string) $file['extension']);
-        foreach ($rows as &$row) {
+
+        foreach ($rows as $row) {
             $row['requesttypeid'] = $context->requestTypeId;
             $row['defaultuserid'] = $context->authUserId;
-        }
-        unset($row);
 
-        return $rows;
+            yield $row;
+        }
     }
 
     public function process(array $row, Batch $batch): ?int

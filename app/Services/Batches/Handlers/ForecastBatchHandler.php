@@ -37,7 +37,7 @@ class ForecastBatchHandler extends AbstractBatchHandler
         return 'forecast';
     }
 
-    public function buildRows(BatchInputContext $context): array
+    public function buildRows(BatchInputContext $context): iterable
     {
         $file = $context->storedFiles[0] ?? null;
         if (!$file) {
@@ -48,8 +48,6 @@ class ForecastBatchHandler extends AbstractBatchHandler
             (string) $file['storedPath'],
             (string) $file['extension']
         );
-
-        $rows = [];
 
         foreach ($parsed as $raw) {
             $rowNum   = (int) ($raw['_rowNumber'] ?? 0);
@@ -70,10 +68,8 @@ class ForecastBatchHandler extends AbstractBatchHandler
                 $entry['month_' . $monthNum] = $this->floatFromMixed($this->value($raw, $aliases, 0));
             }
 
-            $rows[] = $entry;
+            yield $entry;
         }
-
-        return $rows;
     }
 
     public function process(array $row, Batch $batch): ?int
