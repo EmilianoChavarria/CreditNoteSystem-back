@@ -156,7 +156,7 @@ class ForecastApprovalService
             return ['success' => false, 'code' => 404, 'message' => 'Solicitud no encontrada o ya procesada'];
         }
 
-        if ((int) $changeRequest->approverUserId !== (int) $actor->id) {
+        if (!$this->canActOnRequest($actor, $changeRequest)) {
             return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
         }
 
@@ -277,7 +277,7 @@ class ForecastApprovalService
             return ['success' => false, 'code' => 404, 'message' => 'Solicitud no encontrada o ya procesada'];
         }
 
-        if ((int) $changeRequest->approverUserId !== (int) $actor->id) {
+        if (!$this->canActOnRequest($actor, $changeRequest)) {
             return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
         }
 
@@ -321,10 +321,13 @@ class ForecastApprovalService
 
     public function getPendingForApprover(User $actor): Collection
     {
-        $requests = ForecastChangeRequest::where('approverUserId', $actor->id)
-            ->where('status', 'pending')
+        $requests = ForecastChangeRequest::where('status', 'pending')
+            // FORECAST ADMIN supervisa el flujo completo: ve todas las pendientes,
+            // no solo las que tiene asignadas como aprobador.
+            ->unless($this->roleService->isForecastAdmin($actor), fn($q) => $q->where('approverUserId', $actor->id))
             ->with([
                 'submittedBy:id,fullName',
+                'approver:id,fullName',
                 'history.actor:id,fullName',
             ])
             ->orderBy('createdAt')
@@ -416,6 +419,16 @@ class ForecastApprovalService
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * El aprobador designado siempre puede resolver su solicitud. FORECAST ADMIN
+     * puede resolver cualquiera porque supervisa el flujo completo.
+     */
+    private function canActOnRequest(User $actor, ForecastChangeRequest $changeRequest): bool
+    {
+        return (int) $changeRequest->approverUserId === (int) $actor->id
+            || $this->roleService->isForecastAdmin($actor);
+    }
 
     private function findSalesManagerForClient(int $idClient): ?User
     {

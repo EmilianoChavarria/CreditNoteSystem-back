@@ -167,7 +167,7 @@ class DistributorForecastApprovalService
             return ['success' => false, 'code' => 404, 'message' => 'Solicitud no encontrada o ya procesada'];
         }
 
-        if ((int) $changeRequest->approverUserId !== (int) $actor->id) {
+        if (!$this->canActOnRequest($actor, $changeRequest)) {
             return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
         }
 
@@ -286,7 +286,7 @@ class DistributorForecastApprovalService
             return ['success' => false, 'code' => 404, 'message' => 'Solicitud no encontrada o ya procesada'];
         }
 
-        if ((int) $changeRequest->approverUserId !== (int) $actor->id) {
+        if (!$this->canActOnRequest($actor, $changeRequest)) {
             return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
         }
 
@@ -329,10 +329,13 @@ class DistributorForecastApprovalService
 
     public function getPendingForApprover(User $actor): Collection
     {
-        return DistributorForecastChangeRequest::where('approverUserId', $actor->id)
-            ->where('status', 'pending')
+        return DistributorForecastChangeRequest::where('status', 'pending')
+            // FORECAST ADMIN supervisa el flujo completo: ve todas las pendientes,
+            // no solo las que tiene asignadas como aprobador.
+            ->unless($this->roleService->isForecastAdmin($actor), fn($q) => $q->where('approverUserId', $actor->id))
             ->with([
                 'submittedBy:id,fullName',
+                'approver:id,fullName',
                 'distributor:id,businessName',
                 'history.actor:id,fullName',
             ])
@@ -374,6 +377,16 @@ class DistributorForecastApprovalService
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * El aprobador designado siempre puede resolver su solicitud. FORECAST ADMIN
+     * puede resolver cualquiera porque supervisa el flujo completo.
+     */
+    private function canActOnRequest(User $actor, DistributorForecastChangeRequest $changeRequest): bool
+    {
+        return (int) $changeRequest->approverUserId === (int) $actor->id
+            || $this->roleService->isForecastAdmin($actor);
+    }
 
     /** @return string[] */
     private function getDistributorEmails(?Distributor $distributor): array
