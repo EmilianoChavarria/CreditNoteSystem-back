@@ -9,9 +9,12 @@ use Storage;
 class BulkFileParser
 {
     /**
-     * @return array<int, array<string, mixed>>
+     * Devuelve un iterable, no un array: para csv/txt las filas se generan una a una
+     * para que un archivo de cientos de miles de renglones no viva completo en memoria.
+     *
+     * @return iterable<int, array<string, mixed>>
      */
-    public function parseByStoredFile(string $storedPath, string $extension): array
+    public function parseByStoredFile(string $storedPath, string $extension): iterable
     {
         $absolutePath = Storage::disk('local')->path($storedPath);
         $extension = strtolower($extension);
@@ -25,9 +28,9 @@ class BulkFileParser
     }
 
     /**
-     * @return array<int, array<string, mixed>>
+     * @return \Generator<int, array<string, mixed>>
      */
-    private function parseDelimited(string $absolutePath): array
+    private function parseDelimited(string $absolutePath): \Generator
     {
         $handle = fopen($absolutePath, 'r');
         if (!$handle) {
@@ -40,41 +43,41 @@ class BulkFileParser
             rewind($handle);
         }
 
-        $rows = [];
         $headers = null;
         $rowNumber = 1;
 
-        while (($raw = fgets($handle)) !== false) {
-            $raw = mb_convert_encoding(rtrim($raw, "\r\n"), 'UTF-8', 'UTF-8,Windows-1252,ISO-8859-1');
-            $line = str_getcsv($raw, ',');
-            if ($headers === null) {
-                $headers = array_map(fn ($header) => $this->normalizeHeader((string) $header), $line);
-                $rowNumber++;
-                continue;
-            }
-
-            $normalized = [];
-            foreach ($headers as $index => $header) {
-                if ($header === '') {
+        try {
+            while (($raw = fgets($handle)) !== false) {
+                $raw = mb_convert_encoding(rtrim($raw, "\r\n"), 'UTF-8', 'UTF-8,Windows-1252,ISO-8859-1');
+                $line = str_getcsv($raw, ',');
+                if ($headers === null) {
+                    $headers = array_map(fn ($header) => $this->normalizeHeader((string) $header), $line);
+                    $rowNumber++;
                     continue;
                 }
 
-                $normalized[$header] = isset($line[$index]) ? trim((string) $line[$index]) : null;
-            }
+                $normalized = [];
+                foreach ($headers as $index => $header) {
+                    if ($header === '') {
+                        continue;
+                    }
 
-            if ($this->isEmptyRow($normalized)) {
+                    $normalized[$header] = isset($line[$index]) ? trim((string) $line[$index]) : null;
+                }
+
+                if ($this->isEmptyRow($normalized)) {
+                    $rowNumber++;
+                    continue;
+                }
+
+                $normalized['_rowNumber'] = $rowNumber;
                 $rowNumber++;
-                continue;
+
+                yield $normalized;
             }
-
-            $normalized['_rowNumber'] = $rowNumber;
-            $rows[] = $normalized;
-            $rowNumber++;
+        } finally {
+            fclose($handle);
         }
-
-        fclose($handle);
-
-        return $rows;
     }
 
     /**

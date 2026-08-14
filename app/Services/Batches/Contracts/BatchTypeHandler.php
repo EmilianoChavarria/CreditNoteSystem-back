@@ -10,9 +10,12 @@ interface BatchTypeHandler
     public function batchType(): string;
 
     /**
-     * @return array<int, array<string, mixed>>
+     * Puede devolver un array o un Generator. Los handlers que leen archivos
+     * grandes devuelven Generator para no materializar todas las filas en memoria.
+     *
+     * @return iterable<int, array<string, mixed>>
      */
-    public function buildRows(BatchInputContext $context): array;
+    public function buildRows(BatchInputContext $context): iterable;
 
     /**
      * @param array<string, mixed> $row
