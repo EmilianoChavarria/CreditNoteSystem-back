@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Http\Requests\Batches\StoreBatchRequest;
+use App\Jobs\ProcessBatchItemsChunkJob;
 use App\Jobs\ProcessBatchJob;
 use App\Mail\BatchFinishedMail;
 use App\Mail\UserBatchRegisteredMail;
@@ -35,6 +36,12 @@ use Throwable;
 
 class BatchService
 {
+    /** Filas por INSERT masivo al poblar los items del batch. */
+    private const ITEM_INSERT_CHUNK = 500;
+
+    /** Items que procesa un solo job de cola. Evita 1 job por fila. */
+    private const ITEM_JOB_CHUNK = 200;
+
     /**
      * @var array<string, BatchTypeHandler>
      */
@@ -72,6 +79,11 @@ class BatchService
         }
     }
 
+    /**
+     * El request HTTP solo guarda el archivo y registra el batch vacío. El parseo y
+     * la inserción de items ocurren en ProcessBatchJob: un archivo de cientos de miles
+     * de filas revienta el memory_limit y el max_execution_time de PHP-FPM si se hace aquí.
+     */
     public function createBatch(StoreBatchRequest $request): Batch
     {
         $batchType = (string) $request->input('batchType');
@@ -80,6 +92,9 @@ class BatchService
         if (!$authUser || !isset($authUser->id)) {
             throw new RuntimeException('No se pudo identificar el usuario autenticado.');
         }
+
+        // Falla temprano si el batchType no tiene handler, antes de guardar nada.
+        $this->resolveHandler($batchType);
 
         $storedFiles = $this->storeFiles($request->normalizedFiles(), $batchType);
 
@@ -94,90 +109,168 @@ class BatchService
             userWelcomeEmailRecipient: $batchType === 'users' ? $request->welcomeEmailRecipient() : null,
         );
 
-        $handler = $this->resolveHandler($batchType);
-        $rows = $handler->buildRows($context);
+        $batch = Batch::create([
+            'userId' => $context->authUserId,
+            'fileName' => implode(',', array_map(fn ($file) => (string) ($file['originalName'] ?? ''), $storedFiles)),
+            'batchType' => $batchType,
+            'minRange' => $context->minRange,
+            'maxRange' => $context->maxRange,
+            'totalRecords' => 0,
+            'processedRecords' => 0,
+            'processingRecords' => 0,
+            'errorRecords' => 0,
+            'status' => 'processing',
+        ]);
 
-        if (count($rows) === 0) {
-            throw new RuntimeException('No hay registros para procesar en el batch.');
-        }
-
-        $batch = DB::transaction(function () use ($context, $batchType, $rows, $storedFiles) {
-            $batch = Batch::create([
-                'userId' => $context->authUserId,
-                'fileName' => implode(',', array_map(fn ($file) => (string) ($file['originalName'] ?? ''), $storedFiles)),
-                'batchType' => $batchType,
-                'minRange' => $context->minRange,
-                'maxRange' => $context->maxRange,
-                'totalRecords' => 0,
-                'processedRecords' => 0,
-                'processingRecords' => 0,
-                'errorRecords' => 0,
-                'status' => 'processing',
-            ]);
-
-            $insertRows = [];
-            $now = Carbon::now();
-            foreach ($rows as $row) {
-                if ($batchType === 'users') {
-                    $row = $this->withUserWelcomeEmailOptions($row, $context);
-                }
-
-                // Sanitizar datos antes de JSON encoding
-                $cleanRow = $this->sanitizeRowForJson($row);
-                $jsonEncoded = json_encode($cleanRow, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                
-                if ($jsonEncoded === false) {
-                    throw new RuntimeException('Error serializando fila a JSON: ' . json_last_error_msg());
-                }
-
-                $rowHash = hash('sha256', $jsonEncoded);
-
-                $insertRows[] = [
-                    'batchId' => $batch->id,
-                    'requestId' => isset($cleanRow['requestId']) ? (int) $cleanRow['requestId'] : null,
-                    'userId' => $context->authUserId,
-                    'status' => 'pending',
-                    'rowHash' => $rowHash,
-                    'rawData' => $jsonEncoded,
-                    'errorLog' => null,
-                    'processedAt' => null,
-                    'createdAt' => $now,
-                ];
-            }
-
-            foreach (array_chunk($insertRows, 500) as $chunk) {
-                BatchItem::insertOrIgnore($chunk);
-            }
-
-            $totalRecords = BatchItem::where('batchId', $batch->id)->count();
-            $batch->update([
-                'totalRecords' => $totalRecords,
-                'status' => $totalRecords > 0 ? 'processing' : 'failed',
-            ]);
-
-            if ($totalRecords === 0) {
-                throw new RuntimeException('Todos los registros del archivo están duplicados o inválidos.');
-            }
-
-            return $batch->fresh();
-        });
-
-        ProcessBatchJob::dispatch($batch->id)->onQueue('default');
+        ProcessBatchJob::dispatch((int) $batch->id, $context->toArray())->onQueue('default');
 
         return $batch;
     }
 
+    /**
+     * Lee las filas del archivo en streaming y las inserta por lotes de 500.
+     * Nunca mantiene más de un lote en memoria.
+     *
+     * @return int total de items insertados
+     */
+    public function populateBatchItems(int $batchId, BatchInputContext $context): int
+    {
+        $batch = Batch::find($batchId);
+        if (!$batch) {
+            throw new RuntimeException('Batch no encontrado: ' . $batchId);
+        }
+
+        $handler = $this->resolveHandler($context->batchType);
+        $now = Carbon::now();
+        $buffer = [];
+        $seenRows = 0;
+
+        foreach ($handler->buildRows($context) as $row) {
+            if ($context->batchType === 'users') {
+                $row = $this->withUserWelcomeEmailOptions($row, $context);
+            }
+
+            // Sanitizar datos antes de JSON encoding
+            $cleanRow = $this->sanitizeRowForJson($row);
+            $jsonEncoded = json_encode($cleanRow, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            if ($jsonEncoded === false) {
+                throw new RuntimeException('Error serializando fila a JSON: ' . json_last_error_msg());
+            }
+
+            $buffer[] = [
+                'batchId' => $batchId,
+                'requestId' => isset($cleanRow['requestId']) ? (int) $cleanRow['requestId'] : null,
+                'userId' => $context->authUserId,
+                'status' => 'pending',
+                'rowHash' => hash('sha256', $jsonEncoded),
+                'rawData' => $jsonEncoded,
+                'errorLog' => null,
+                'processedAt' => null,
+                'createdAt' => $now,
+            ];
+
+            $seenRows++;
+
+            if (count($buffer) >= self::ITEM_INSERT_CHUNK) {
+                BatchItem::insertOrIgnore($buffer);
+                $buffer = [];
+            }
+        }
+
+        if (count($buffer) > 0) {
+            BatchItem::insertOrIgnore($buffer);
+        }
+
+        if ($seenRows === 0) {
+            throw new RuntimeException('No hay registros para procesar en el batch.');
+        }
+
+        $totalRecords = BatchItem::where('batchId', $batchId)->count();
+
+        if ($totalRecords === 0) {
+            throw new RuntimeException('Todos los registros del archivo están duplicados o inválidos.');
+        }
+
+        $batch->update([
+            'totalRecords' => $totalRecords,
+            'status' => 'processing',
+        ]);
+
+        return $totalRecords;
+    }
+
+    /**
+     * El batch murió antes de generar items (archivo ilegible, formato inválido,
+     * cero filas). Se deja rastro como item en error para que el detalle del batch
+     * lo muestre igual que cualquier otra falla de fila.
+     */
+    public function failBatch(int $batchId, Throwable $e): void
+    {
+        $batch = Batch::find($batchId);
+        if (!$batch) {
+            return;
+        }
+
+        // El parseo puede haber insertado filas antes de reventar; se descartan
+        // para no dejar items huérfanos que nadie va a procesar.
+        BatchItem::where('batchId', $batchId)->delete();
+
+        BatchItem::insertOrIgnore([[
+            'batchId' => $batchId,
+            'requestId' => null,
+            'userId' => (int) $batch->userId,
+            'status' => 'error',
+            'rowHash' => hash('sha256', 'batch-failure:' . $batchId),
+            'rawData' => json_encode(['_batchFailure' => true], JSON_UNESCAPED_UNICODE),
+            'errorLog' => $this->buildErrorLog($e),
+            'processedAt' => Carbon::now(),
+            'createdAt' => Carbon::now(),
+        ]]);
+
+        $batch->update([
+            'totalRecords' => 1,
+            'processedRecords' => 1,
+            'processingRecords' => 0,
+            'errorRecords' => 1,
+            'status' => 'failed',
+        ]);
+
+        $failedBatch = $batch->fresh();
+
+        if ($failedBatch) {
+            $this->notifyBatchFinished($failedBatch);
+        }
+    }
+
+    /**
+     * Un job por lote de items, no uno por item: con 200k filas la cola `database`
+     * no aguanta 200k jobs (insert + polling + borrado de cada uno).
+     */
     public function dispatchBatchItems(int $batchId): void
     {
         BatchItem::query()
+            ->select('id')
             ->where('batchId', $batchId)
             ->where('status', 'pending')
             ->orderBy('id')
-            ->chunkById(500, function ($items) {
-                foreach ($items as $item) {
-                    \App\Jobs\ProcessBatchItemJob::dispatch((int) $item->id)->onQueue('default');
+            ->chunkById(1000, function ($items) {
+                $ids = $items->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+                foreach (array_chunk($ids, self::ITEM_JOB_CHUNK) as $chunk) {
+                    ProcessBatchItemsChunkJob::dispatch($chunk)->onQueue('default');
                 }
             });
+    }
+
+    /**
+     * @param array<int, int> $batchItemIds
+     */
+    public function processBatchItems(array $batchItemIds): void
+    {
+        foreach ($batchItemIds as $batchItemId) {
+            $this->processBatchItem((int) $batchItemId);
+        }
     }
 
     public function processBatchItem(int $batchItemId): void

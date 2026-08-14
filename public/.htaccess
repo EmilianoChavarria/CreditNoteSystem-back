@@ -1,5 +1,11 @@
 php_value upload_max_filesize 200M
 php_value post_max_size 210M
+# Las cargas masivas grandes (productClassification, forecast) parsean el archivo
+# completo en memoria dentro del request. Con los 128M/30s que hereda del
+# .htaccess raiz de cPanel, PHP muere con fatal y Apache responde 500 vacio.
+php_value memory_limit 1024M
+php_value max_execution_time 600
+php_value max_input_time 600
 
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>

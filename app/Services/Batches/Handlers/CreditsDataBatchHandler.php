@@ -20,7 +20,7 @@ class CreditsDataBatchHandler extends AbstractBatchHandler
         return 'creditsData';
     }
 
-    public function buildRows(BatchInputContext $context): array
+    public function buildRows(BatchInputContext $context): iterable
     {
         $file = $context->storedFiles[0] ?? null;
         if (!$file) {
