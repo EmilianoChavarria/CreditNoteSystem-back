@@ -15,12 +15,17 @@ class ForecastRoleService
             || $this->isForecastAdmin($user);
     }
 
+    /**
+     * FORECAST ADMIN entra aquí porque supervisa todo el flujo: ve cualquier
+     * solicitud pendiente y puede resolverla aunque no sea el aprobador designado.
+     */
     public function canApprove(User $user): bool
     {
         $role = $this->normalizeRole($user);
 
         return $this->isSalesEngineerManager($user)
-            || $role === 'GENERAL MANAGER';
+            || $role === 'GENERAL MANAGER'
+            || $this->isForecastAdmin($user);
     }
 
     public function isForecastAdmin(User $user): bool
