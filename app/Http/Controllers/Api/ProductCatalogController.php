@@ -65,7 +65,7 @@ class ProductCatalogController extends Controller
     public function classify(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'idProducto' => ['required', 'string', 'max:50'],
+            'idProducto' => ['required', 'string', 'max:191'],
             'clasificacion' => ['required', 'string', 'in:' . ProductClassification::RODAMIENTOS . ',' . ProductClassification::NO_RODAMIENTOS],
         ]);
 
