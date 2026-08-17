@@ -46,6 +46,33 @@ Incluye:
 
 ---
 
+## 2.1) Consultar los registros del batch
+
+- **Método:** `GET`
+- **Endpoint:** `/api/batches/{id}/requests`
+- **Query params opcionales:**
+  - `perPage` (int, default 25, min 1, max 200)
+  - `page` (int)
+  - `status` (`all` | `success` | `error`, default `all`)
+    - `error`: solo filas con `status = error`
+    - `success`: todo lo que no quedó en error (incluye `pending` y `processing`)
+
+El filtro se aplica en la consulta, no sobre la página ya cargada: cada cambio de filtro
+reinicia la paginación y el `total` corresponde al filtro activo.
+
+---
+
+## 2.2) Descargar los errores del batch en CSV
+
+- **Método:** `GET`
+- **Endpoint:** `/api/batches/{id}/errors/csv`
+- **Respuesta:** archivo `text/csv` (con BOM UTF-8) como descarga
+
+Columnas: `batchItemId`, todas las columnas del `rawData` original (unión de las filas en
+error, porque cambian según el `batchType`), `errorType` y `errorMessage`.
+
+---
+
 ## 3) ¿Cómo se ejecuta el job?
 
 El procesamiento del batch es asíncrono.
