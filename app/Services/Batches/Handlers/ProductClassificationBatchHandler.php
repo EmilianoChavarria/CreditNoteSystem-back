@@ -34,7 +34,7 @@ class ProductClassificationBatchHandler extends AbstractBatchHandler
     public function process(array $row, Batch $batch): ?int
     {
         $data = $this->validateRow([
-            'idProducto' => $this->value($row, ['idproducto', 'id_producto', 'producto', 'sku', 'clave']),
+            'idProducto' => $this->cleanIdProducto($this->value($row, ['idproducto', 'id_producto', 'producto', 'sku', 'clave'])),
             'clasificacion' => $this->value($row, ['clasificacion', 'clasificaci_n', 'clasificación', 'tipo', 'categoria']),
         ], [
             'idProducto' => ['required', 'string', 'max:50'],
@@ -46,6 +46,20 @@ class ProductClassificationBatchHandler extends AbstractBatchHandler
         $this->productClassificationService->classify((string) $data['idProducto'], $clasificacion);
 
         return null;
+    }
+
+    /**
+     * Los CSV traen comillas dobles sueltas pegadas al id (`022085P-1-PULLEY"`).
+     * Se quitan aquí para que no rompan el `max:50` ni el mensaje de error; el
+     * match contra el catálogo también las ignora (ProductClassificationService).
+     */
+    private function cleanIdProducto(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return trim(str_replace('"', '', $value));
     }
 
     /**
