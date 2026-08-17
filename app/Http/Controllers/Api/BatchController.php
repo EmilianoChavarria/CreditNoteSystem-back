@@ -200,12 +200,17 @@ class BatchController extends Controller
         }
 
         $perPage = max(1, min(200, (int) $request->query('perPage', 25)));
+        $status = (string) $request->query('status', 'all');
 
         $items = BatchItem::query()
             ->with(['request.requestType', 'request.reason', 'request.classification'])
             ->where('batchId', $batch->id)
+            ->when($status === 'error', fn ($query) => $query->where('status', 'error'))
+            // "success" agrupa todo lo que no quedó en error (incluye pending/processing).
+            ->when($status === 'success', fn ($query) => $query->where('status', '!=', 'error'))
             ->orderByDesc('id')
-            ->paginate($perPage);
+            ->paginate($perPage)
+            ->withQueryString();
 
         $items->setCollection(BatchItemResource::collection($items->getCollection())->collection);
 
@@ -213,5 +218,112 @@ class BatchController extends Controller
             'batch' => BatchResource::make($batch),
             'items' => $items,
         ]));
+    }
+
+    public function errorsCsv(int $id, Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $batch = Batch::query()
+            ->where('id', $id)
+            ->where('userId', (int) $authUser->id)
+            ->first();
+
+        if (!$batch) {
+            return response()->json(ApiResponse::error('Batch no encontrado', null, 404), 404);
+        }
+
+        $errorItems = BatchItem::query()
+            ->where('batchId', $batch->id)
+            ->where('status', 'error')
+            ->orderBy('id')
+            ->get();
+
+        // Las columnas de rawData cambian por tipo de carga: se usa la unión de todas las filas.
+        $rawDataColumns = [];
+
+        foreach ($errorItems as $item) {
+            foreach (array_keys($this->toArrayPayload($item->rawData)) as $column) {
+                $rawDataColumns[(string) $column] = true;
+            }
+        }
+
+        $rawDataColumns = array_keys($rawDataColumns);
+        $headers = array_merge(['batchItemId'], $rawDataColumns, ['errorType', 'errorMessage']);
+
+        $rows = [];
+
+        foreach ($errorItems as $item) {
+            $rawData = $this->toArrayPayload($item->rawData);
+            $errorLog = $this->toArrayPayload($item->errorLog);
+
+            $row = [(string) $item->id];
+
+            foreach ($rawDataColumns as $column) {
+                $row[] = $this->stringifyCell($rawData[$column] ?? null);
+            }
+
+            $row[] = $this->stringifyCell($errorLog['type'] ?? null);
+            $row[] = $errorLog === []
+                ? $this->stringifyCell($item->errorLog)
+                : $this->stringifyCell($errorLog['message'] ?? $errorLog);
+
+            $rows[] = $row;
+        }
+
+        $filename = sprintf('batch_%d_errores_%s.csv', $batch->id, now()->format('Ymd_His'));
+
+        return response()->streamDownload(function () use ($headers, $rows) {
+            $handle = fopen('php://output', 'w');
+
+            // BOM para que Excel abra el CSV en UTF-8.
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, $headers);
+
+            foreach ($rows as $row) {
+                fputcsv($handle, $row);
+            }
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
+
+    private function toArrayPayload($value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && $value !== '') {
+            $decoded = json_decode($value, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
+    }
+
+    private function stringifyCell($value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 }

@@ -12,4 +12,5 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('batches/forecast', [BatchController::class, 'forecastBatches']);
     Route::get('batches/{id}', [BatchController::class, 'show']);
     Route::get('batches/{id}/requests', [BatchController::class, 'requests']);
+    Route::get('batches/{id}/errors/csv', [BatchController::class, 'errorsCsv']);
 });
