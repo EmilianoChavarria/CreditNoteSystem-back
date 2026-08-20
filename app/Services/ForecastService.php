@@ -11,6 +11,7 @@ use App\Models\ForecastComprobanteProducto;
 use App\Models\ForecastSale;
 use App\Models\NationalCustomer;
 use App\Models\ProductClassification;
+use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -94,7 +95,15 @@ class ForecastService
                 });
             })
             ->orderBy('cl.idCliente')
-            ->select(['cl.idCliente', 'cl.razonSocial', 'cl.direccion', 'cl.rfc', 'cle.correosForecast'])
+            ->select([
+                'cl.idCliente',
+                'cl.razonSocial',
+                'cl.direccion',
+                'cl.rfc',
+                'cle.correosForecast',
+                'cle.salesEngineerId',
+                'cle.salesManagerId',
+            ])
             ->paginate($perPage ?? 15);
 
         $clientNumbers = collect($paginator->items())
@@ -110,7 +119,20 @@ class ForecastService
             ->get()
             ->keyBy('customerNumber');
 
-        $paginator->through(function ($client) use ($distributors, $nationalCustomers) {
+        // users vive en la conexion default y clientes_ext en 'invoices': el nombre
+        // del responsable se resuelve en PHP, no con join.
+        $responsibleIds = collect($paginator->items())
+            ->flatMap(fn ($client) => [$client->salesEngineerId ?? null, $client->salesManagerId ?? null])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $responsibleNames = count($responsibleIds) > 0
+            ? User::whereIn('id', $responsibleIds)->pluck('fullName', 'id')
+            : collect();
+
+        $paginator->through(function ($client) use ($distributors, $nationalCustomers, $responsibleNames) {
             $dist = $distributors->get((string) $client->idCliente);
 
             if ($dist) {
@@ -125,6 +147,11 @@ class ForecastService
             $client->emails           = $nationalCustomer?->emails;
             $client->returnPercentage = $nationalCustomer?->returnPercentage;
             $client->currency         = $nationalCustomer?->currency;
+
+            $client->salesEngineerId   = $client->salesEngineerId !== null ? (int) $client->salesEngineerId : null;
+            $client->salesManagerId    = $client->salesManagerId !== null ? (int) $client->salesManagerId : null;
+            $client->salesEngineerName = $responsibleNames[$client->salesEngineerId] ?? null;
+            $client->salesManagerName  = $responsibleNames[$client->salesManagerId] ?? null;
 
             return $client;
         });
