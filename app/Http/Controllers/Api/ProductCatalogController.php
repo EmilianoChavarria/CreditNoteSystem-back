@@ -24,6 +24,7 @@ class ProductCatalogController extends Controller
         $perPage = max(1, (int) $request->query('per_page', 100));
         $page = max(1, (int) $request->query('page', 1));
         $search = trim((string) $request->query('search', ''));
+        $clasificacion = trim((string) $request->query('clasificacion', ''));
 
         $query = ProductCatalog::query();
 
@@ -35,6 +36,8 @@ class ProductCatalogController extends Controller
                     ->orWhere('rfc', 'like', "%{$search}%");
             });
         }
+
+        ProductClassification::applyFilter($query, $clasificacion);
 
         $products = $query
             ->orderBy('id')

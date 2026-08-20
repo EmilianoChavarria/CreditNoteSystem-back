@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\ProductCatalog;
+use App\Models\ProductClassification;
 use App\Models\Request as RequestModel;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,7 @@ class DataExportService
             'clients' => $this->clients($filters),
             'my_approvals' => $this->requests($filters, $authUser, onlyMyApprovals: true),
             'requests' => $this->requests($filters, $authUser, onlyMyApprovals: false),
+            'products' => $this->products($filters),
             default => throw ValidationException::withMessages([
                 'module' => ['Modulo de exportacion no soportado.'],
             ]),
@@ -35,6 +38,7 @@ class DataExportService
             'client', 'customers', 'customer' => 'clients',
             'my-approvals', 'my_approval', 'pending_me', 'approvals' => 'my_approvals',
             'request', 'request_list', 'request-list', 'requests_list' => 'requests',
+            'product', 'product_catalog', 'products_catalog', 'product-catalog' => 'products',
             default => $module,
         };
     }
@@ -84,6 +88,61 @@ class DataExportService
                 $user->supervisor?->fullName,
                 $user->preferredLanguage,
                 $user->clientId,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * @return array{filename: string, sheetName: string, headers: array<int, string>, rows: array<int, array<int, mixed>>}
+     */
+    private function products(array $filters): array
+    {
+        $search = trim((string) ($filters['search'] ?? ''));
+        $clasificacion = trim((string) ($filters['clasificacion'] ?? ''));
+
+        $query = ProductCatalog::query();
+
+        if ($search !== '') {
+            $query->where(function ($subQuery) use ($search) {
+                $subQuery->where('idProducto', 'like', "%{$search}%")
+                    ->orWhere('descripcion', 'like', "%{$search}%")
+                    ->orWhere('claveProdServ', 'like', "%{$search}%")
+                    ->orWhere('rfc', 'like', "%{$search}%");
+            });
+        }
+
+        ProductClassification::applyFilter($query, $clasificacion);
+
+        $products = $query->orderBy('id')->get();
+
+        $classifications = ProductClassification::query()
+            ->whereIn('idProducto', $products->map(fn ($product) => trim($product->idProducto))->unique()->values()->all())
+            ->pluck('clasificacion', 'idProducto');
+
+        return [
+            'filename' => 'products_' . now()->format('Ymd_His') . '.xls',
+            'sheetName' => 'Products',
+            'headers' => [
+                'ID Producto',
+                'Descripcion',
+                'Clave Prod/Serv',
+                'Clave Unidad',
+                'Unidad de Medida',
+                'Valor Unitario',
+                'RFC',
+                'Estatus',
+                'Clasificacion',
+            ],
+            'rows' => $products->map(fn (ProductCatalog $product) => [
+                $product->idProducto,
+                $product->descripcion,
+                $product->claveProdServ,
+                $product->claveUnidad,
+                $product->unidadMedida,
+                $product->valorUnitario,
+                $product->rfc,
+                $product->estatus,
+                $classifications[trim($product->idProducto)] ?? 'Sin clasificar',
             ])->values()->all(),
         ];
     }
