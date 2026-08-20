@@ -734,7 +734,7 @@ class ForecastService
         })->values()->map(function ($invoice) use (&$fallbackRate, $consideredSubtotalByFolio, $target) {
             $originalSubTotal = (float) $invoice->subTotal;
             $originalTotal    = (float) $invoice->total;
-            // Reconstruye subTotal/iva/total desde las líneas de producto (excluyendo No Rodamientos),
+            // Reconstruye subTotal/iva/total desde las líneas de producto (solo Rodamientos),
             // prorrateando el IVA con el mismo factor total/subTotal de la factura original.
             $factor = $originalSubTotal > 0 ? $originalTotal / $originalSubTotal : 1;
 
@@ -816,7 +816,22 @@ class ForecastService
             ->values();
     }
 
-    /** [folio => suma de importe de sus líneas, excluyendo productos No Rodamientos] */
+    /**
+     * Ids de producto que sí cuentan para la venta: solo los clasificados como Rodamientos.
+     * Lo No Rodamientos y lo que aún no tiene clasificación se resta del total facturado.
+     *
+     * @param array<int, string> $productIds ids ya trimeados
+     * @return Collection ids incluidos como claves (flip), para lookup O(1)
+     */
+    private function includedProductIds(array $productIds): Collection
+    {
+        return ProductClassification::whereIn('idProducto', $productIds)
+            ->where('clasificacion', ProductClassification::RODAMIENTOS)
+            ->pluck('idProducto')
+            ->flip();
+    }
+
+    /** [folio => suma de importe de sus líneas, contando solo productos Rodamientos] */
     private function consideredSubtotalByFolio(string $idClient, array $folios): Collection
     {
         $products = ForecastComprobanteProducto::where('receptorId', $idClient)
@@ -825,13 +840,10 @@ class ForecastService
 
         $productIds = $products->map(fn($p) => trim($p->noIdentificacion))->unique()->values()->all();
 
-        $excludedProductIds = ProductClassification::whereIn('idProducto', $productIds)
-            ->where('clasificacion', ProductClassification::NO_RODAMIENTOS)
-            ->pluck('idProducto')
-            ->flip();
+        $includedProductIds = $this->includedProductIds($productIds);
 
         return $products
-            ->reject(fn($p) => isset($excludedProductIds[trim($p->noIdentificacion)]))
+            ->reject(fn($p) => !isset($includedProductIds[trim($p->noIdentificacion)]))
             ->groupBy('folio')
             ->map(fn($lines) => (float) $lines->sum('importe'));
     }
@@ -839,7 +851,8 @@ class ForecastService
     /**
      * Desglose de productos por factura de un cliente en un mes/año.
      * Cada línea trae su clasificación (Rodamientos / No Rodamientos / null si no está clasificada);
-     * el `breakdown` de cada factura resta lo marcado como No Rodamientos del total facturado.
+     * el `breakdown` de cada factura resta del total facturado todo lo que no es Rodamientos,
+     * incluidos los productos sin clasificar.
      * Los importes convertidos van en la moneda asignada al cliente (por defecto la suya).
      */
     public function getInvoiceProductsByMonth(string $idClient, int $month, int $year, ?string $currency = null): Collection
@@ -923,13 +936,13 @@ class ForecastService
                     'importe'           => round((float) $p->importe, 2),
                     'importeConvertido' => round($convertido, 2),
                     'clasificacion'     => $clasificacion,
-                    'excluido'          => $clasificacion === ProductClassification::NO_RODAMIENTOS,
+                    'excluido'          => $clasificacion !== ProductClassification::RODAMIENTOS,
                 ];
             })->values();
 
-            $totalFacturado     = round($lines->sum('importeConvertido'), 2);
-            $totalNoRodamientos = round($lines->where('excluido', true)->sum('importeConvertido'), 2);
-            $totalConsiderado   = round($totalFacturado - $totalNoRodamientos, 2);
+            $totalFacturado   = round($lines->sum('importeConvertido'), 2);
+            $totalExcluido    = round($lines->where('excluido', true)->sum('importeConvertido'), 2);
+            $totalConsiderado = round($totalFacturado - $totalExcluido, 2);
 
             return [
                 'folio'        => $invoice->folio,
@@ -940,9 +953,9 @@ class ForecastService
                 'signo'        => $roles[(string) $invoice->folio]['signo'],
                 'products'     => $lines,
                 'breakdown'    => [
-                    'totalFacturado'     => $totalFacturado,
-                    'totalNoRodamientos' => $totalNoRodamientos,
-                    'totalConsiderado'   => $totalConsiderado,
+                    'totalFacturado'   => $totalFacturado,
+                    'totalExcluido'    => $totalExcluido,
+                    'totalConsiderado' => $totalConsiderado,
                 ],
             ];
         })->values();
@@ -962,7 +975,8 @@ class ForecastService
      * Retorna ventas reales (suma de las líneas de producto por factura) indexado por [idClient][month].
      * Cada mes trae `total` en USD —con el que se mide el cumplimiento contra el objetivo— y
      * `totalCurrency`, el mismo importe en $currency, que es sobre el que se calcula el retorno.
-     * Excluye las líneas cuyo producto esté clasificado como No Rodamientos.
+     * Solo cuentan las líneas cuyo producto está clasificado como Rodamientos: No Rodamientos
+     * y los productos aún sin clasificar se restan del total facturado.
      */
     private function fetchSales(array $clientIds, int $year, string $currency = self::DEFAULT_CURRENCY): Collection
     {
@@ -1000,10 +1014,7 @@ class ForecastService
 
         $productIds = $rows->map(fn($r) => trim($r->noIdentificacion))->unique()->values()->all();
 
-        $excludedProductIds = ProductClassification::whereIn('idProducto', $productIds)
-            ->where('clasificacion', ProductClassification::NO_RODAMIENTOS)
-            ->pluck('idProducto')
-            ->flip();
+        $includedProductIds = $this->includedProductIds($productIds);
 
         // Por comprobante (receptorId+folio): si cuenta para la venta mensual y con qué signo
         // (Factura suma, Nota de Crédito de devolución resta, cualquier otra Nota de Crédito no cuenta).
@@ -1015,7 +1026,7 @@ class ForecastService
             ));
 
         return $rows
-            ->reject(fn($r) => isset($excludedProductIds[trim($r->noIdentificacion)]))
+            ->reject(fn($r) => !isset($includedProductIds[trim($r->noIdentificacion)]))
             ->reject(fn($r) => !$folioRol->get("{$r->receptorId}|{$r->folio}")['cuenta'])
             ->groupBy(fn($row) => (string) $row->receptorId)
             ->map(fn($byClient) => $byClient
