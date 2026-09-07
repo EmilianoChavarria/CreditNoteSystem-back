@@ -212,29 +212,45 @@ class ForecastController extends Controller
         return $csv;
     }
 
-    public function invoicesByMonth(string $idClient, int $year, int $month)
+    public function invoicesByMonth(Request $request, string $idClient, int $year, int $month)
     {
+        $currency = $this->requestedCurrency($request);
+
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
-            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year, $currency);
             return response()->json(ApiResponse::success('Facturas del mes por grupo', $data));
         }
 
-        $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
+        $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year, $currency);
 
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
     }
 
-    public function invoiceProductsByMonth(string $idClient, int $year, int $month)
+    public function invoiceProductsByMonth(Request $request, string $idClient, int $year, int $month)
     {
-        $data = $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year);
+        $data = $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year, $this->requestedCurrency($request));
 
         return response()->json(ApiResponse::success('Productos por factura del mes', $data));
     }
 
-    public function exportInvoicesByMonth(string $idClient, int $year, int $month)
+    /**
+     * Moneda forzada por el consumidor (?currency=USD). Sin ella, cada cliente se
+     * expresa en la moneda que tiene asignada, que es lo que necesita la vista de
+     * notas de crédito.
+     */
+    private function requestedCurrency(Request $request): ?string
     {
+        $currency = mb_strtoupper(trim((string) $request->query('currency', '')));
+
+        return in_array($currency, ['USD', 'MXN'], true) ? $currency : null;
+    }
+
+    public function exportInvoicesByMonth(Request $request, string $idClient, int $year, int $month)
+    {
+        $forced = $this->requestedCurrency($request);
+
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
-            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year, $forced);
 
             $sections = collect($data['sections'])->map(function ($section) use ($month, $year) {
                 $section['products'] = $this->productsByFolio((string) $section['clientId'], $month, $year, $section['moneda'] ?? null);
@@ -250,14 +266,14 @@ class ForecastController extends Controller
             );
         }
 
-        $currency   = $this->forecastService->resolveClientCurrency($idClient);
+        $currency   = $forced ?? $this->forecastService->resolveClientCurrency($idClient);
         $invoices   = $this->forecastService->getInvoicesByMonth($idClient, $month, $year, $currency);
         $clientName = $this->forecastService->getClientName($idClient);
 
         $filename = "facturas_{$clientName}_{$year}_{$month}.xlsx";
 
         return Excel::download(
-            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year), $idClient, $currency),
+            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year, $currency), $idClient, $currency),
             $filename
         );
     }

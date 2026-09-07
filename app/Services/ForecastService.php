@@ -671,7 +671,7 @@ class ForecastService
         return $client ?? (string) $idClient;
     }
 
-    public function getGroupInvoicesByMonth(string $groupId, int $month, int $year): array
+    public function getGroupInvoicesByMonth(string $groupId, int $month, int $year, ?string $currency = null): array
     {
         $group   = ClientGroup::with('members')->findOrFail($groupId);
         $members = $group->members->unique('clientId')->values();
@@ -682,13 +682,18 @@ class ForecastService
             ->pluck('razonSocial', 'idCliente')
             ->all();
 
-        // Cada sección va en la moneda de su propio cliente: es la que manda en su nota de crédito.
-        $sections = $members->map(fn($m) => [
-            'clientId'    => $m->clientId,
-            'razonSocial' => $clientNames[$m->clientId] ?? (string) $m->clientId,
-            'moneda'      => $this->resolveClientCurrency((string) $m->clientId),
-            'invoices'    => $this->getInvoicesByMonth($m->clientId, $month, $year),
-        ])->values()->all();
+        // Sin moneda forzada, cada sección va en la moneda de su propio cliente:
+        // es la que manda en su nota de crédito.
+        $sections = $members->map(function ($m) use ($month, $year, $currency, $clientNames) {
+            $target = $currency ?? $this->resolveClientCurrency((string) $m->clientId);
+
+            return [
+                'clientId'    => $m->clientId,
+                'razonSocial' => $clientNames[$m->clientId] ?? (string) $m->clientId,
+                'moneda'      => $target,
+                'invoices'    => $this->getInvoicesByMonth($m->clientId, $month, $year, $target),
+            ];
+        })->values()->all();
 
         return [
             'isGroup'  => true,
