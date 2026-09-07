@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
+use App\Mail\ForecastPendingApprovalSummaryMail;
 use App\Mail\ForecastRejectedMail;
 use App\Mail\ForecastRequestApprovedMail;
 use App\Models\Distributor;
@@ -153,6 +154,179 @@ class DistributorForecastApprovalService
         ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
+    }
+
+    // -------------------------------------------------------------------------
+    // Submit en lote
+    // -------------------------------------------------------------------------
+
+    /**
+     * Registra varios cambios de forecast en una sola operación. Cada mes sigue
+     * siendo una solicitud independiente (se aprueba/rechaza por separado), pero
+     * el correo al aprobador se envía UNA sola vez por distribuidor, con el
+     * resumen de todos los meses incluidos.
+     *
+     * @param  array<int, array{distributorId:int, year:int, month:int, forecast:int}> $items
+     * @return array{success:bool, code?:int, message?:string, created?:array, errors?:array}
+     */
+    public function submitBatch(User $actor, array $items): array
+    {
+        $isAdmin        = $this->roleService->isForecastAdmin($actor);
+        $isSalesManager = $this->roleService->isSalesEngineerManager($actor);
+        $forecastAdmin  = $this->roleService->findForecastAdmin();
+
+        $grouped = [];
+        foreach ($items as $item) {
+            $grouped[(int) $item['distributorId']][] = $item;
+        }
+
+        $created = [];
+        $errors  = [];
+
+        foreach ($grouped as $distributorId => $rows) {
+            $distributorId = (int) $distributorId;
+            $distributor   = Distributor::find($distributorId);
+
+            if (!$distributor) {
+                foreach ($rows as $row) {
+                    $errors[] = [
+                        'distributorId' => $distributorId,
+                        'clientName'    => null,
+                        'year'          => (int) $row['year'],
+                        'month'         => (int) $row['month'],
+                        'message'       => 'Distribuidor no encontrado',
+                    ];
+                }
+
+                continue;
+            }
+
+            $step     = null;
+            $approver = null;
+
+            if (!$isAdmin) {
+                $step     = $isSalesManager ? 'general_manager' : 'sales_manager';
+                $approver = $isSalesManager
+                    ? $this->roleService->findGeneralManager()
+                    : ($distributor->salesManagerId
+                        ? User::where('isActive', true)->whereNull('deletedAt')->find((int) $distributor->salesManagerId)
+                        : null);
+
+                if (!$approver) {
+                    $label = $isSalesManager ? 'GENERAL MANAGER' : 'SALES ENGINEER / MANAGER';
+
+                    foreach ($rows as $row) {
+                        $errors[] = [
+                            'distributorId' => $distributorId,
+                            'clientName'    => $distributor->businessName,
+                            'year'          => (int) $row['year'],
+                            'month'         => (int) $row['month'],
+                            'message'       => "No se encontró un {$label} disponible para este distribuidor",
+                        ];
+                    }
+
+                    continue;
+                }
+            }
+
+            $changesForEmail = [];
+
+            foreach ($rows as $row) {
+                $year     = (int) $row['year'];
+                $month    = (int) $row['month'];
+                $forecast = (int) $row['forecast'];
+
+                $hasPending = DistributorForecastChangeRequest::where('distributorId', $distributorId)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->where('status', 'pending')
+                    ->exists();
+
+                if ($hasPending) {
+                    $errors[] = [
+                        'distributorId' => $distributorId,
+                        'clientName'    => $distributor->businessName,
+                        'year'          => $year,
+                        'month'         => $month,
+                        'message'       => 'Ya existe una solicitud pendiente para este mes',
+                    ];
+
+                    continue;
+                }
+
+                $previousForecast = (float) (DistributorForecast::where('distributorId', $distributorId)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->value('forecast') ?? 0);
+
+                $changeRequest = null;
+
+                DB::transaction(function () use ($actor, $distributorId, $year, $month, $forecast, $previousForecast, $isAdmin, $step, $approver, &$changeRequest): void {
+                    $changeRequest = DistributorForecastChangeRequest::create([
+                        'distributorId'     => $distributorId,
+                        'year'              => $year,
+                        'month'             => $month,
+                        'previousForecast'  => $previousForecast,
+                        'proposedForecast'  => $forecast,
+                        'status'            => $isAdmin ? 'approved' : 'pending',
+                        'currentStep'       => $isAdmin ? 'auto_approved' : $step,
+                        'approverUserId'    => $isAdmin ? $actor->id : $approver->id,
+                        'submittedByUserId' => $actor->id,
+                    ]);
+
+                    DistributorForecastChangeRequestHistory::create([
+                        'distributorForecastChangeRequestId' => $changeRequest->id,
+                        'action'                             => $isAdmin ? 'auto_approved' : 'submitted',
+                        'actorUserId'                        => $actor->id,
+                        'forecast'                           => $forecast,
+                        'step'                               => $isAdmin ? 'auto_approved' : $step,
+                    ]);
+
+                    if ($isAdmin) {
+                        $this->distributorForecastService->upsertMonth($distributorId, $year, $month, $forecast, null);
+                    }
+                });
+
+                $created[] = $this->formatRequest($changeRequest->load('history.actor', 'submittedBy', 'approver', 'distributor'));
+
+                if (!$isAdmin) {
+                    // La notificación in-app se mantiene individual por solicitud.
+                    $this->notificationService->notifyDistributorForecastPendingApproval($changeRequest, $distributor->businessName);
+
+                    $changesForEmail[] = [
+                        'month'          => $month,
+                        'monthLabel'     => ForecastApprovalService::monthLabel($month, $year),
+                        'previousAmount' => $previousForecast,
+                        'proposedAmount' => (float) $forecast,
+                    ];
+                }
+            }
+
+            // Un solo correo por distribuidor con el resumen de todos sus meses.
+            if (!$isAdmin && !empty($changesForEmail)) {
+                usort($changesForEmail, fn($a, $b) => $a['month'] <=> $b['month']);
+
+                $this->sendEmail(new ForecastPendingApprovalSummaryMail(
+                    approverName:  (string) $approver->fullName,
+                    submitterName: (string) $actor->fullName,
+                    clientId:      (int) $distributor->id,
+                    clientName:    (string) $distributor->businessName,
+                    year:          (int) $rows[0]['year'],
+                    changes:       $changesForEmail,
+                ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
+            }
+        }
+
+        if (empty($created) && !empty($errors)) {
+            return [
+                'success' => false,
+                'code'    => 422,
+                'message' => $errors[0]['message'],
+                'errors'  => $errors,
+            ];
+        }
+
+        return ['success' => true, 'created' => $created, 'errors' => $errors];
     }
 
     // -------------------------------------------------------------------------

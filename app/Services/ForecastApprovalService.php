@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
+use App\Mail\ForecastPendingApprovalSummaryMail;
 use App\Mail\ForecastRejectedMail;
 use App\Mail\ForecastRequestApprovedMail;
 use App\Models\ClientGroup;
@@ -142,6 +143,175 @@ class ForecastApprovalService
         ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
+    }
+
+    // -------------------------------------------------------------------------
+    // Submit en lote
+    // -------------------------------------------------------------------------
+
+    /**
+     * Registra varios cambios de forecast en una sola operación. Cada mes sigue
+     * siendo una solicitud independiente (se aprueba/rechaza por separado), pero
+     * el correo al aprobador se envía UNA sola vez por cliente, con el resumen
+     * de todos los meses incluidos.
+     *
+     * @param  array<int, array{idClient:int, year:int, month:int, amount:float}> $items
+     * @return array{success:bool, code?:int, message?:string, created?:array, errors?:array}
+     */
+    public function submitBatch(User $actor, array $items): array
+    {
+        $isAdmin        = $this->roleService->isForecastAdmin($actor);
+        $isSalesManager = $this->roleService->isSalesEngineerManager($actor);
+        $forecastAdmin  = $this->roleService->findForecastAdmin();
+
+        $grouped = [];
+        foreach ($items as $item) {
+            $grouped[(int) $item['idClient']][] = $item;
+        }
+
+        $clientNames = $this->getClientNames(array_keys($grouped));
+
+        $created = [];
+        $errors  = [];
+
+        foreach ($grouped as $idClient => $rows) {
+            $idClient   = (int) $idClient;
+            $clientName = $clientNames[$idClient] ?? $this->getClientName($idClient);
+
+            $step     = null;
+            $approver = null;
+
+            if (!$isAdmin) {
+                $step     = $isSalesManager ? 'general_manager' : 'sales_manager';
+                $approver = $isSalesManager
+                    ? $this->roleService->findGeneralManager()
+                    : $this->findSalesManagerForClient($idClient);
+
+                if (!$approver) {
+                    $label = $isSalesManager ? 'GENERAL MANAGER' : 'SALES ENGINEER / MANAGER';
+
+                    foreach ($rows as $row) {
+                        $errors[] = [
+                            'idClient'   => $idClient,
+                            'clientName' => $clientName,
+                            'year'       => (int) $row['year'],
+                            'month'      => (int) $row['month'],
+                            'message'    => "No se encontró un {$label} disponible para este cliente",
+                        ];
+                    }
+
+                    continue;
+                }
+            }
+
+            $changesForEmail = [];
+
+            foreach ($rows as $row) {
+                $year   = (int) $row['year'];
+                $month  = (int) $row['month'];
+                $amount = (float) $row['amount'];
+
+                $hasPending = ForecastChangeRequest::where('idClient', $idClient)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->where('status', 'pending')
+                    ->exists();
+
+                if ($hasPending) {
+                    $errors[] = [
+                        'idClient'   => $idClient,
+                        'clientName' => $clientName,
+                        'year'       => $year,
+                        'month'      => $month,
+                        'message'    => 'Ya existe una solicitud pendiente para este mes',
+                    ];
+
+                    continue;
+                }
+
+                $previousAmount = (float) (ForecastSale::where('idClient', $idClient)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->value('amount') ?? 0);
+
+                $changeRequest = null;
+
+                DB::transaction(function () use ($actor, $idClient, $year, $month, $amount, $previousAmount, $isAdmin, $step, $approver, &$changeRequest): void {
+                    $changeRequest = ForecastChangeRequest::create([
+                        'idClient'          => $idClient,
+                        'year'              => $year,
+                        'month'             => $month,
+                        'previousAmount'    => $previousAmount,
+                        'proposedAmount'    => $amount,
+                        'status'            => $isAdmin ? 'approved' : 'pending',
+                        'currentStep'       => $isAdmin ? 'auto_approved' : $step,
+                        'approverUserId'    => $isAdmin ? $actor->id : $approver->id,
+                        'submittedByUserId' => $actor->id,
+                    ]);
+
+                    ForecastChangeRequestHistory::create([
+                        'forecastChangeRequestId' => $changeRequest->id,
+                        'action'                  => $isAdmin ? 'auto_approved' : 'submitted',
+                        'actorUserId'             => $actor->id,
+                        'amount'                  => $amount,
+                        'step'                    => $isAdmin ? 'auto_approved' : $step,
+                    ]);
+
+                    if ($isAdmin) {
+                        ForecastSale::updateOrCreate(
+                            ['idClient' => $idClient, 'year' => $year, 'month' => $month],
+                            ['amount'   => $amount]
+                        );
+                    }
+                });
+
+                $created[] = $this->formatRequest($changeRequest->load('history.actor', 'submittedBy', 'approver'), $clientNames);
+
+                if (!$isAdmin) {
+                    // La notificación in-app se mantiene individual por solicitud.
+                    $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
+
+                    $changesForEmail[] = [
+                        'month'          => $month,
+                        'monthLabel'     => self::monthLabel($month, $year),
+                        'previousAmount' => $previousAmount,
+                        'proposedAmount' => $amount,
+                    ];
+                }
+            }
+
+            // Un solo correo por cliente con el resumen de todos sus meses.
+            if (!$isAdmin && !empty($changesForEmail)) {
+                usort($changesForEmail, fn($a, $b) => $a['month'] <=> $b['month']);
+
+                $this->sendEmail(new ForecastPendingApprovalSummaryMail(
+                    approverName:  (string) $approver->fullName,
+                    submitterName: (string) $actor->fullName,
+                    clientId:      $idClient,
+                    clientName:    $clientName,
+                    year:          (int) $rows[0]['year'],
+                    changes:       $changesForEmail,
+                ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
+            }
+        }
+
+        if (empty($created) && !empty($errors)) {
+            return [
+                'success' => false,
+                'code'    => 422,
+                'message' => $errors[0]['message'],
+                'errors'  => $errors,
+            ];
+        }
+
+        return ['success' => true, 'created' => $created, 'errors' => $errors];
+    }
+
+    public static function monthLabel(int $month, int $year): string
+    {
+        $names = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+        return ($names[$month - 1] ?? (string) $month) . " {$year}";
     }
 
     // -------------------------------------------------------------------------
