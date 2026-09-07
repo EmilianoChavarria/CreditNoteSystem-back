@@ -237,19 +237,6 @@ class NotificationService
         );
     }
 
-    public function notifyForecastStepApproved(ForecastChangeRequest $changeRequest, User $approver, string $clientName = ''): void
-    {
-        $client = $clientName ? " ({$clientName})" : '';
-
-        $this->createAndBroadcast(
-            userId: (int) $changeRequest->submittedByUserId,
-            type: 'forecast_step_approved',
-            relatedId: (int) $changeRequest->id,
-            title: 'Tu solicitud avanzó en el flujo de aprobación',
-            message: "{$approver->fullName} aprobó el cambio de monto para el mes {$changeRequest->month}/{$changeRequest->year} — Cliente #{$changeRequest->idClient}{$client}. Pendiente de aprobación final por GENERAL MANAGER.",
-        );
-    }
-
     public function notifyForecastApproved(ForecastChangeRequest $changeRequest, User $approver, string $clientName = ''): void
     {
         $client = $clientName ? " ({$clientName})" : '';
@@ -290,19 +277,6 @@ class NotificationService
             relatedId: (int) $changeRequest->id,
             title: 'Tienes un forecast de distribuidor pendiente por aprobar',
             message: "Se propuso un cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}. Monto propuesto: \${$changeRequest->proposedForecast}.",
-        );
-    }
-
-    public function notifyDistributorForecastStepApproved(DistributorForecastChangeRequest $changeRequest, User $approver, string $distributorName = ''): void
-    {
-        $distributor = $distributorName ? " ({$distributorName})" : '';
-
-        $this->createAndBroadcast(
-            userId: (int) $changeRequest->submittedByUserId,
-            type: 'distributor_forecast_step_approved',
-            relatedId: (int) $changeRequest->id,
-            title: 'Tu solicitud avanzó en el flujo de aprobación',
-            message: "{$approver->fullName} aprobó el cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}. Pendiente de aprobación final por GENERAL MANAGER.",
         );
     }
 
