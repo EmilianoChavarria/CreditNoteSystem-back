@@ -50,6 +50,7 @@ class ForecastChangeRequest extends Model
         'month'          => 'integer',
         'previousAmount' => 'decimal:2',
         'proposedAmount' => 'decimal:2',
+        'clientNotifiedAt' => 'datetime',
     ];
 
     public function history(): HasMany

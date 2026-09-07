@@ -33,6 +33,7 @@ class DistributorForecastChangeRequest extends Model
         'proposedForecast'  => 'integer',
         'approverUserId'    => 'integer',
         'submittedByUserId' => 'integer',
+        'clientNotifiedAt'  => 'datetime',
     ];
 
     public function history(): HasMany
