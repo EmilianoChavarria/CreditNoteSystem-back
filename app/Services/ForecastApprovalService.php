@@ -52,8 +52,12 @@ class ForecastApprovalService
             ->where('month', $month)
             ->value('amount') ?? 0;
 
-        // FORECAST ADMIN: aprobación directa, sin flujo de aprobación
-        if ($this->roleService->isForecastAdmin($actor)) {
+        $isSalesManager = $this->roleService->isSalesEngineerManager($actor);
+
+        // FORECAST ADMIN y SALES ENGINEER MANAGER: aprobación directa. El SALES
+        // MANAGER es el último paso del flujo, así que sus propios cambios no
+        // tienen a quién escalar.
+        if ($this->roleService->isForecastAdmin($actor) || $isSalesManager) {
             $changeRequest = null;
 
             DB::transaction(function () use ($actor, $idClient, $year, $month, $amount, $previousAmount, &$changeRequest): void {
@@ -86,19 +90,12 @@ class ForecastApprovalService
             return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
         }
 
-        $isSalesManager = $this->roleService->isSalesEngineerManager($actor);
-
-        if ($isSalesManager) {
-            $step     = 'general_manager';
-            $approver = $this->roleService->findGeneralManager();
-        } else {
-            $step     = 'sales_manager';
-            $approver = $this->findSalesManagerForClient($idClient);
-        }
+        // SALES ENGINEER: un solo paso de aprobación, su SALES MANAGER.
+        $step     = 'sales_manager';
+        $approver = $this->findSalesManagerForClient($idClient);
 
         if (!$approver) {
-            $label = $isSalesManager ? 'GENERAL MANAGER' : 'SALES ENGINEER / MANAGER';
-            return ['success' => false, 'code' => 422, 'message' => "No se encontró un {$label} disponible para este cliente"];
+            return ['success' => false, 'code' => 422, 'message' => 'No se encontró un SALES ENGINEER / MANAGER disponible para este cliente'];
         }
 
         $changeRequest = null;
@@ -160,8 +157,10 @@ class ForecastApprovalService
      */
     public function submitBatch(User $actor, array $items): array
     {
-        $isAdmin        = $this->roleService->isForecastAdmin($actor);
-        $isSalesManager = $this->roleService->isSalesEngineerManager($actor);
+        // El SALES MANAGER es el último paso del flujo: sus propios cambios se
+        // aplican directo, igual que los del FORECAST ADMIN.
+        $isAutoApproved = $this->roleService->isForecastAdmin($actor)
+            || $this->roleService->isSalesEngineerManager($actor);
         $forecastAdmin  = $this->roleService->findForecastAdmin();
 
         $grouped = [];
@@ -181,22 +180,18 @@ class ForecastApprovalService
             $step     = null;
             $approver = null;
 
-            if (!$isAdmin) {
-                $step     = $isSalesManager ? 'general_manager' : 'sales_manager';
-                $approver = $isSalesManager
-                    ? $this->roleService->findGeneralManager()
-                    : $this->findSalesManagerForClient($idClient);
+            if (!$isAutoApproved) {
+                $step     = 'sales_manager';
+                $approver = $this->findSalesManagerForClient($idClient);
 
                 if (!$approver) {
-                    $label = $isSalesManager ? 'GENERAL MANAGER' : 'SALES ENGINEER / MANAGER';
-
                     foreach ($rows as $row) {
                         $errors[] = [
                             'idClient'   => $idClient,
                             'clientName' => $clientName,
                             'year'       => (int) $row['year'],
                             'month'      => (int) $row['month'],
-                            'message'    => "No se encontró un {$label} disponible para este cliente",
+                            'message'    => 'No se encontró un SALES ENGINEER / MANAGER disponible para este cliente',
                         ];
                     }
 
@@ -236,28 +231,28 @@ class ForecastApprovalService
 
                 $changeRequest = null;
 
-                DB::transaction(function () use ($actor, $idClient, $year, $month, $amount, $previousAmount, $isAdmin, $step, $approver, &$changeRequest): void {
+                DB::transaction(function () use ($actor, $idClient, $year, $month, $amount, $previousAmount, $isAutoApproved, $step, $approver, &$changeRequest): void {
                     $changeRequest = ForecastChangeRequest::create([
                         'idClient'          => $idClient,
                         'year'              => $year,
                         'month'             => $month,
                         'previousAmount'    => $previousAmount,
                         'proposedAmount'    => $amount,
-                        'status'            => $isAdmin ? 'approved' : 'pending',
-                        'currentStep'       => $isAdmin ? 'auto_approved' : $step,
-                        'approverUserId'    => $isAdmin ? $actor->id : $approver->id,
+                        'status'            => $isAutoApproved ? 'approved' : 'pending',
+                        'currentStep'       => $isAutoApproved ? 'auto_approved' : $step,
+                        'approverUserId'    => $isAutoApproved ? $actor->id : $approver->id,
                         'submittedByUserId' => $actor->id,
                     ]);
 
                     ForecastChangeRequestHistory::create([
                         'forecastChangeRequestId' => $changeRequest->id,
-                        'action'                  => $isAdmin ? 'auto_approved' : 'submitted',
+                        'action'                  => $isAutoApproved ? 'auto_approved' : 'submitted',
                         'actorUserId'             => $actor->id,
                         'amount'                  => $amount,
-                        'step'                    => $isAdmin ? 'auto_approved' : $step,
+                        'step'                    => $isAutoApproved ? 'auto_approved' : $step,
                     ]);
 
-                    if ($isAdmin) {
+                    if ($isAutoApproved) {
                         ForecastSale::updateOrCreate(
                             ['idClient' => $idClient, 'year' => $year, 'month' => $month],
                             ['amount'   => $amount]
@@ -267,7 +262,7 @@ class ForecastApprovalService
 
                 $created[] = $this->formatRequest($changeRequest->load('history.actor', 'submittedBy', 'approver'), $clientNames);
 
-                if (!$isAdmin) {
+                if (!$isAutoApproved) {
                     // La notificación in-app se mantiene individual por solicitud.
                     $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
 
@@ -281,7 +276,7 @@ class ForecastApprovalService
             }
 
             // Un solo correo por cliente con el resumen de todos sus meses.
-            if (!$isAdmin && !empty($changesForEmail)) {
+            if (!$isAutoApproved && !empty($changesForEmail)) {
                 usort($changesForEmail, fn($a, $b) => $a['month'] <=> $b['month']);
 
                 $this->sendEmail(new ForecastPendingApprovalSummaryMail(
@@ -334,59 +329,15 @@ class ForecastApprovalService
         $forecastAdmin = $this->roleService->findForecastAdmin();
         $submitter     = User::find((int) $changeRequest->submittedByUserId);
 
-        if ($changeRequest->currentStep === 'sales_manager') {
-            $generalManager = $this->roleService->findGeneralManager();
-
-            if (!$generalManager) {
-                return ['success' => false, 'code' => 422, 'message' => 'No se encontró un GENERAL MANAGER disponible'];
-            }
-
-            DB::transaction(function () use ($actor, $changeRequest, $generalManager): void {
-                ForecastChangeRequestHistory::create([
-                    'forecastChangeRequestId' => $changeRequest->id,
-                    'action'                  => 'approved',
-                    'actorUserId'             => $actor->id,
-                    'amount'                  => $changeRequest->proposedAmount,
-                    'step'                    => 'sales_manager',
-                ]);
-
-                $changeRequest->update([
-                    'currentStep'    => 'general_manager',
-                    'approverUserId' => $generalManager->id,
-                ]);
-            });
-
-            $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
-            $this->notificationService->notifyForecastStepApproved($changeRequest, $actor, $clientName);
-
-            // Email al GM + CC submitter (SE) + FORECAST ADMIN
-            $cc = array_filter([
-                (string) ($submitter?->email ?? ''),
-                (string) ($forecastAdmin?->email ?? ''),
-            ]);
-
-            $this->sendEmail(new ForecastPendingApprovalMail(
-                approverName:   (string) $generalManager->fullName,
-                submitterName:  (string) ($submitter?->fullName ?? ''),
-                clientId:       (int) $changeRequest->idClient,
-                clientName:     $clientName,
-                month:          (int) $changeRequest->month,
-                year:           (int) $changeRequest->year,
-                proposedAmount: (string) $changeRequest->proposedAmount,
-                previousAmount: (string) $changeRequest->previousAmount,
-            ), (string) $generalManager->email, cc: $cc);
-
-            return ['success' => true, 'message' => 'Aprobado por SALES MANAGER, pendiente de GENERAL MANAGER'];
-        }
-
-        // general_manager: aprobación final — actualiza ForecastSale
+        // El SALES MANAGER es el único paso de aprobación: al aprobar, el cambio
+        // queda aplicado sobre ForecastSale.
         DB::transaction(function () use ($actor, $changeRequest): void {
             ForecastChangeRequestHistory::create([
                 'forecastChangeRequestId' => $changeRequest->id,
                 'action'                  => 'approved',
                 'actorUserId'             => $actor->id,
                 'amount'                  => $changeRequest->proposedAmount,
-                'step'                    => 'general_manager',
+                'step'                    => (string) $changeRequest->currentStep,
             ]);
 
             $changeRequest->update(['status' => 'approved']);
