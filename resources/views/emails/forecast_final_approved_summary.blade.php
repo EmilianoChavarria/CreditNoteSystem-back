@@ -55,10 +55,6 @@
                                 Si tiene alguna duda al respecto, comuníquese con su ejecutivo de ventas asignado.
                             </p>
 
-                            <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
-                                Consulta el detalle completo en la plataforma:
-                                <a href="https://timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://timken.ittec.mx/</a>
-                            </p>
                         </td>
                     </tr>
 
