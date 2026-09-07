@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
 use App\Mail\ForecastPendingApprovalSummaryMail;
 use App\Mail\ForecastRejectedMail;
@@ -368,23 +367,9 @@ class DistributorForecastApprovalService
 
         $this->notificationService->notifyDistributorForecastApproved($changeRequest, $actor, $distributor?->businessName ?? '');
 
-        $clientEmails = $this->getDistributorEmails($distributor);
-
-        $bcc = array_values(array_filter([
-            (string) ($distributor?->salesManager?->email ?? ''),
-            (string) ($forecastAdmin?->email ?? ''),
-        ]));
-
-        $this->sendEmail(new ForecastFinalApprovedMail(
-            submitterName:  (string) ($submitter?->fullName ?? ''),
-            approverName:   (string) $actor->fullName,
-            clientId:       (int) $changeRequest->distributorId,
-            clientName:     $distributor?->businessName ?? '',
-            month:          (int) $changeRequest->month,
-            year:           (int) $changeRequest->year,
-            proposedAmount: (string) $changeRequest->proposedForecast,
-            previousAmount: (string) $changeRequest->previousForecast,
-        ), $clientEmails, bcc: $bcc);
+        // El aviso al cliente no sale aquí: lo manda el scheduler diario
+        // (forecast:notify-approved-clients) agrupando todos sus meses aprobados
+        // en un solo correo.
 
         $this->sendEmail(new ForecastRequestApprovedMail(
             submitterName:  (string) ($submitter?->fullName ?? ''),
@@ -514,15 +499,6 @@ class DistributorForecastApprovalService
             || $this->roleService->isForecastAdmin($actor);
     }
 
-    /** @return string[] */
-    private function getDistributorEmails(?Distributor $distributor): array
-    {
-        if (!$distributor || !$distributor->emails) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map('trim', explode(',', (string) $distributor->emails))));
-    }
 
     /**
      * @param string|string[] $to

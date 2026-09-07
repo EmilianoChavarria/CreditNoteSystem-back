@@ -2,13 +2,14 @@
 
 namespace App\Services;
 
-use App\Mail\ForecastFinalApprovedMail;
 use App\Mail\ForecastPendingApprovalMail;
 use App\Mail\ForecastPendingApprovalSummaryMail;
 use App\Mail\ForecastRejectedMail;
 use App\Mail\ForecastRequestApprovedMail;
 use App\Models\ClientGroup;
+use App\Models\ClientGroupMember;
 use App\Models\Distributor;
+use App\Models\NationalCustomer;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
 use App\Models\ForecastSale;
@@ -350,26 +351,9 @@ class ForecastApprovalService
 
         $this->notificationService->notifyForecastApproved($changeRequest, $actor, $clientName);
 
-        $salesManager = $this->findSalesManagerForClient((int) $changeRequest->idClient);
-        $clientEmails = $this->getClientEmails((int) $changeRequest->idClient);
-
-        // Email TO: correos del cliente (distribuidor) | BCC: SM + FORECAST ADMIN
-        // (el submitter recibe su propio correo dedicado, ver ForecastRequestApprovedMail más abajo)
-        $bcc = array_values(array_filter([
-            (string) ($salesManager?->email ?? ''),
-            (string) ($forecastAdmin?->email ?? ''),
-        ]));
-
-        $this->sendEmail(new ForecastFinalApprovedMail(
-            submitterName:  (string) ($submitter?->fullName ?? ''),
-            approverName:   (string) $actor->fullName,
-            clientId:       (int) $changeRequest->idClient,
-            clientName:     $clientName,
-            month:          (int) $changeRequest->month,
-            year:           (int) $changeRequest->year,
-            proposedAmount: (string) $changeRequest->proposedAmount,
-            previousAmount: (string) $changeRequest->previousAmount,
-        ), $clientEmails, bcc: $bcc);
+        // El aviso al cliente no sale aquí: lo manda el scheduler diario
+        // (forecast:notify-approved-clients) agrupando todos sus meses aprobados
+        // en un solo correo.
 
         // Email dedicado al creador: "tu solicitud fue aprobada" (CC FORECAST ADMIN)
         $this->sendEmail(new ForecastRequestApprovedMail(
@@ -602,7 +586,7 @@ class ForecastApprovalService
      * @param  array<int, int> $idClients
      * @return array<int, string> idCliente => razonSocial (o groupId => nombre del grupo)
      */
-    private function getClientNames(array $idClients): array
+    public function getClientNames(array $idClients): array
     {
         if (empty($idClients)) {
             return [];
@@ -622,13 +606,24 @@ class ForecastApprovalService
     }
 
     /** @return string[] */
-    private function getClientEmails(int $idClient): array
+    public function getClientEmails(int $idClient): array
     {
+        // Un grupo no tiene correos propios: se avisa a los de sus miembros.
         if (ClientGroup::where('id', $idClient)->exists()) {
-            return [];
+            $memberIds = ClientGroupMember::where('groupId', $idClient)->pluck('clientId')->all();
+
+            $emails = [];
+            foreach ($memberIds as $memberId) {
+                $emails = array_merge($emails, $this->getClientEmails((int) $memberId));
+            }
+
+            return array_values(array_unique($emails));
         }
 
-        $raw = Distributor::where('clientNumber', (string) $idClient)->value('emails');
+        // Los clientes nacionales guardan sus correos en national_customers; los
+        // extranjeros, en distributors.
+        $raw = NationalCustomer::where('customerNumber', (string) $idClient)->value('emails')
+            ?: Distributor::where('clientNumber', (string) $idClient)->value('emails');
 
         if (!$raw) {
             return [];
