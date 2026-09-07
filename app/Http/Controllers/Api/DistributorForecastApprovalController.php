@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\ResolvesAuthenticatedUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Distributors\StoreDistributorForecastChangeRequest;
+use App\Http\Requests\Distributors\StoreDistributorForecastChangeRequestBatch;
 use App\Services\DistributorForecastApprovalService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,30 @@ class DistributorForecastApprovalController extends Controller
         }
 
         return response()->json(ApiResponse::success('Solicitud de cambio enviada', $result['changeRequest']), 201);
+    }
+
+    public function submitBatch(StoreDistributorForecastChangeRequestBatch $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->approvalService->canSubmitChange($actor)) {
+            return response()->json(ApiResponse::error('No tienes permisos para proponer cambios de forecast', null, 403), 403);
+        }
+
+        $result = $this->approvalService->submitBatch($actor, $request->validated()['items']);
+
+        if (!$result['success']) {
+            return response()->json(ApiResponse::error($result['message'], ['errors' => $result['errors'] ?? []], $result['code']), $result['code']);
+        }
+
+        return response()->json(ApiResponse::success('Solicitudes de cambio enviadas', [
+            'created' => $result['created'],
+            'errors'  => $result['errors'],
+        ]), 201);
     }
 
     public function pendingForApprover(Request $request)

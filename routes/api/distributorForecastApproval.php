@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['jwt'])->group(function () {
     Route::post('distributors/forecast/change-requests', [DistributorForecastApprovalController::class, 'submit']);
+    Route::post('distributors/forecast/change-requests/batch', [DistributorForecastApprovalController::class, 'submitBatch']);
     Route::get('distributors/forecast/change-requests/pending', [DistributorForecastApprovalController::class, 'pendingForApprover']);
     Route::get('distributors/forecast/change-requests/mine', [DistributorForecastApprovalController::class, 'myRequests']);
     Route::get('distributors/forecast/change-requests/history', [DistributorForecastApprovalController::class, 'monthHistory']);
