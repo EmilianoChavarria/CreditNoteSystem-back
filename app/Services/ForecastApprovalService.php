@@ -627,6 +627,13 @@ class ForecastApprovalService
             return (string) $group->name;
         }
 
+        // En forecast el cliente se identifica por su nombre SAP.
+        $sapName = NationalCustomer::where('customerNumber', (string) $idClient)->value('sapName');
+
+        if (!empty($sapName)) {
+            return (string) $sapName;
+        }
+
         return (string) (DB::connection(self::EXT_CONNECTION)
             ->table(self::CLIENT_TABLE)
             ->where('idCliente', $idClient)
@@ -652,6 +659,17 @@ class ForecastApprovalService
             ->whereIn('idCliente', $remainingIds)
             ->pluck('razonSocial', 'idCliente')
             ->all();
+
+        // El nombre SAP manda sobre la razón social dentro de forecast.
+        $sapNames = empty($remainingIds) ? [] : NationalCustomer::whereIn('customerNumber', $remainingIds)
+            ->whereNotNull('sapName')
+            ->where('sapName', '!=', '')
+            ->pluck('sapName', 'customerNumber')
+            ->all();
+
+        foreach ($clientNames as $id => $name) {
+            $clientNames[$id] = $sapNames[(string) $id] ?? $name;
+        }
 
         return $groupNames + $clientNames;
     }

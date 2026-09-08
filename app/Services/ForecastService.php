@@ -88,10 +88,18 @@ class ForecastService
             // Solo los clientes dados de alta en el padrón participan en forecast.
             ->whereIn('cl.idCliente', $this->nationalCustomers->activeClientIds())
             ->when($search !== '', function ($q) use ($search) {
-                $q->where(function ($sub) use ($search) {
+                // El nombre SAP vive en national_customers (otra conexión): se
+                // resuelven los ids que casan y se suman al filtro.
+                $sapMatches = $this->nationalCustomers->numbersMatchingSapName($search);
+
+                $q->where(function ($sub) use ($search, $sapMatches) {
                     $sub->where('cl.razonSocial', 'like', "%{$search}%")
                         ->orWhere('cl.rfc', 'like', "%{$search}%")
                         ->orWhere('cl.idCliente', 'like', "%{$search}%");
+
+                    if (!empty($sapMatches)) {
+                        $sub->orWhereIn('cl.idCliente', $sapMatches);
+                    }
                 });
             })
             ->orderBy('cl.idCliente')
@@ -132,7 +140,9 @@ class ForecastService
             ? User::whereIn('id', $responsibleIds)->pluck('fullName', 'id')
             : collect();
 
-        $paginator->through(function ($client) use ($distributors, $nationalCustomers, $responsibleNames) {
+        $sapNames = $this->nationalCustomers->sapNamesFor($clientNumbers);
+
+        $paginator->through(function ($client) use ($distributors, $nationalCustomers, $responsibleNames, $sapNames) {
             $dist = $distributors->get((string) $client->idCliente);
 
             if ($dist) {
@@ -148,6 +158,8 @@ class ForecastService
             $client->returnPercentage = $nationalCustomer?->returnPercentage;
             $client->currency         = $nationalCustomer?->currency;
 
+            $client->sapName = $sapNames[(string) $client->idCliente] ?? null;
+
             $client->salesEngineerId   = $client->salesEngineerId !== null ? (int) $client->salesEngineerId : null;
             $client->salesManagerId    = $client->salesManagerId !== null ? (int) $client->salesManagerId : null;
             $client->salesEngineerName = $responsibleNames[$client->salesEngineerId] ?? null;
@@ -162,14 +174,20 @@ class ForecastService
     /** Busca clientes nacionales (RFC real, no el genérico de extranjero/público general) por nombre/número. */
     public function searchClients(string $term): Collection
     {
+        $sapMatches = $this->nationalCustomers->numbersMatchingSapName($term);
+
         return DB::connection(self::CONNECTION)
             ->table(self::CLIENT_TABLE)
             ->where('rfc', '!=', 'XEXX010101000')
             ->whereColumn('idCliente', '!=', 'rfc') // descarta filas fantasma donde idCliente quedó igual al rfc
             ->whereIn('idCliente', $this->nationalCustomers->activeClientIds())
-            ->where(function ($q) use ($term) {
+            ->where(function ($q) use ($term, $sapMatches) {
                 $q->where('razonSocial', 'like', "%{$term}%")
                     ->orWhere('idCliente', 'like', "%{$term}%");
+
+                if (!empty($sapMatches)) {
+                    $q->orWhereIn('idCliente', $sapMatches);
+                }
             })
             ->orderBy('razonSocial')
             ->limit(20)
@@ -178,7 +196,7 @@ class ForecastService
                 'tipo'          => 'cliente',
                 'id'            => $row->idCliente,
                 'numeroCliente' => $row->idCliente,
-                'nombre'        => $row->razonSocial,
+                'nombre'        => $this->displayName((string) $row->idCliente, (string) $row->razonSocial),
             ]);
     }
 
@@ -281,7 +299,7 @@ class ForecastService
             ->select('cle.idCliente', 'cl.razonSocial')
             ->get();
 
-        return $this->buildForecastRows($myGroups, $extClients, $year);
+        return $this->buildForecastRows($myGroups, $this->withSapNames($extClients), $year);
     }
 
     /**
@@ -302,7 +320,26 @@ class ForecastService
             ->select('cl.idCliente', 'cl.razonSocial')
             ->get();
 
-        return $this->buildForecastRows($groups, $clients, $year);
+        return $this->buildForecastRows($groups, $this->withSapNames($clients), $year);
+    }
+
+    /**
+     * Sustituye la razón social por el nombre SAP en los candidatos a fila.
+     *
+     * @param  Collection<int, object> $clients
+     * @return Collection<int, object>
+     */
+    private function withSapNames(Collection $clients): Collection
+    {
+        if ($clients->isEmpty()) {
+            return $clients;
+        }
+
+        $sapNames = $this->nationalCustomers->sapNamesFor($clients->pluck('idCliente')->all());
+
+        return $clients->each(function ($client) use ($sapNames): void {
+            $client->razonSocial = $sapNames[(string) $client->idCliente] ?? $client->razonSocial;
+        });
     }
 
     /**
@@ -969,11 +1006,41 @@ class ForecastService
     /** [idCliente => razonSocial] fetched from the external clients table in one query. */
     private function fetchClientNames(array $clientIds): array
     {
-        return DB::connection(self::CONNECTION)
+        $names = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_TABLE)
             ->whereIn('idCliente', $clientIds)
             ->pluck('razonSocial', 'idCliente')
             ->all();
+
+        return $this->applySapNames($names);
+    }
+
+    /**
+     * En forecast el cliente se identifica por su nombre SAP; la razón social
+     * queda como respaldo cuando no tiene uno cargado.
+     *
+     * @param  array<int|string, string> $names [idCliente => razonSocial]
+     * @return array<int|string, string>
+     */
+    private function applySapNames(array $names): array
+    {
+        if (empty($names)) {
+            return $names;
+        }
+
+        $sapNames = $this->nationalCustomers->sapNamesFor(array_keys($names));
+
+        foreach ($names as $id => $name) {
+            $names[$id] = $sapNames[(string) $id] ?? $name;
+        }
+
+        return $names;
+    }
+
+    /** Nombre con el que se muestra un cliente dentro de forecast. */
+    private function displayName(string $idCliente, string $razonSocial): string
+    {
+        return $this->nationalCustomers->sapNamesFor([$idCliente])[$idCliente] ?? $razonSocial;
     }
 
     /**

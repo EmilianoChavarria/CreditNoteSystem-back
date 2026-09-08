@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Http\Resources\UserResource;
 use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
+use App\Models\NationalCustomer;
 use App\Models\ForecastComprobante;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -247,14 +248,29 @@ class ClientGroupService
         return $map;
     }
 
-    /** [clientId => razonSocial] fetched from external DB in one query. */
+    /**
+     * [clientId => nombre a mostrar] en una sola consulta. Dentro de forecast el
+     * nombre SAP del padrón sustituye a la razón social de la BD externa.
+     */
     private function fetchClientNames(array $clientIds): array
     {
-        return DB::connection(self::CONNECTION)
+        $names = DB::connection(self::CONNECTION)
             ->table(self::CLIENT_TABLE)
             ->whereIn('idCliente', $clientIds)
             ->pluck('razonSocial', 'idCliente')
             ->all();
+
+        $sapNames = NationalCustomer::whereIn('customerNumber', $clientIds)
+            ->whereNotNull('sapName')
+            ->where('sapName', '!=', '')
+            ->pluck('sapName', 'customerNumber')
+            ->all();
+
+        foreach ($names as $id => $name) {
+            $names[$id] = $sapNames[(string) $id] ?? $name;
+        }
+
+        return $names;
     }
 
     private function formatGroup(ClientGroup $group): array
