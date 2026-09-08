@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
+use App\Mail\ForecastFinalApprovedSummaryMail;
 use App\Mail\ForecastPendingApprovalMail;
 use App\Mail\ForecastPendingApprovalSummaryMail;
-use App\Mail\ForecastRejectedMail;
-use App\Mail\ForecastRequestApprovedMail;
+use App\Mail\ForecastRejectedSummaryMail;
+use App\Mail\ForecastRequestApprovedSummaryMail;
 use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
 use App\Models\Distributor;
@@ -88,6 +89,8 @@ class ForecastApprovalService
                 );
             });
 
+            $this->notifyClientApproved($idClient, $this->getClientName($idClient), [$changeRequest]);
+
             return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
         }
 
@@ -148,8 +151,8 @@ class ForecastApprovalService
     // -------------------------------------------------------------------------
 
     /**
-     * Registra varios cambios de forecast en una sola operación. Cada mes sigue
-     * siendo una solicitud independiente (se aprueba/rechaza por separado), pero
+     * Registra varios cambios de forecast en una sola operación. Cada mes es una
+     * solicitud independiente, pero se resuelven en conjunto por cliente y
      * el correo al aprobador se envía UNA sola vez por cliente, con el resumen
      * de todos los meses incluidos.
      *
@@ -201,6 +204,7 @@ class ForecastApprovalService
             }
 
             $changesForEmail = [];
+            $autoApproved    = [];
 
             foreach ($rows as $row) {
                 $year   = (int) $row['year'];
@@ -263,6 +267,10 @@ class ForecastApprovalService
 
                 $created[] = $this->formatRequest($changeRequest->load('history.actor', 'submittedBy', 'approver'), $clientNames);
 
+                if ($isAutoApproved) {
+                    $autoApproved[] = $changeRequest;
+                }
+
                 if (!$isAutoApproved) {
                     // La notificación in-app se mantiene individual por solicitud.
                     $this->notificationService->notifyForecastPendingApproval($changeRequest, $clientName);
@@ -274,6 +282,11 @@ class ForecastApprovalService
                         'proposedAmount' => $amount,
                     ];
                 }
+            }
+
+            // Aprobación directa: el cliente se entera de una vez, con todos sus meses.
+            if ($isAutoApproved && !empty($autoApproved)) {
+                $this->notifyClientApproved($idClient, $clientName, $autoApproved);
             }
 
             // Un solo correo por cliente con el resumen de todos sus meses.
@@ -311,9 +324,14 @@ class ForecastApprovalService
     }
 
     // -------------------------------------------------------------------------
-    // Approve
+    // Approve / Reject (siempre en conjunto por cliente)
     // -------------------------------------------------------------------------
 
+    /**
+     * Aprobar una solicitud aprueba TODAS las pendientes del mismo cliente: la
+     * decisión es todo o nada para que el aviso al SALES ENGINEER salga en un
+     * único correo por cliente con todos sus meses.
+     */
     public function approve(User $actor, int $requestId): array
     {
         $changeRequest = ForecastChangeRequest::find($requestId);
@@ -322,58 +340,10 @@ class ForecastApprovalService
             return ['success' => false, 'code' => 404, 'message' => 'Solicitud no encontrada o ya procesada'];
         }
 
-        if (!$this->canActOnRequest($actor, $changeRequest)) {
-            return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
-        }
-
-        $clientName    = $this->getClientName((int) $changeRequest->idClient);
-        $forecastAdmin = $this->roleService->findForecastAdmin();
-        $submitter     = User::find((int) $changeRequest->submittedByUserId);
-
-        // El SALES MANAGER es el único paso de aprobación: al aprobar, el cambio
-        // queda aplicado sobre ForecastSale.
-        DB::transaction(function () use ($actor, $changeRequest): void {
-            ForecastChangeRequestHistory::create([
-                'forecastChangeRequestId' => $changeRequest->id,
-                'action'                  => 'approved',
-                'actorUserId'             => $actor->id,
-                'amount'                  => $changeRequest->proposedAmount,
-                'step'                    => (string) $changeRequest->currentStep,
-            ]);
-
-            $changeRequest->update(['status' => 'approved']);
-
-            ForecastSale::updateOrCreate(
-                ['idClient' => (int) $changeRequest->idClient, 'year' => (int) $changeRequest->year, 'month' => (int) $changeRequest->month],
-                ['amount'   => (float) $changeRequest->proposedAmount]
-            );
-        });
-
-        $this->notificationService->notifyForecastApproved($changeRequest, $actor, $clientName);
-
-        // El aviso al cliente no sale aquí: lo manda el scheduler diario
-        // (forecast:notify-approved-clients) agrupando todos sus meses aprobados
-        // en un solo correo.
-
-        // Email dedicado al creador: "tu solicitud fue aprobada" (CC FORECAST ADMIN)
-        $this->sendEmail(new ForecastRequestApprovedMail(
-            submitterName:  (string) ($submitter?->fullName ?? ''),
-            approverName:   (string) $actor->fullName,
-            clientId:       (int) $changeRequest->idClient,
-            clientName:     $clientName,
-            month:          (int) $changeRequest->month,
-            year:           (int) $changeRequest->year,
-            proposedAmount: (string) $changeRequest->proposedAmount,
-            previousAmount: (string) $changeRequest->previousAmount,
-        ), (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
-
-        return ['success' => true, 'message' => 'Monto aprobado y aplicado al forecast'];
+        return $this->resolveClientGroup($actor, (int) $changeRequest->idClient, true);
     }
 
-    // -------------------------------------------------------------------------
-    // Reject
-    // -------------------------------------------------------------------------
-
+    /** @see self::approve() — el rechazo también es todo o nada por cliente. */
     public function reject(User $actor, int $requestId): array
     {
         $changeRequest = ForecastChangeRequest::find($requestId);
@@ -382,42 +352,123 @@ class ForecastApprovalService
             return ['success' => false, 'code' => 404, 'message' => 'Solicitud no encontrada o ya procesada'];
         }
 
-        if (!$this->canActOnRequest($actor, $changeRequest)) {
-            return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para esta solicitud'];
+        return $this->resolveClientGroup($actor, (int) $changeRequest->idClient, false);
+    }
+
+    public function approveClientGroup(User $actor, int $idClient): array
+    {
+        return $this->resolveClientGroup($actor, $idClient, true);
+    }
+
+    public function rejectClientGroup(User $actor, int $idClient): array
+    {
+        return $this->resolveClientGroup($actor, $idClient, false);
+    }
+
+    /**
+     * Resuelve en bloque todas las solicitudes pendientes de un cliente.
+     *
+     * @return array{success:bool, code?:int, message:string, resolved?:int}
+     */
+    private function resolveClientGroup(User $actor, int $idClient, bool $approved): array
+    {
+        $requests = ForecastChangeRequest::where('idClient', $idClient)
+            ->where('status', 'pending')
+            ->orderBy('year')
+            ->orderBy('month')
+            ->get();
+
+        if ($requests->isEmpty()) {
+            return ['success' => false, 'code' => 404, 'message' => 'No hay solicitudes pendientes para este cliente'];
         }
 
-        DB::transaction(function () use ($actor, $changeRequest): void {
-            ForecastChangeRequestHistory::create([
-                'forecastChangeRequestId' => $changeRequest->id,
-                'action'                  => 'rejected',
-                'actorUserId'             => $actor->id,
-                'amount'                  => $changeRequest->proposedAmount,
-                'step'                    => $changeRequest->currentStep,
-            ]);
+        foreach ($requests as $request) {
+            if (!$this->canActOnRequest($actor, $request)) {
+                return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para todas las solicitudes de este cliente'];
+            }
+        }
 
-            $changeRequest->update(['status' => 'rejected']);
+        $clientName    = $this->getClientName($idClient);
+        $forecastAdmin = $this->roleService->findForecastAdmin();
+
+        DB::transaction(function () use ($actor, $requests, $approved): void {
+            foreach ($requests as $request) {
+                ForecastChangeRequestHistory::create([
+                    'forecastChangeRequestId' => $request->id,
+                    'action'                  => $approved ? 'approved' : 'rejected',
+                    'actorUserId'             => $actor->id,
+                    'amount'                  => $request->proposedAmount,
+                    'step'                    => (string) $request->currentStep,
+                ]);
+
+                $request->update(['status' => $approved ? 'approved' : 'rejected']);
+
+                if ($approved) {
+                    ForecastSale::updateOrCreate(
+                        ['idClient' => (int) $request->idClient, 'year' => (int) $request->year, 'month' => (int) $request->month],
+                        ['amount'   => (float) $request->proposedAmount]
+                    );
+                }
+            }
         });
 
-        $clientName    = $this->getClientName((int) $changeRequest->idClient);
-        $forecastAdmin = $this->roleService->findForecastAdmin();
-        $submitter     = User::find((int) $changeRequest->submittedByUserId);
+        // Aviso al cliente: un solo correo con todos los meses aprobados.
+        if ($approved) {
+            $this->notifyClientApproved($idClient, $clientName, $requests->all());
+        }
 
-        $this->notificationService->notifyForecastRejected($changeRequest, $actor, $clientName);
+        // Un correo (y una notificación in-app) por cliente para cada creador,
+        // con todos los meses resueltos.
+        foreach ($requests->groupBy('submittedByUserId') as $submitterId => $rows) {
+            $submitter = User::find((int) $submitterId);
 
-        // Email al SE + CC FORECAST ADMIN
-        $cc = array_filter([(string) ($forecastAdmin?->email ?? '')]);
+            $changes = $rows->map(fn(ForecastChangeRequest $r) => [
+                'month'          => (int) $r->month,
+                'monthLabel'     => self::monthLabel((int) $r->month, (int) $r->year),
+                'previousAmount' => (float) $r->previousAmount,
+                'proposedAmount' => (float) $r->proposedAmount,
+            ])->values()->all();
 
-        $this->sendEmail(new ForecastRejectedMail(
-            submitterName:  (string) ($submitter?->fullName ?? ''),
-            rejectorName:   (string) $actor->fullName,
-            clientId:       (int) $changeRequest->idClient,
-            clientName:     $clientName,
-            month:          (int) $changeRequest->month,
-            year:           (int) $changeRequest->year,
-            proposedAmount: (string) $changeRequest->proposedAmount,
-        ), (string) ($submitter?->email ?? ''), cc: $cc);
+            $this->notificationService->notifyForecastGroupResolved(
+                submitterUserId: (int) $submitterId,
+                actor: $actor,
+                clientId: $idClient,
+                clientName: $clientName,
+                monthLabels: array_column($changes, 'monthLabel'),
+                approved: $approved,
+                relatedId: (int) $rows->first()->id,
+            );
 
-        return ['success' => true, 'message' => 'Solicitud rechazada'];
+            $mailable = $approved
+                ? new ForecastRequestApprovedSummaryMail(
+                    submitterName: (string) ($submitter?->fullName ?? ''),
+                    approverName:  (string) $actor->fullName,
+                    clientId:      $idClient,
+                    clientName:    $clientName,
+                    year:          (int) $rows->first()->year,
+                    changes:       $changes,
+                )
+                : new ForecastRejectedSummaryMail(
+                    submitterName: (string) ($submitter?->fullName ?? ''),
+                    rejectorName:  (string) $actor->fullName,
+                    clientId:      $idClient,
+                    clientName:    $clientName,
+                    year:          (int) $rows->first()->year,
+                    changes:       $changes,
+                );
+
+            $this->sendEmail($mailable, (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
+        }
+
+        $count = $requests->count();
+
+        return [
+            'success'  => true,
+            'resolved' => $count,
+            'message'  => $approved
+                ? ($count === 1 ? 'Monto aprobado y aplicado al forecast' : "{$count} meses aprobados y aplicados al forecast")
+                : ($count === 1 ? 'Solicitud rechazada' : "{$count} solicitudes rechazadas"),
+        ];
     }
 
     // -------------------------------------------------------------------------
@@ -630,6 +681,49 @@ class ForecastApprovalService
         }
 
         return array_values(array_filter(array_map('trim', explode(',', (string) $raw))));
+    }
+
+    /**
+     * Avisa al cliente los meses que acaban de quedar aprobados: un solo correo
+     * por cliente con todos sus meses. Las solicitudes avisadas se marcan con
+     * clientNotifiedAt.
+     *
+     * @param array<int, ForecastChangeRequest> $requests
+     */
+    private function notifyClientApproved(int $idClient, string $clientName, array $requests): void
+    {
+        if (empty($requests)) {
+            return;
+        }
+
+        $changes = array_map(fn(ForecastChangeRequest $r) => [
+            'monthLabel'     => self::monthLabel((int) $r->month, (int) $r->year),
+            'previousAmount' => (float) $r->previousAmount,
+            'proposedAmount' => (float) $r->proposedAmount,
+        ], $requests);
+
+        $emails        = $this->getClientEmails($idClient);
+        $forecastAdmin = $this->roleService->findForecastAdmin();
+
+        if (empty($emails)) {
+            Log::warning('Forecast aprobado sin correos de cliente', [
+                'idClient' => $idClient,
+                'client'   => $clientName,
+                'months'   => count($changes),
+            ]);
+        } else {
+            $this->sendEmail(
+                new ForecastFinalApprovedSummaryMail(clientName: $clientName, changes: $changes),
+                $emails,
+                bcc: array_values(array_filter([(string) ($forecastAdmin?->email ?? '')])),
+            );
+        }
+
+        $now = now();
+
+        foreach ($requests as $request) {
+            $request->forceFill(['clientNotifiedAt' => $now])->save();
+        }
     }
 
     /**
