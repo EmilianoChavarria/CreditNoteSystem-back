@@ -38,7 +38,9 @@ class SendForecastApprovalReminders extends Command
 
         $clientNames = $this->resolveClientNames($staleRequests->pluck('idClient')->unique()->values()->all());
 
-        $grouped = $staleRequests->groupBy('approverUserId');
+        // Un recordatorio por aprobador y cliente: la aprobación es todo o nada
+        // por cliente, así que el correo también sale por cliente.
+        $grouped = $staleRequests->groupBy(fn (ForecastChangeRequest $r) => $r->approverUserId . '|' . $r->idClient);
 
         $sent = 0;
 
@@ -59,7 +61,11 @@ class SendForecastApprovalReminders extends Command
             ])->values()->toArray();
 
             $this->emailSender->send(
-                new ForecastApprovalReminderMail((string) $approver->fullName, $items),
+                new ForecastApprovalReminderMail(
+                    (string) $approver->fullName,
+                    $items,
+                    (string) ($items[0]['clientName'] ?? '')
+                ),
                 (string) $approver->email
             );
 

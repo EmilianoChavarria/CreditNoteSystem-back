@@ -91,7 +91,7 @@
                             </table>
 
                             <p style="margin: 0 0 20px; color: #4a5568; font-size: 14px; line-height: 1.6;">
-                                Cada mes se aprueba o rechaza de forma individual dentro del sistema.
+                                La decisión es en conjunto: se aprueban o se rechazan todos los meses de este cliente a la vez.
                             </p>
 
                             <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
