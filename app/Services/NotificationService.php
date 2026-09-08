@@ -306,6 +306,41 @@ class NotificationService
         );
     }
 
+    // -------------------------------------------------------------------------
+    // Notificaciones agrupadas (la aprobación de forecast es todo o nada por
+    // cliente / distribuidor, así que el aviso también sale en conjunto)
+    // -------------------------------------------------------------------------
+
+    /** @param array<int, string> $monthLabels */
+    public function notifyForecastGroupResolved(
+        int $submitterUserId,
+        User $actor,
+        int $clientId,
+        string $clientName,
+        array $monthLabels,
+        bool $approved,
+        ?int $relatedId = null,
+        bool $isDistributor = false,
+    ): void {
+        $entity = $isDistributor ? 'Distribuidor' : 'Cliente';
+        $client = $clientName ? " ({$clientName})" : '';
+        $months = implode(', ', $monthLabels);
+        $count  = count($monthLabels);
+        $noun   = $count === 1 ? 'el mes' : "los {$count} meses";
+
+        $prefix = $isDistributor ? 'distributor_forecast' : 'forecast';
+
+        $this->createAndBroadcast(
+            userId: $submitterUserId,
+            type: $approved ? "{$prefix}_approved" : "{$prefix}_rejected",
+            relatedId: $relatedId,
+            title: $approved ? 'Tus solicitudes de cambio fueron aprobadas' : 'Tus solicitudes de cambio fueron rechazadas',
+            message: $approved
+                ? "{$actor->fullName} aprobó {$noun} del {$entity} #{$clientId}{$client}: {$months}. Los nuevos objetivos de ventas han sido confirmados."
+                : "{$actor->fullName} rechazó {$noun} del {$entity} #{$clientId}{$client}: {$months}.",
+        );
+    }
+
     private function createAndBroadcast(int $userId, string $type, ?int $relatedId, string $title, string $message): ?NotificationModel
     {
         if ($userId <= 0) {
