@@ -425,6 +425,34 @@ class ForecastService
      *
      * @return Collection<int, array{idCliente: int|string, razonSocial: string|null, isGroup: bool}>
      */
+    /**
+     * Clientes del padrón asignados a un sales engineer (tabla ext de la BD
+     * externa). Sirve para acotar por cartera lo que ve cada rol.
+     *
+     * @return array<int, string>
+     */
+    public function clientIdsForEngineer(int $salesEngineerId): array
+    {
+        return DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE)
+            ->where('salesEngineerId', $salesEngineerId)
+            ->pluck('idCliente')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+    }
+
+    /**
+     * Nombres a mostrar de varios clientes (nombre SAP con respaldo en la razón
+     * social), en una sola consulta.
+     *
+     * @param  array<int, int|string> $clientIds
+     * @return array<int|string, string>
+     */
+    public function clientNames(array $clientIds): array
+    {
+        return empty($clientIds) ? [] : $this->fetchClientNames($clientIds);
+    }
+
     public function getExportTemplateClients(?int $salesEngineerId): Collection
     {
         return $salesEngineerId !== null
