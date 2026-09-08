@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Exports\ForecastGroupInvoicesExport;
 use App\Exports\ForecastInvoicesExport;
+use App\Http\Controllers\Concerns\ResolvesAuthenticatedUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
@@ -11,7 +12,9 @@ use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Http\Resources\ForecastCreditNoteResource;
 use App\Services\DistributorForecastService;
 use App\Services\ForecastCreditNoteService;
+use App\Services\ForecastExportService;
 use App\Services\ForecastService;
+use App\Services\SimpleExcelExportService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -19,10 +22,14 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ForecastController extends Controller
 {
+    use ResolvesAuthenticatedUser;
+
     public function __construct(
         private readonly ForecastService $forecastService,
         private readonly DistributorForecastService $distributorForecastService,
-        private readonly ForecastCreditNoteService $forecastCreditNoteService
+        private readonly ForecastCreditNoteService $forecastCreditNoteService,
+        private readonly ForecastExportService $forecastExportService,
+        private readonly SimpleExcelExportService $excelExportService,
     ) {
     }
 
@@ -166,6 +173,36 @@ class ForecastController extends Controller
     ];
 
     /** Template CSV para carga masiva de forecast: por sales engineer (?salesEngineerId=) o de todos los clientes. */
+    /**
+     * Excel de la vista de forecast: por cliente/distribuidor, un renglón de
+     * forecast y otro de ventas con los 12 meses y el total. El alcance depende
+     * del rol (ver ForecastExportService::resolveScope()).
+     */
+    public function exportExcel(Request $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $year       = (int) $request->query('year', now()->year);
+        $engineerId = $request->query('salesEngineerId');
+        $engineerId = is_numeric($engineerId) ? (int) $engineerId : null;
+
+        try {
+            $export = $this->forecastExportService->build($actor, $year, $engineerId);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 403), 403);
+        }
+
+        return response($this->excelExportService->buildSheets($export['sheets']), 200, [
+            'Content-Type'        => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+            'Cache-Control'       => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
+
     public function exportTemplate(Request $request)
     {
         $salesEngineerId = $request->query('salesEngineerId');
