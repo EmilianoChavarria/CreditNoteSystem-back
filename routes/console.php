@@ -1,6 +1,5 @@
 <?php
 
-use App\Console\Commands\NotifyClientsApprovedForecast;
 use App\Console\Commands\ReleaseStaleRequestNumberReservations;
 use App\Console\Commands\SendPendingApprovalReminders;
 use App\Console\Commands\SyncForecastSales;
@@ -26,14 +25,6 @@ Schedule::command(SyncForecastSales::class)
 // Schedule::command(ReleaseStaleRequestNumberReservations::class)
 //     ->everyFifteenMinutes()
 //     ->withoutOverlapping();
-
-// Aviso al cliente de sus cambios de objetivo ya aprobados: un solo correo por
-// cliente con todos los meses que le falten por notificar.
-Schedule::command(NotifyClientsApprovedForecast::class)
-    ->dailyAt('21:00')
-    ->timezone('America/Mexico_City')
-    ->withoutOverlapping()
-    ->appendOutputTo(storage_path('logs/notify-approved-forecast.log'));
 
 Schedule::command(SyncProductCatalog::class)
     ->dailyAt('02:00')
