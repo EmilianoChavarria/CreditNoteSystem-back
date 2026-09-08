@@ -42,6 +42,7 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
     {
         $payload = [
             'customerNumber'   => $this->value($row, ['customernumber', 'customer_number', 'clientnumber', 'client_number', 'idcliente']),
+            'sapName'          => $this->blankToNull($this->value($row, ['sapname', 'sap_name', 'nombresap', 'nombre_sap'])),
             'emails'           => $this->blankToNull($this->value($row, ['emails', 'correos', 'email', 'correo'])),
             'returnPercentage' => $this->blankToNull($this->value($row, ['returnpercentage', 'return_percentage', 'porcentajeretorno', 'porcentaje_retorno', 'porcentaje'])),
             'currency'         => $this->blankToNull($this->value($row, ['currency', 'moneda', 'divisa'])),
@@ -49,6 +50,7 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
 
         $validated = $this->validateRow($payload, [
             'customerNumber'   => ['required', 'string', 'max:50'],
+            'sapName'          => ['nullable', 'string', 'max:255'],
             'emails'           => ['nullable', 'string'],
             'returnPercentage' => ['nullable', 'numeric', 'between:0,100'],
             'currency'         => ['nullable', 'string'],
@@ -63,6 +65,10 @@ class NationalCustomersBatchHandler extends AbstractBatchHandler
         }
 
         $data = [];
+
+        if (($validated['sapName'] ?? null) !== null) {
+            $data['sapName'] = trim((string) $validated['sapName']);
+        }
 
         if (($validated['emails'] ?? null) !== null) {
             $data['emails'] = $this->validateEmails((string) $validated['emails']);

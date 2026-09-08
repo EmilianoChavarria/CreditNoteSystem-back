@@ -23,6 +23,7 @@ class UpdateNationalCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'sapName'          => ['sometimes', 'nullable', 'string', 'max:255'],
             'emails'           => ['sometimes', 'required', 'string'],
             'returnPercentage' => ['sometimes', 'required', 'numeric', 'between:0,100'],
             'currency'         => ['sometimes', 'required', Rule::in(NationalCustomer::CURRENCIES)],
