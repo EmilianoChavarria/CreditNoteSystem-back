@@ -122,6 +122,41 @@ class ForecastController extends Controller
     }
 
     /** Historial de NC generadas desde forecast para un cliente/grupo. */
+    /**
+     * Historial global de NC de forecast. El alcance depende del rol: el sales
+     * engineer ve su cartera, el manager la de sus ingenieros (o la de uno) y el
+     * FORECAST ADMIN todas.
+     */
+    public function creditNoteHistoryScoped(Request $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $year       = $request->query('year');
+        $month      = $request->query('month');
+        $engineerId = $request->query('salesEngineerId');
+        $entityType = $request->query('tipo');
+        $entityId   = $request->query('id');
+
+        try {
+            $history = $this->forecastCreditNoteService->getScopedHistory(
+                $actor,
+                is_numeric($year) ? (int) $year : null,
+                is_numeric($engineerId) ? (int) $engineerId : null,
+                in_array($entityType, ['cliente', 'grupo'], true) ? $entityType : null,
+                is_numeric($entityId) ? (int) $entityId : null,
+                is_numeric($month) ? (int) $month : null,
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 403), 403);
+        }
+
+        return response()->json(ApiResponse::success('Historial de notas de crédito', ForecastCreditNoteResource::collection($history)));
+    }
+
     public function creditNoteHistory(string $tipo, string $id)
     {
         if (!in_array($tipo, ['cliente', 'grupo'], true)) {

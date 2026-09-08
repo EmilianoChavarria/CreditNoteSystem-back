@@ -16,6 +16,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::post('forecast/credit-notes/{tipo}/{id}/{year}/{month}', [ForecastController::class, 'generateCreditNote'])
         ->whereIn('tipo', ['cliente', 'grupo'])
         ->whereNumber(['year', 'month']);
+    Route::get('forecast/credit-notes/history', [ForecastController::class, 'creditNoteHistoryScoped']);
     Route::get('forecast/credit-notes/{tipo}/{id}', [ForecastController::class, 'creditNoteHistory'])
         ->whereIn('tipo', ['cliente', 'grupo']);
     Route::get('forecast/credit-notes/grupo/{id}/{year}/{month}/breakdown', [ForecastController::class, 'groupMonthBreakdown'])
