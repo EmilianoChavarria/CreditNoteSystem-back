@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
 use App\Models\Distributor;
+use App\Models\ForecastAnnualTarget;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastComprobante;
 use App\Models\ForecastComprobanteProducto;
@@ -38,6 +39,7 @@ class ForecastService
     public function __construct(
         private readonly BanxicoService $banxico,
         private readonly NationalCustomerService $nationalCustomers,
+        private readonly ForecastAnnualTargetService $annualTargets,
     ) {}
 
     public function updateClientExt(int $idCliente, array $data): void
@@ -369,6 +371,10 @@ class ForecastService
         $modificationMap = $this->fetchModifications($allClientIds, $year);
         $salesMap        = $this->fetchSales($allClientIds, $year);
 
+        // El objetivo anual de un grupo se guarda contra su id, igual que su forecast.
+        $targetIds  = array_merge($allClientIds, $groups->pluck('id')->all());
+        $targetMap  = $this->annualTargets->map(ForecastAnnualTarget::TYPE_CLIENT, $targetIds, $year);
+
         $result = collect();
 
         foreach ($groups as $group) {
@@ -387,7 +393,7 @@ class ForecastService
                 ];
             });
 
-            $result->push($this->buildGroupEntry($group, $groupClients, $year, $salesMap));
+            $result->push($this->buildGroupEntry($group, $groupClients, $year, $salesMap, $targetMap[(int) $group->id] ?? null));
         }
 
         foreach ($clients as $client) {
@@ -406,10 +412,11 @@ class ForecastService
                 ->unique()->sort()->values();
 
             $result->push([
-                'isGroup'     => false,
-                'idCliente'   => $client->idCliente,
-                'razonSocial' => $client->razonSocial,
-                'year'        => $year,
+                'isGroup'      => false,
+                'idCliente'    => $client->idCliente,
+                'razonSocial'  => $client->razonSocial,
+                'year'         => $year,
+                'annualTarget' => $targetMap[(int) $client->idCliente] ?? null,
                 'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
             ]);
         }
@@ -523,6 +530,7 @@ class ForecastService
         \Illuminate\Support\Collection $groupClients,
         int $year,
         \Illuminate\Support\Collection $salesMap,
+        ?float $annualTarget = null,
     ): array {
         // Forecast and modifications are stored against the group ID (not individual clients)
         $groupForecast     = $this->fetchForecast([$group->id], $year)->get((string) $group->id, collect());
@@ -567,12 +575,13 @@ class ForecastService
         )->values();
 
         return [
-            'isGroup'     => true,
-            'id'          => $group->id,
-            'razonSocial' => $group->name,
-            'year'        => $year,
-            'months'      => $groupMonths,
-            'clients'     => $clients,
+            'isGroup'      => true,
+            'id'           => $group->id,
+            'razonSocial'  => $group->name,
+            'year'         => $year,
+            'annualTarget' => $annualTarget,
+            'months'       => $groupMonths,
+            'clients'      => $clients,
         ];
     }
 
@@ -670,8 +679,24 @@ class ForecastService
         return $meses;
     }
 
+    /**
+     * Guarda los meses de forecast de un cliente/grupo.
+     *
+     * @throws \RuntimeException si la suma de los 12 meses rebasa el objetivo anual.
+     */
     public function upsert(int $idClient, int $year, array $months): Collection
     {
+        $exceeded = $this->annualTargets->check(
+            ForecastAnnualTarget::TYPE_CLIENT,
+            $idClient,
+            $year,
+            collect($months)->mapWithKeys(fn ($m) => [(int) $m['month'] => (float) $m['amount']])->all()
+        );
+
+        if ($exceeded !== null) {
+            throw new \RuntimeException($exceeded['message']);
+        }
+
         $now = Carbon::now();
 
         $upserts = array_map(fn($m) => [
