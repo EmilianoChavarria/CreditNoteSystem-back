@@ -10,9 +10,12 @@ use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Http\Resources\ForecastCreditNoteResource;
+use App\Models\ForecastAnnualTarget;
 use App\Services\DistributorForecastService;
+use App\Services\ForecastAnnualTargetService;
 use App\Services\ForecastCreditNoteService;
 use App\Services\ForecastExportService;
+use App\Services\ForecastRoleService;
 use App\Services\ForecastService;
 use App\Services\SimpleExcelExportService;
 use App\Support\ApiResponse;
@@ -30,6 +33,8 @@ class ForecastController extends Controller
         private readonly ForecastCreditNoteService $forecastCreditNoteService,
         private readonly ForecastExportService $forecastExportService,
         private readonly SimpleExcelExportService $excelExportService,
+        private readonly ForecastAnnualTargetService $annualTargets,
+        private readonly ForecastRoleService $roleService,
     ) {
     }
 
@@ -225,8 +230,14 @@ class ForecastController extends Controller
         $engineerId = $request->query('salesEngineerId');
         $engineerId = is_numeric($engineerId) ? (int) $engineerId : null;
 
+        // 'nacionales' o 'extranjeros' exportan una sola hoja; sin tipo van las dos.
+        $tipo = (string) $request->query('tipo', '');
+        $tipo = in_array($tipo, [ForecastExportService::TIPO_NACIONALES, ForecastExportService::TIPO_EXTRANJEROS], true)
+            ? $tipo
+            : null;
+
         try {
-            $export = $this->forecastExportService->build($actor, $year, $engineerId);
+            $export = $this->forecastExportService->build($actor, $year, $engineerId, $tipo);
         } catch (\RuntimeException $e) {
             return response()->json(ApiResponse::error($e->getMessage(), null, 403), 403);
         }
@@ -248,10 +259,18 @@ class ForecastController extends Controller
 
         $headers = array_merge(['Customer Number', 'Customer Name', 'Is Group', 'Year'], self::TEMPLATE_MONTHS, ['Total Forecast']);
 
+        // El objetivo anual ya cargado viaja de vuelta en la plantilla: subirla sin
+        // tocar esa columna no borra el techo del cliente.
+        $targets = $this->annualTargets->map(
+            ForecastAnnualTarget::TYPE_CLIENT,
+            $clients->pluck('idCliente')->all(),
+            $year
+        );
+
         $rows = $clients->map(fn (array $client) => array_merge(
             [$client['idCliente'], $client['razonSocial'], $client['isGroup'] ? 'true' : 'false', $year],
             array_fill(0, count(self::TEMPLATE_MONTHS), ''),
-            ['']
+            [$targets[(int) $client['idCliente']] ?? '']
         ))->values()->all();
 
         $filename = 'forecast_template_' . ($salesEngineerId ?? 'all') . '_' . $year . '.csv';
@@ -374,9 +393,55 @@ class ForecastController extends Controller
 
     public function store(StoreForecastRequest $request)
     {
-        $data  = $request->validated();
-        $saved = $this->forecastService->upsert($data['idClient'], $data['year'], $data['months']);
+        $data = $request->validated();
+
+        try {
+            $saved = $this->forecastService->upsert($data['idClient'], $data['year'], $data['months']);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
 
         return response()->json(ApiResponse::success('Forecast guardado exitosamente', $saved), 201);
+    }
+
+    /** Objetivo anual (techo) de un cliente/grupo o cliente extranjero. */
+    public function setAnnualTarget(Request $request, string $tipo, int $id, int $year)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('No autenticado', null, 401), 401);
+        }
+
+        if (!$this->roleService->isForecastAdmin($actor) && !$this->roleService->isSalesEngineerManager($actor)) {
+            return response()->json(ApiResponse::error('No tienes permiso para modificar el objetivo anual', null, 403), 403);
+        }
+
+        $validated = $request->validate([
+            'amount' => ['present', 'nullable', 'numeric', 'min:0'],
+        ]);
+
+        $type   = $tipo === 'clienteExtranjero'
+            ? ForecastAnnualTarget::TYPE_DISTRIBUTOR
+            : ForecastAnnualTarget::TYPE_CLIENT;
+        $amount = $validated['amount'] === null ? null : (float) $validated['amount'];
+
+        // El objetivo se guarda siempre, aunque quede por debajo del forecast ya
+        // cargado: en ese caso la fila queda marcada y no se podrán enviar cambios
+        // hasta que se reajusten los meses.
+        $this->annualTargets->set($type, $id, $year, $amount);
+
+        $current          = $this->annualTargets->currentTotal($type, $id, $year);
+        $needsAdjustment  = $amount !== null && $current > $amount + 0.01;
+
+        return response()->json(ApiResponse::success('Objetivo anual actualizado', [
+            'tipo'            => $tipo,
+            'id'              => $id,
+            'year'            => $year,
+            'annualTarget'    => $amount,
+            'currentTotal'    => $current,
+            'needsAdjustment' => $needsAdjustment,
+            'excess'          => $needsAdjustment ? round($current - $amount, 2) : 0,
+        ]));
     }
 }

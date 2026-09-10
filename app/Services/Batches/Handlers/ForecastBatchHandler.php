@@ -3,9 +3,11 @@
 namespace App\Services\Batches\Handlers;
 
 use App\Models\Batch;
+use App\Models\ForecastAnnualTarget;
 use App\Models\ForecastSale;
 use App\Services\Batches\BatchInputContext;
 use App\Services\Batches\Parsers\BulkFileParser;
+use App\Services\ForecastAnnualTargetService;
 use Carbon\Carbon;
 use RuntimeException;
 
@@ -27,8 +29,16 @@ class ForecastBatchHandler extends AbstractBatchHandler
         12 => ['december',  'diciembre',  'dec'],
     ];
 
+    /** Encabezados aceptados para el objetivo anual (columna "Total Forecast" del template). */
+    private const ANNUAL_TARGET_ALIASES = [
+        'total_forecast', 'totalforecast', 'total forecast',
+        'objetivo_anual', 'objetivoanual', 'objetivo anual',
+        'total',
+    ];
+
     public function __construct(
         private readonly BulkFileParser $fileParser,
+        private readonly ForecastAnnualTargetService $annualTargets,
     ) {
     }
 
@@ -64,9 +74,35 @@ class ForecastBatchHandler extends AbstractBatchHandler
 
             $entry = ['idClient' => $idClient, 'year' => $year];
 
+            $monthsTotal = 0.0;
+
             foreach (self::MONTH_ALIASES as $monthNum => $aliases) {
-                $entry['month_' . $monthNum] = $this->floatFromMixed($this->value($raw, $aliases, 0));
+                $amount = $this->floatFromMixed($this->value($raw, $aliases, 0));
+
+                $entry['month_' . $monthNum] = $amount;
+                $monthsTotal += $amount;
             }
+
+            // Objetivo anual: techo del año. En blanco conserva el que ya tenga cargado.
+            $rawTarget = $this->value($raw, self::ANNUAL_TARGET_ALIASES);
+            $target    = ($rawTarget === null || trim((string) $rawTarget) === '')
+                ? null
+                : $this->floatFromMixed($rawTarget);
+
+            if ($target !== null && $target < 0) {
+                throw new RuntimeException("Fila {$rowNum}: el objetivo anual no puede ser negativo.");
+            }
+
+            if ($target !== null && round($monthsTotal, 2) > $target + 0.01) {
+                throw new RuntimeException(\sprintf(
+                    'Fila %d: la suma de los 12 meses (%s) supera el objetivo anual (%s).',
+                    $rowNum,
+                    number_format($monthsTotal, 2),
+                    number_format($target, 2)
+                ));
+            }
+
+            $entry['annualTarget'] = $target;
 
             yield $entry;
         }
@@ -81,18 +117,37 @@ class ForecastBatchHandler extends AbstractBatchHandler
             throw new RuntimeException('idClient y year son obligatorios.');
         }
 
-        $now     = Carbon::now();
-        $upserts = [];
+        $now         = Carbon::now();
+        $upserts     = [];
+        $monthsTotal = 0.0;
 
         foreach (self::MONTH_ALIASES as $monthNum => $_) {
+            $amount       = (float) ($row['month_' . $monthNum] ?? 0);
+            $monthsTotal += $amount;
+
             $upserts[] = [
                 'idClient'  => $idClient,
                 'year'      => $year,
                 'month'     => $monthNum,
-                'amount'    => (float) ($row['month_' . $monthNum] ?? 0),
+                'amount'    => $amount,
                 'createdAt' => $now,
                 'updatedAt' => $now,
             ];
+        }
+
+        // Sin columna de objetivo anual manda el que ya esté cargado: la carga
+        // masiva tampoco puede rebasar el techo del cliente.
+        $target = array_key_exists('annualTarget', $row) && $row['annualTarget'] !== null
+            ? (float) $row['annualTarget']
+            : $this->annualTargets->get(ForecastAnnualTarget::TYPE_CLIENT, $idClient, $year);
+
+        if ($target !== null && round($monthsTotal, 2) > $target + 0.01) {
+            throw new RuntimeException(\sprintf(
+                'La suma de los 12 meses (%s) supera el objetivo anual (%s) del cliente %d.',
+                number_format($monthsTotal, 2),
+                number_format($target, 2),
+                $idClient
+            ));
         }
 
         ForecastSale::upsert(
@@ -100,6 +155,10 @@ class ForecastBatchHandler extends AbstractBatchHandler
             ['idClient', 'year', 'month'],
             ['amount', 'updatedAt']
         );
+
+        if (array_key_exists('annualTarget', $row) && $row['annualTarget'] !== null) {
+            $this->annualTargets->set(ForecastAnnualTarget::TYPE_CLIENT, $idClient, $year, (float) $row['annualTarget']);
+        }
 
         return null;
     }

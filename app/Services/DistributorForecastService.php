@@ -5,11 +5,17 @@ namespace App\Services;
 use App\Models\Distributor;
 use App\Models\DistributorForecast;
 use App\Models\DistributorForecastChangeRequest;
+use App\Models\ForecastAnnualTarget;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class DistributorForecastService
 {
+    public function __construct(
+        private readonly ForecastAnnualTargetService $annualTargets,
+    ) {
+    }
+
     public function getByDistributor(int $distributorId, int $year): Collection
     {
         $forecast = DistributorForecast::where('distributorId', $distributorId)
@@ -66,8 +72,9 @@ class DistributorForecastService
             ->map(fn($rows) => $rows->keyBy('month'));
 
         $modificationMap = $this->fetchModifications($distributorIds, $year);
+        $targetMap       = $this->annualTargets->map(ForecastAnnualTarget::TYPE_DISTRIBUTOR, $distributorIds, $year);
 
-        return $distributors->map(function ($distributor) use ($year, $forecastMap, $modificationMap) {
+        return $distributors->map(function ($distributor) use ($year, $forecastMap, $modificationMap, $targetMap) {
             $forecast      = $forecastMap->get((string) $distributor->id, collect());
             $modifications = $modificationMap->get((string) $distributor->id, collect());
 
@@ -76,13 +83,14 @@ class DistributorForecastService
                 ->unique()->sort()->values();
 
             return [
-                'isGroup'     => false,
-                'idCliente'   => $distributor->id,
-                'razonSocial' => $distributor->businessName,
+                'isGroup'      => false,
+                'idCliente'    => $distributor->id,
+                'razonSocial'  => $distributor->businessName,
                 // Permite filtrar por zona (ARG = Argentina, el resto Centroamérica).
-                'countrycode' => $distributor->countrycode,
-                'year'        => $year,
-                'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications))->values(),
+                'countrycode'  => $distributor->countrycode,
+                'year'         => $year,
+                'annualTarget' => $targetMap[(int) $distributor->id] ?? null,
+                'months'       => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications))->values(),
             ];
         })->values();
     }
@@ -176,8 +184,22 @@ class DistributorForecastService
         ];
     }
 
+    /**
+     * @throws \RuntimeException si la suma de los 12 meses rebasa el objetivo anual.
+     */
     public function upsertMonths(int $distributorId, int $year, array $months): Collection
     {
+        $exceeded = $this->annualTargets->check(
+            ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+            $distributorId,
+            $year,
+            collect($months)->mapWithKeys(fn ($m) => [(int) $m['month'] => (float) $m['forecast']])->all()
+        );
+
+        if ($exceeded !== null) {
+            throw new \RuntimeException($exceeded['message']);
+        }
+
         $now = Carbon::now();
 
         $rows = array_map(fn($m) => [

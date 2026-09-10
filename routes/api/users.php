@@ -10,6 +10,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('users/sales-managers', [UserController::class, 'salesManagers']);
     Route::get('users/sales-engineers', [UserController::class, 'salesEngineers']);
     Route::get('users/by-role/requesters', [UserController::class, 'requesters']);
+    Route::get('users/cs-leaders', [UserController::class, 'csLeaders']);
     Route::get('users', [UserController::class, 'getAll']);
     Route::get('usersPag', [UserController::class, 'index']);
     Route::get('users/assignment/leaders', [UserAssignmentController::class, 'leaders']);

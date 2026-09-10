@@ -50,6 +50,7 @@
                                     </tr>
                                 @endforeach
                             </table>
+                            @include('emails.partials.forecast_year_table', ['overviewCaption' => 'los meses resaltados son los que se actualizaron', 'changedBadge' => 'Actualizado'])
 
                             <p style="margin: 0 0 20px; color: #4a5568; font-size: 14px; line-height: 1.6;">
                                 Si tiene alguna duda al respecto, comuníquese con su ejecutivo de ventas asignado.

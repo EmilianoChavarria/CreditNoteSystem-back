@@ -2,17 +2,24 @@
 
 namespace App\Services;
 
+use App\Models\ClientGroup;
+use App\Models\Distributor;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
- * Exportación a Excel de la vista de forecast: por cada cliente (o distribuidor
- * extranjero) dos renglones —forecast y ventas— con los 12 meses y su total. La
- * modificación de objetivo no se exporta: solo el objetivo vigente y la venta.
+ * Exportación a Excel de la vista de forecast: un renglón por cliente (o distribuidor
+ * extranjero) con su nombre, su ingeniero de ventas y, para cada mes, el forecast y
+ * la venta en columnas contiguas; al final el objetivo anual. La modificación de
+ * objetivo no se exporta: solo el objetivo vigente y la venta.
  */
 class ForecastExportService
 {
     private const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    private const CONNECTION       = 'invoices';
+    private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
     public function __construct(
         private readonly ForecastService $forecastService,
@@ -22,28 +29,47 @@ class ForecastExportService
     ) {
     }
 
+    /** Alcances válidos del parámetro `tipo`; null exporta las dos hojas. */
+    public const TIPO_NACIONALES  = 'nacionales';
+    public const TIPO_EXTRANJEROS = 'extranjeros';
+
     /**
+     * @param  string|null $tipo 'nacionales', 'extranjeros' o null para ambas hojas.
      * @return array{filename:string, sheets:array<int, array{name:string, headers:array<int,string>, rows:array<int, array<int, mixed>>}>}
      *
      * @throws \RuntimeException cuando el usuario no puede exportar ese alcance.
      */
-    public function build(User $actor, int $year, ?int $engineerId): array
+    public function build(User $actor, int $year, ?int $engineerId, ?string $tipo = null): array
     {
         $scope = $this->resolveScope($actor, $engineerId);
 
-        [$clients, $foreign] = $scope['engineerIds'] === null
-            ? [$this->forecastService->getAll($year), $this->distributorForecastService->getAll($year)]
-            : [
-                $this->collectForEngineers($scope['engineerIds'], fn (int $id) => $this->forecastService->getBySalesEngineer($id, $year)),
-                $this->collectForEngineers($scope['engineerIds'], fn (int $id) => $this->distributorForecastService->getBySalesEngineer($id, $year)),
-            ];
+        $sheets = [];
+
+        if ($tipo !== self::TIPO_EXTRANJEROS) {
+            $clients  = $scope['engineerIds'] === null
+                ? $this->forecastService->getAll($year)
+                : $this->collectForEngineers($scope['engineerIds'], fn (int $id) => $this->forecastService->getBySalesEngineer($id, $year));
+
+            $sheets[] = $this->sheet('Clientes', $clients, $this->clientEngineerNames($clients));
+        }
+
+        if ($tipo !== self::TIPO_NACIONALES) {
+            $foreign  = $scope['engineerIds'] === null
+                ? $this->distributorForecastService->getAll($year)
+                : $this->collectForEngineers($scope['engineerIds'], fn (int $id) => $this->distributorForecastService->getBySalesEngineer($id, $year));
+
+            $sheets[] = $this->sheet('Extranjeros', $foreign, $this->distributorEngineerNames($foreign));
+        }
+
+        $prefix = match ($tipo) {
+            self::TIPO_NACIONALES  => 'forecast_nacionales_',
+            self::TIPO_EXTRANJEROS => 'forecast_extranjeros_',
+            default                => 'forecast_',
+        };
 
         return [
-            'filename' => 'forecast_' . $scope['slug'] . '_' . $year . '_' . now()->format('Ymd_His') . '.xls',
-            'sheets'   => [
-                $this->sheet('Clientes', $clients),
-                $this->sheet('Extranjeros', $foreign),
-            ],
+            'filename' => $prefix . $scope['slug'] . '_' . $year . '_' . now()->format('Ymd_His') . '.xls',
+            'sheets'   => $sheets,
         ];
     }
 
@@ -109,23 +135,47 @@ class ForecastExportService
      * @param  Collection<int, array> $rows
      * @return array{name:string, headers:array<int,string>, rows:array<int, array<int, mixed>>}
      */
-    private function sheet(string $name, Collection $rows): array
+    /**
+     * @param  Collection<int, array> $rows
+     * @param  array<string, string>  $engineerNames Ingeniero por clave de fila (ver rowKey()).
+     * @return array{name:string, headers:array<int,string>, rows:array<int, array<int, mixed>>}
+     */
+    private function sheet(string $name, Collection $rows, array $engineerNames = []): array
     {
-        $headers = array_merge(['Cliente', 'Concepto'], self::MONTHS, ['Total']);
+        // Un renglón por cliente: nombre, ingeniero y, por cada mes, forecast y venta juntos.
+        $headers = ['Cliente', 'Sales Engineer'];
 
-        $sheetRows      = [];
-        $totalForecast  = array_fill(1, 12, 0.0);
-        $totalSales     = array_fill(1, 12, 0.0);
+        foreach (self::MONTHS as $month) {
+            $headers[] = $month . ' Forecast';
+            $headers[] = $month . ' Ventas';
+        }
+
+        $headers[] = 'Total Forecast';
+        $headers[] = 'Total Ventas';
+        $headers[] = 'Objetivo anual';
+
+        $sheetRows     = [];
+        $totalForecast = array_fill(1, 12, 0.0);
+        $totalSales    = array_fill(1, 12, 0.0);
+        $totalTarget   = 0.0;
 
         foreach ($rows as $row) {
             [$forecast, $sales] = $this->monthlyValues($row);
 
+            // razonSocial ya trae el nombre SAP cuando el cliente tiene uno cargado.
             $label = ($row['isGroup'] ?? false)
                 ? (string) ($row['razonSocial'] ?? '') . ' (Grupo)'
-                : trim((string) ($row['idCliente'] ?? '') . ' - ' . (string) ($row['razonSocial'] ?? ''));
+                : ((string) ($row['razonSocial'] ?? '') ?: (string) ($row['idCliente'] ?? ''));
 
-            $sheetRows[] = array_merge([$label, 'Forecast'], $this->monthCells($forecast));
-            $sheetRows[] = array_merge(['', 'Ventas'], $this->monthCells($sales));
+            $target       = $row['annualTarget'] ?? null;
+            $totalTarget += (float) ($target ?? 0);
+
+            $sheetRows[] = array_merge(
+                [$label, $engineerNames[$this->rowKey($row)] ?? ''],
+                $this->monthCells($forecast, $sales),
+                // Sin objetivo cargado la celda va vacía, no en cero: no es lo mismo.
+                [$target === null ? '' : round((float) $target, 2)]
+            );
 
             for ($month = 1; $month <= 12; $month++) {
                 $totalForecast[$month] += $forecast[$month];
@@ -133,10 +183,113 @@ class ForecastExportService
             }
         }
 
-        $sheetRows[] = array_merge(['TOTAL', 'Forecast'], $this->monthCells($totalForecast));
-        $sheetRows[] = array_merge(['', 'Ventas'], $this->monthCells($totalSales));
+        $sheetRows[] = array_merge(
+            ['TOTAL', ''],
+            $this->monthCells($totalForecast, $totalSales),
+            [round($totalTarget, 2)]
+        );
 
         return ['name' => $name, 'headers' => $headers, 'rows' => $sheetRows];
+    }
+
+    /** Clave con la que se indexa una fila: distingue grupos de clientes. */
+    private function rowKey(array $row): string
+    {
+        return ($row['isGroup'] ?? false)
+            ? 'g' . ($row['id'] ?? '')
+            : 'c' . ($row['idCliente'] ?? '');
+    }
+
+    /**
+     * Ingeniero de ventas de cada fila de la hoja de clientes: el del padrón para
+     * los clientes y el responsable del grupo para los grupos.
+     *
+     * @param  Collection<int, array> $rows
+     * @return array<string, string>
+     */
+    private function clientEngineerNames(Collection $rows): array
+    {
+        $clientIds = [];
+        $groupIds  = [];
+
+        foreach ($rows as $row) {
+            if ($row['isGroup'] ?? false) {
+                $groupIds[] = (int) ($row['id'] ?? 0);
+            } else {
+                $clientIds[] = (string) ($row['idCliente'] ?? '');
+            }
+        }
+
+        $engineerByClient = empty($clientIds) ? [] : DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE)
+            ->whereIn('idCliente', $clientIds)
+            ->whereNotNull('salesEngineerId')
+            ->pluck('salesEngineerId', 'idCliente')
+            ->all();
+
+        $engineerByGroup = empty($groupIds) ? [] : ClientGroup::whereIn('id', $groupIds)
+            ->whereNotNull('responsibleUserId')
+            ->pluck('responsibleUserId', 'id')
+            ->all();
+
+        $names = $this->userNames(array_merge(array_values($engineerByClient), array_values($engineerByGroup)));
+
+        $result = [];
+
+        foreach ($engineerByClient as $clientId => $userId) {
+            $result['c' . $clientId] = $names[(int) $userId] ?? '';
+        }
+
+        foreach ($engineerByGroup as $groupId => $userId) {
+            $result['g' . $groupId] = $names[(int) $userId] ?? '';
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  Collection<int, array> $rows
+     * @return array<string, string>
+     */
+    private function distributorEngineerNames(Collection $rows): array
+    {
+        $ids = $rows->map(fn (array $row) => (int) ($row['idCliente'] ?? 0))->filter()->values()->all();
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        $engineerByDistributor = Distributor::whereIn('id', $ids)
+            ->whereNotNull('salesEngineerId')
+            ->pluck('salesEngineerId', 'id')
+            ->all();
+
+        $names  = $this->userNames(array_values($engineerByDistributor));
+        $result = [];
+
+        foreach ($engineerByDistributor as $distributorId => $userId) {
+            $result['c' . $distributorId] = $names[(int) $userId] ?? '';
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<int, int|string|null> $ids
+     * @return array<int, string> [userId => fullName]
+     */
+    private function userNames(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        return User::whereIn('id', $ids)
+            ->pluck('fullName', 'id')
+            ->map(fn ($name) => (string) $name)
+            ->all();
     }
 
     /**
@@ -165,18 +318,32 @@ class ForecastExportService
     }
 
     /**
-     * @param  array<int, float> $values
-     * @return array<int, float> 12 meses + total
+     * Celdas de un renglón: forecast y venta de cada mes intercalados y, al final,
+     * el total de cada concepto.
+     *
+     * @param  array<int, float> $forecast
+     * @param  array<int, float> $sales
+     * @return array<int, float> 12 pares + 2 totales
      */
-    private function monthCells(array $values): array
+    private function monthCells(array $forecast, array $sales): array
     {
-        $cells = [];
+        $cells         = [];
+        $forecastTotal = 0.0;
+        $salesTotal    = 0.0;
 
         for ($month = 1; $month <= 12; $month++) {
-            $cells[] = round($values[$month] ?? 0, 2);
+            $monthForecast = round($forecast[$month] ?? 0, 2);
+            $monthSales    = round($sales[$month] ?? 0, 2);
+
+            $cells[] = $monthForecast;
+            $cells[] = $monthSales;
+
+            $forecastTotal += $monthForecast;
+            $salesTotal    += $monthSales;
         }
 
-        $cells[] = round(array_sum($cells), 2);
+        $cells[] = round($forecastTotal, 2);
+        $cells[] = round($salesTotal, 2);
 
         return $cells;
     }

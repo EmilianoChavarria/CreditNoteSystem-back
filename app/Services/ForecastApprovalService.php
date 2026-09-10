@@ -11,6 +11,7 @@ use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
 use App\Models\Distributor;
 use App\Models\NationalCustomer;
+use App\Models\ForecastAnnualTarget;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
 use App\Models\ForecastSale;
@@ -30,6 +31,8 @@ class ForecastApprovalService
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService  $emailSender,
         private readonly ForecastRoleService $roleService,
+        private readonly ForecastAnnualTargetService $annualTargets,
+        private readonly ForecastYearOverviewService $yearOverview,
     ) {
     }
 
@@ -47,6 +50,18 @@ class ForecastApprovalService
 
         if ($hasPending) {
             return ['success' => false, 'code' => 422, 'message' => 'Ya existe una solicitud pendiente para este mes'];
+        }
+
+        // El objetivo anual es un techo: la suma de los 12 meses no puede rebasarlo.
+        $exceeded = $this->annualTargets->check(
+            ForecastAnnualTarget::TYPE_CLIENT,
+            $idClient,
+            $year,
+            [$month => $amount]
+        );
+
+        if ($exceeded !== null) {
+            return ['success' => false, 'code' => 422, 'message' => $exceeded['message']];
         }
 
         $previousAmount = ForecastSale::where('idClient', $idClient)
@@ -141,6 +156,12 @@ class ForecastApprovalService
             year:           $year,
             proposedAmount: (string) $amount,
             previousAmount: (string) $previousAmount,
+            overview:       $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_CLIENT,
+                $idClient,
+                $year,
+                [['month' => $month, 'previousAmount' => (float) $previousAmount, 'proposedAmount' => $amount]]
+            ),
         ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
@@ -206,10 +227,26 @@ class ForecastApprovalService
             $changesForEmail = [];
             $autoApproved    = [];
 
+            // Todos los meses propuestos del mismo año se evalúan juntos contra el
+            // objetivo anual: si en conjunto lo rebasan, ninguno de ese año se envía.
+            $blockedYears = $this->blockedYears(ForecastAnnualTarget::TYPE_CLIENT, $idClient, $rows, 'amount');
+
             foreach ($rows as $row) {
                 $year   = (int) $row['year'];
                 $month  = (int) $row['month'];
                 $amount = (float) $row['amount'];
+
+                if (isset($blockedYears[$year])) {
+                    $errors[] = [
+                        'idClient'   => $idClient,
+                        'clientName' => $clientName,
+                        'year'       => $year,
+                        'month'      => $month,
+                        'message'    => $blockedYears[$year],
+                    ];
+
+                    continue;
+                }
 
                 $hasPending = ForecastChangeRequest::where('idClient', $idClient)
                     ->where('year', $year)
@@ -277,6 +314,7 @@ class ForecastApprovalService
 
                     $changesForEmail[] = [
                         'month'          => $month,
+                        'year'           => $year,
                         'monthLabel'     => self::monthLabel($month, $year),
                         'previousAmount' => $previousAmount,
                         'proposedAmount' => $amount,
@@ -300,6 +338,12 @@ class ForecastApprovalService
                     clientName:    $clientName,
                     year:          (int) $rows[0]['year'],
                     changes:       $changesForEmail,
+                    overview:      $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_CLIENT,
+                        $idClient,
+                        (int) $rows[0]['year'],
+                        $changesForEmail
+                    ),
                 ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
             }
         }
@@ -332,6 +376,34 @@ class ForecastApprovalService
      * decisión es todo o nada para que el aviso al SALES ENGINEER salga en un
      * único correo por cliente con todos sus meses.
      */
+    /**
+     * Años del lote cuya suma propuesta rebasa el objetivo anual: [year => mensaje].
+     * Los meses de esos años se rechazan completos, no a medias.
+     *
+     * @param  array<int, array<string, mixed>> $rows
+     * @return array<int, string>
+     */
+    private function blockedYears(string $type, int $targetId, array $rows, string $amountKey): array
+    {
+        $byYear = [];
+
+        foreach ($rows as $row) {
+            $byYear[(int) $row['year']][(int) $row['month']] = (float) $row[$amountKey];
+        }
+
+        $blocked = [];
+
+        foreach ($byYear as $year => $proposed) {
+            $exceeded = $this->annualTargets->check($type, $targetId, $year, $proposed);
+
+            if ($exceeded !== null) {
+                $blocked[$year] = $exceeded['message'];
+            }
+        }
+
+        return $blocked;
+    }
+
     public function approve(User $actor, int $requestId): array
     {
         $changeRequest = ForecastChangeRequest::find($requestId);
@@ -388,6 +460,25 @@ class ForecastApprovalService
             }
         }
 
+        // Entre el envío y la aprobación otros meses pudieron moverse: se revalida
+        // el techo anual antes de aplicar los montos.
+        if ($approved) {
+            $blocked = $this->blockedYears(
+                ForecastAnnualTarget::TYPE_CLIENT,
+                $idClient,
+                $requests->map(fn ($r) => [
+                    'year'   => (int) $r->year,
+                    'month'  => (int) $r->month,
+                    'amount' => (float) $r->proposedAmount,
+                ])->all(),
+                'amount'
+            );
+
+            if (!empty($blocked)) {
+                return ['success' => false, 'code' => 422, 'message' => reset($blocked)];
+            }
+        }
+
         $clientName    = $this->getClientName($idClient);
         $forecastAdmin = $this->roleService->findForecastAdmin();
 
@@ -424,6 +515,7 @@ class ForecastApprovalService
 
             $changes = $rows->map(fn(ForecastChangeRequest $r) => [
                 'month'          => (int) $r->month,
+                'year'           => (int) $r->year,
                 'monthLabel'     => self::monthLabel((int) $r->month, (int) $r->year),
                 'previousAmount' => (float) $r->previousAmount,
                 'proposedAmount' => (float) $r->proposedAmount,
@@ -439,22 +531,39 @@ class ForecastApprovalService
                 relatedId: (int) $rows->first()->id,
             );
 
+            $overviewYear = (int) $rows->first()->year;
+            // En un rechazo los montos siguen como estaban: se resaltan los meses
+            // que se pidieron cambiar, pero con su objetivo vigente.
+            $overview     = $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_CLIENT,
+                $idClient,
+                $overviewYear,
+                $approved ? $changes : array_map(
+                    // Rechazo: el mes se resalta, pero su objetivo no se movió, así que
+                    // no se manda 'previousAmount' (dibujaría un "antes → después" igual).
+                    fn (array $c) => ['month' => $c['month'], 'year' => $c['year']],
+                    $changes
+                )
+            );
+
             $mailable = $approved
                 ? new ForecastRequestApprovedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     approverName:  (string) $actor->fullName,
                     clientId:      $idClient,
                     clientName:    $clientName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 )
                 : new ForecastRejectedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     rejectorName:  (string) $actor->fullName,
                     clientId:      $idClient,
                     clientName:    $clientName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 );
 
             $this->sendEmail($mailable, (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
@@ -715,6 +824,8 @@ class ForecastApprovalService
         }
 
         $changes = array_map(fn(ForecastChangeRequest $r) => [
+            'month'          => (int) $r->month,
+            'year'           => (int) $r->year,
             'monthLabel'     => self::monthLabel((int) $r->month, (int) $r->year),
             'previousAmount' => (float) $r->previousAmount,
             'proposedAmount' => (float) $r->proposedAmount,
@@ -731,7 +842,16 @@ class ForecastApprovalService
             ]);
         } else {
             $this->sendEmail(
-                new ForecastFinalApprovedSummaryMail(clientName: $clientName, changes: $changes),
+                new ForecastFinalApprovedSummaryMail(
+                    clientName: $clientName,
+                    changes:    $changes,
+                    overview:   $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_CLIENT,
+                        $idClient,
+                        (int) ($changes[0]['year'] ?? now()->year),
+                        $changes
+                    ),
+                ),
                 $emails,
                 bcc: array_values(array_filter([(string) ($forecastAdmin?->email ?? '')])),
             );

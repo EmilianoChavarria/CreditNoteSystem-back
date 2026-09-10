@@ -15,6 +15,7 @@ class UpdateClientExtRequest extends FormRequest
     {
         return [
             'area'                     => ['sometimes', 'nullable', 'string', 'max:255'],
+            'csLeaderId'               => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
             'processorId'              => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
             'salesEngineerId'          => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
             'salesManagerId'           => ['sometimes', 'nullable', 'integer', 'exists:users,id'],

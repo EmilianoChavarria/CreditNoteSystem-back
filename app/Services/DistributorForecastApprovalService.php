@@ -11,6 +11,7 @@ use App\Models\Distributor;
 use App\Models\DistributorForecast;
 use App\Models\DistributorForecastChangeRequest;
 use App\Models\DistributorForecastChangeRequestHistory;
+use App\Models\ForecastAnnualTarget;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,8 @@ class DistributorForecastApprovalService
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService $emailSender,
         private readonly DistributorForecastService $distributorForecastService,
+        private readonly ForecastAnnualTargetService $annualTargets,
+        private readonly ForecastYearOverviewService $yearOverview,
     ) {
     }
 
@@ -61,6 +64,18 @@ class DistributorForecastApprovalService
 
         if ($hasPending) {
             return ['success' => false, 'code' => 422, 'message' => 'Ya existe una solicitud pendiente para este mes'];
+        }
+
+        // El objetivo anual es un techo: la suma de los 12 meses no puede rebasarlo.
+        $exceeded = $this->annualTargets->check(
+            ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+            $distributorId,
+            $year,
+            [$month => (float) $forecast]
+        );
+
+        if ($exceeded !== null) {
+            return ['success' => false, 'code' => 422, 'message' => $exceeded['message']];
         }
 
         $previousForecast = DistributorForecast::where('distributorId', $distributorId)
@@ -150,6 +165,12 @@ class DistributorForecastApprovalService
             year:           $year,
             proposedAmount: (string) $forecast,
             previousAmount: (string) $previousForecast,
+            overview:       $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                $distributorId,
+                $year,
+                [['month' => $month, 'previousAmount' => (float) $previousForecast, 'proposedAmount' => (float) $forecast]]
+            ),
         ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
@@ -229,10 +250,26 @@ class DistributorForecastApprovalService
             $changesForEmail = [];
             $autoApproved    = [];
 
+            // Todos los meses propuestos del mismo año se evalúan juntos contra el
+            // objetivo anual: si en conjunto lo rebasan, ninguno de ese año se envía.
+            $blockedYears = $this->blockedYears($distributorId, $rows);
+
             foreach ($rows as $row) {
                 $year     = (int) $row['year'];
                 $month    = (int) $row['month'];
                 $forecast = (int) $row['forecast'];
+
+                if (isset($blockedYears[$year])) {
+                    $errors[] = [
+                        'distributorId' => $distributorId,
+                        'clientName'    => $distributor->businessName,
+                        'year'          => $year,
+                        'month'         => $month,
+                        'message'       => $blockedYears[$year],
+                    ];
+
+                    continue;
+                }
 
                 $hasPending = DistributorForecastChangeRequest::where('distributorId', $distributorId)
                     ->where('year', $year)
@@ -297,6 +334,7 @@ class DistributorForecastApprovalService
 
                     $changesForEmail[] = [
                         'month'          => $month,
+                        'year'           => $year,
                         'monthLabel'     => ForecastApprovalService::monthLabel($month, $year),
                         'previousAmount' => $previousForecast,
                         'proposedAmount' => (float) $forecast,
@@ -320,6 +358,12 @@ class DistributorForecastApprovalService
                     clientName:    (string) $distributor->businessName,
                     year:          (int) $rows[0]['year'],
                     changes:       $changesForEmail,
+                    overview:      $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                        $distributorId,
+                        (int) $rows[0]['year'],
+                        $changesForEmail
+                    ),
                 ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
             }
         }
@@ -383,6 +427,39 @@ class DistributorForecastApprovalService
      *
      * @return array{success:bool, code?:int, message:string, resolved?:int}
      */
+    /**
+     * Años del lote cuya suma propuesta rebasa el objetivo anual: [year => mensaje].
+     * Los meses de esos años se rechazan completos, no a medias.
+     *
+     * @param  array<int, array<string, mixed>> $rows
+     * @return array<int, string>
+     */
+    private function blockedYears(int $distributorId, array $rows): array
+    {
+        $byYear = [];
+
+        foreach ($rows as $row) {
+            $byYear[(int) $row['year']][(int) $row['month']] = (float) $row['forecast'];
+        }
+
+        $blocked = [];
+
+        foreach ($byYear as $year => $proposed) {
+            $exceeded = $this->annualTargets->check(
+                ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                $distributorId,
+                $year,
+                $proposed
+            );
+
+            if ($exceeded !== null) {
+                $blocked[$year] = $exceeded['message'];
+            }
+        }
+
+        return $blocked;
+    }
+
     private function resolveDistributorGroup(User $actor, int $distributorId, bool $approved): array
     {
         $requests = DistributorForecastChangeRequest::where('distributorId', $distributorId)
@@ -398,6 +475,20 @@ class DistributorForecastApprovalService
         foreach ($requests as $request) {
             if (!$this->canActOnRequest($actor, $request)) {
                 return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para todas las solicitudes de este distribuidor'];
+            }
+        }
+
+        // Entre el envío y la aprobación otros meses pudieron moverse: se revalida
+        // el techo anual antes de aplicar los montos.
+        if ($approved) {
+            $blocked = $this->blockedYears($distributorId, $requests->map(fn ($r) => [
+                'year'     => (int) $r->year,
+                'month'    => (int) $r->month,
+                'forecast' => (float) $r->proposedForecast,
+            ])->all());
+
+            if (!empty($blocked)) {
+                return ['success' => false, 'code' => 422, 'message' => reset($blocked)];
             }
         }
 
@@ -441,6 +532,7 @@ class DistributorForecastApprovalService
 
             $changes = $rows->map(fn(DistributorForecastChangeRequest $r) => [
                 'month'          => (int) $r->month,
+                'year'           => (int) $r->year,
                 'monthLabel'     => ForecastApprovalService::monthLabel((int) $r->month, (int) $r->year),
                 'previousAmount' => (float) $r->previousForecast,
                 'proposedAmount' => (float) $r->proposedForecast,
@@ -457,22 +549,39 @@ class DistributorForecastApprovalService
                 isDistributor: true,
             );
 
+            $overviewYear = (int) $rows->first()->year;
+            // En un rechazo los montos siguen como estaban: se resaltan los meses
+            // que se pidieron cambiar, pero con su objetivo vigente.
+            $overview     = $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                $distributorId,
+                $overviewYear,
+                $approved ? $changes : array_map(
+                    // Rechazo: el mes se resalta, pero su objetivo no se movió, así que
+                    // no se manda 'previousAmount' (dibujaría un "antes → después" igual).
+                    fn (array $c) => ['month' => $c['month'], 'year' => $c['year']],
+                    $changes
+                )
+            );
+
             $mailable = $approved
                 ? new ForecastRequestApprovedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     approverName:  (string) $actor->fullName,
                     clientId:      $distributorId,
                     clientName:    $distributorName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 )
                 : new ForecastRejectedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     rejectorName:  (string) $actor->fullName,
                     clientId:      $distributorId,
                     clientName:    $distributorName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 );
 
             $this->sendEmail($mailable, (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
@@ -569,6 +678,8 @@ class DistributorForecastApprovalService
         }
 
         $changes = array_map(fn(DistributorForecastChangeRequest $r) => [
+            'month'          => (int) $r->month,
+            'year'           => (int) $r->year,
             'monthLabel'     => ForecastApprovalService::monthLabel((int) $r->month, (int) $r->year),
             'previousAmount' => (float) $r->previousForecast,
             'proposedAmount' => (float) $r->proposedForecast,
@@ -588,7 +699,16 @@ class DistributorForecastApprovalService
             ]);
         } else {
             $this->sendEmail(
-                new ForecastFinalApprovedSummaryMail(clientName: $distributorName, changes: $changes),
+                new ForecastFinalApprovedSummaryMail(
+                    clientName: $distributorName,
+                    changes:    $changes,
+                    overview:   $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                        (int) ($distributor?->id ?? 0),
+                        (int) ($changes[0]['year'] ?? now()->year),
+                        $changes
+                    ),
+                ),
                 $emails,
                 bcc: array_values(array_filter([
                     (string) ($distributor?->salesManager?->email ?? ''),

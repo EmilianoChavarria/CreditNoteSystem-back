@@ -94,6 +94,19 @@ class UserController extends Controller
         return response()->json(ApiResponse::success('Sales engineers obtenidos correctamente', $data));
     }
 
+    public function csLeaders()
+    {
+        $users = $this->userService->getCsLeaders();
+
+        $data = $users->map(fn($user) => [
+            'id'       => $user->id,
+            'fullName' => $user->fullName,
+            'role'     => $user->role?->roleName,
+        ]);
+
+        return response()->json(ApiResponse::success('CS leaders obtenidos correctamente', $data));
+    }
+
     public function me(Request $request)
     {
         $authUser = $request->attributes->get('authUser');

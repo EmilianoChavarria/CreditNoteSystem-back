@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
 use App\Models\Distributor;
+use App\Models\ForecastAnnualTarget;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastComprobante;
 use App\Models\ForecastComprobanteProducto;
@@ -38,6 +39,7 @@ class ForecastService
     public function __construct(
         private readonly BanxicoService $banxico,
         private readonly NationalCustomerService $nationalCustomers,
+        private readonly ForecastAnnualTargetService $annualTargets,
     ) {}
 
     public function updateClientExt(int $idCliente, array $data): void
@@ -369,6 +371,10 @@ class ForecastService
         $modificationMap = $this->fetchModifications($allClientIds, $year);
         $salesMap        = $this->fetchSales($allClientIds, $year);
 
+        // El objetivo anual de un grupo se guarda contra su id, igual que su forecast.
+        $targetIds  = array_merge($allClientIds, $groups->pluck('id')->all());
+        $targetMap  = $this->annualTargets->map(ForecastAnnualTarget::TYPE_CLIENT, $targetIds, $year);
+
         $result = collect();
 
         foreach ($groups as $group) {
@@ -387,7 +393,7 @@ class ForecastService
                 ];
             });
 
-            $result->push($this->buildGroupEntry($group, $groupClients, $year, $salesMap));
+            $result->push($this->buildGroupEntry($group, $groupClients, $year, $salesMap, $targetMap[(int) $group->id] ?? null));
         }
 
         foreach ($clients as $client) {
@@ -406,10 +412,11 @@ class ForecastService
                 ->unique()->sort()->values();
 
             $result->push([
-                'isGroup'     => false,
-                'idCliente'   => $client->idCliente,
-                'razonSocial' => $client->razonSocial,
-                'year'        => $year,
+                'isGroup'      => false,
+                'idCliente'    => $client->idCliente,
+                'razonSocial'  => $client->razonSocial,
+                'year'         => $year,
+                'annualTarget' => $targetMap[(int) $client->idCliente] ?? null,
                 'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications, $sales))->values(),
             ]);
         }
@@ -523,6 +530,7 @@ class ForecastService
         \Illuminate\Support\Collection $groupClients,
         int $year,
         \Illuminate\Support\Collection $salesMap,
+        ?float $annualTarget = null,
     ): array {
         // Forecast and modifications are stored against the group ID (not individual clients)
         $groupForecast     = $this->fetchForecast([$group->id], $year)->get((string) $group->id, collect());
@@ -567,12 +575,13 @@ class ForecastService
         )->values();
 
         return [
-            'isGroup'     => true,
-            'id'          => $group->id,
-            'razonSocial' => $group->name,
-            'year'        => $year,
-            'months'      => $groupMonths,
-            'clients'     => $clients,
+            'isGroup'      => true,
+            'id'           => $group->id,
+            'razonSocial'  => $group->name,
+            'year'         => $year,
+            'annualTarget' => $annualTarget,
+            'months'       => $groupMonths,
+            'clients'      => $clients,
         ];
     }
 
@@ -670,8 +679,24 @@ class ForecastService
         return $meses;
     }
 
+    /**
+     * Guarda los meses de forecast de un cliente/grupo.
+     *
+     * @throws \RuntimeException si la suma de los 12 meses rebasa el objetivo anual.
+     */
     public function upsert(int $idClient, int $year, array $months): Collection
     {
+        $exceeded = $this->annualTargets->check(
+            ForecastAnnualTarget::TYPE_CLIENT,
+            $idClient,
+            $year,
+            collect($months)->mapWithKeys(fn ($m) => [(int) $m['month'] => (float) $m['amount']])->all()
+        );
+
+        if ($exceeded !== null) {
+            throw new \RuntimeException($exceeded['message']);
+        }
+
         $now = Carbon::now();
 
         $upserts = array_map(fn($m) => [
@@ -922,7 +947,8 @@ class ForecastService
      * Desglose de productos por factura de un cliente en un mes/año.
      * Cada línea trae su clasificación (Rodamientos / No Rodamientos / null si no está clasificada);
      * el `breakdown` de cada factura resta del total facturado todo lo que no es Rodamientos,
-     * incluidos los productos sin clasificar.
+     * incluidos los productos sin clasificar. Todos los importes van sin IVA: la venta
+     * mensual se calcula sobre el subtotal.
      * Los importes convertidos van en la moneda asignada al cliente (por defecto la suya).
      */
     public function getInvoiceProductsByMonth(string $idClient, int $month, int $year, ?string $currency = null): Collection
@@ -976,11 +1002,8 @@ class ForecastService
         $fallbackRate = null;
 
         return $invoices->map(function ($invoice) use ($productsByFolio, $classifications, &$fallbackRate, $target, $roles) {
-            $subTotal = (float) $invoice->subTotal;
-            $total    = (float) $invoice->total;
-            // Las líneas de producto no traen IVA; se prorratea con el mismo factor que fetchSales().
-            $factor   = $subTotal > 0 ? $total / $subTotal : 1;
-
+            // Los importes de las líneas van sin IVA, igual que fetchSales(): la venta
+            // mensual se calcula sobre el subtotal, el IVA no se prorratea.
             $moneda = (string) $invoice->moneda;
             $rate   = null;
 
@@ -993,10 +1016,10 @@ class ForecastService
                 $rate = $this->convertAmount(1.0, $moneda, $target, $candidate) !== null ? $candidate : null;
             }
 
-            $lines = $productsByFolio->get($invoice->folio, collect())->map(function ($p) use ($classifications, $factor, $rate, $moneda, $target) {
+            $lines = $productsByFolio->get($invoice->folio, collect())->map(function ($p) use ($classifications, $rate, $moneda, $target) {
                 $clasificacion = $classifications[trim($p->noIdentificacion)] ?? null;
-                $importeConIva = (float) $p->importe * $factor;
-                $convertido    = $rate ? (float) $this->convertAmount($importeConIva, $moneda, $target, $rate) : $importeConIva;
+                $importe       = (float) $p->importe;
+                $convertido    = $rate ? (float) $this->convertAmount($importe, $moneda, $target, $rate) : $importe;
 
                 return [
                     'noIdentificacion'  => $p->noIdentificacion,
@@ -1072,7 +1095,8 @@ class ForecastService
     }
 
     /**
-     * Retorna ventas reales (suma de las líneas de producto por factura) indexado por [idClient][month].
+     * Retorna ventas reales (suma de las líneas de producto por factura, SIN IVA) indexado
+     * por [idClient][month].
      * Cada mes trae `total` en USD —con el que se mide el cumplimiento contra el objetivo— y
      * `totalCurrency`, el mismo importe en $currency, que es sobre el que se calcula el retorno.
      * Solo cuentan las líneas cuyo producto está clasificado como Rodamientos: No Rodamientos
@@ -1139,14 +1163,9 @@ class ForecastService
                         ->reduce(function (array $carry, $lines) use ($fallbackRate, $folioRol, $currency) {
                             $first = $lines->first();
 
-                            // El importe de cada línea excluye IVA; se prorratea con el factor
-                            // total/subTotal de su comprobante para cuadrar con el total facturado.
-                            $factor = (float) $first->subTotal > 0
-                                ? (float) $first->total / (float) $first->subTotal
-                                : 1;
-
+                            // La venta mensual se mide SIN IVA: es la suma de los importes
+                            // de las líneas consideradas, que ya vienen sin impuesto.
                             $subTotal = round((float) $lines->sum('importe'), 2);
-                            $total    = round($subTotal * $factor, 2);
                             $moneda   = (string) $first->moneda;
 
                             // Con el tipo de cambio con el que se timbró, no con el actual.
@@ -1155,8 +1174,8 @@ class ForecastService
                             // Las notas de crédito de devolución (signo -1) restan del mes.
                             $signo = $folioRol->get("{$first->receptorId}|{$first->folio}")['signo'];
 
-                            $carry['usd'] += round($this->convertAmount($total, $moneda, self::DEFAULT_CURRENCY, $rate) ?? $total, 2) * $signo;
-                            $carry['currency'] += round($this->convertAmount($total, $moneda, $currency, $rate) ?? $total, 2) * $signo;
+                            $carry['usd'] += round($this->convertAmount($subTotal, $moneda, self::DEFAULT_CURRENCY, $rate) ?? $subTotal, 2) * $signo;
+                            $carry['currency'] += round($this->convertAmount($subTotal, $moneda, $currency, $rate) ?? $subTotal, 2) * $signo;
 
                             return $carry;
                         }, ['usd' => 0.0, 'currency' => 0.0]);
