@@ -61,6 +61,17 @@ class UserService
             ->get();
     }
 
+    /** Usuarios con rol CS LEADER, para asignarlos como líder de un cliente. */
+    public function getCsLeaders(): Collection
+    {
+        return User::with('role')
+            ->where('isActive', '1')
+            ->whereNull('deletedAt')
+            ->whereHas('role', fn($q) => $q->whereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']))
+            ->orderBy('fullName')
+            ->get();
+    }
+
     public function getAllActive(): Collection
     {
         return User::with('role')
