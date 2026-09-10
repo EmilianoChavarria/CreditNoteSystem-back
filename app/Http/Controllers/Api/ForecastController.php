@@ -420,25 +420,22 @@ class ForecastController extends Controller
             : ForecastAnnualTarget::TYPE_CLIENT;
         $amount = $validated['amount'] === null ? null : (float) $validated['amount'];
 
-        // Un objetivo por debajo de lo ya cargado dejaría la fila permanentemente en rojo.
-        $current = $this->annualTargets->currentTotal($type, $id, $year);
-
-        if ($amount !== null && $amount + 0.01 < $current) {
-            return response()->json(ApiResponse::error(\sprintf(
-                'El objetivo anual (%s) no puede ser menor que el forecast ya cargado (%s).',
-                number_format($amount, 2),
-                number_format($current, 2)
-            ), null, 422), 422);
-        }
-
+        // El objetivo se guarda siempre, aunque quede por debajo del forecast ya
+        // cargado: en ese caso la fila queda marcada y no se podrán enviar cambios
+        // hasta que se reajusten los meses.
         $this->annualTargets->set($type, $id, $year, $amount);
 
+        $current          = $this->annualTargets->currentTotal($type, $id, $year);
+        $needsAdjustment  = $amount !== null && $current > $amount + 0.01;
+
         return response()->json(ApiResponse::success('Objetivo anual actualizado', [
-            'tipo'         => $tipo,
-            'id'           => $id,
-            'year'         => $year,
-            'annualTarget' => $amount,
-            'currentTotal' => $current,
+            'tipo'            => $tipo,
+            'id'              => $id,
+            'year'            => $year,
+            'annualTarget'    => $amount,
+            'currentTotal'    => $current,
+            'needsAdjustment' => $needsAdjustment,
+            'excess'          => $needsAdjustment ? round($current - $amount, 2) : 0,
         ]));
     }
 }
