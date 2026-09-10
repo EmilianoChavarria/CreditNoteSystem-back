@@ -213,7 +213,7 @@ class ClientGroupService
 
     // ── PRIVATE ───────────────────────────────────────────────────────────────
 
-    /** [clientId => total_usd_per_month[month]] */
+    /** [clientId => subtotal_usd_per_month[month]] — sin IVA. */
     private function fetchSalesByClient(array $clientIds, int $year): array
     {
         $fallbackRate = null;
@@ -222,7 +222,8 @@ class ClientGroupService
         $rows = ForecastComprobante::whereIn('receptorId', $receptorIds)
             ->where('status', 'Emitido')
             ->whereYear('fechaEmision', $year)
-            ->selectRaw('receptorId, MONTH(fechaEmision) as month, SUM(total) as total, moneda, MAX(tipoCambio) as tipoCambio')
+            // La venta se mide sin IVA: se suma el subtotal, no el total facturado.
+            ->selectRaw('receptorId, MONTH(fechaEmision) as month, SUM(subTotal) as total, moneda, MAX(tipoCambio) as tipoCambio')
             ->groupByRaw('receptorId, MONTH(fechaEmision), moneda')
             ->get();
 
