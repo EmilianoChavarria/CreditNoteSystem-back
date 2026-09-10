@@ -230,8 +230,14 @@ class ForecastController extends Controller
         $engineerId = $request->query('salesEngineerId');
         $engineerId = is_numeric($engineerId) ? (int) $engineerId : null;
 
+        // 'nacionales' o 'extranjeros' exportan una sola hoja; sin tipo van las dos.
+        $tipo = (string) $request->query('tipo', '');
+        $tipo = in_array($tipo, [ForecastExportService::TIPO_NACIONALES, ForecastExportService::TIPO_EXTRANJEROS], true)
+            ? $tipo
+            : null;
+
         try {
-            $export = $this->forecastExportService->build($actor, $year, $engineerId);
+            $export = $this->forecastExportService->build($actor, $year, $engineerId, $tipo);
         } catch (\RuntimeException $e) {
             return response()->json(ApiResponse::error($e->getMessage(), null, 403), 403);
         }
