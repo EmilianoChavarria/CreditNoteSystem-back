@@ -89,6 +89,7 @@
                                     <td align="right" style="padding: 12px; color: {{ $totalColor }}; font-size: 14px; font-weight: 700;">{{ $totalDelta > 0 ? '+' : '' }}${{ number_format($totalDelta, 2) }}</td>
                                 </tr>
                             </table>
+                            @include('emails.partials.forecast_year_table', ['overviewCaption' => 'los meses resaltados son los que se piden cambiar', 'changedBadge' => 'Propuesto'])
 
                             <p style="margin: 0 0 20px; color: #4a5568; font-size: 14px; line-height: 1.6;">
                                 La decisión es en conjunto: se aprueban o se rechazan todos los meses de este cliente a la vez.
