@@ -66,8 +66,13 @@ class DistributorForecastController extends Controller
             return response()->json(ApiResponse::error('Distribuidor no encontrado', null, 404), 404);
         }
 
-        $data  = $request->validated();
-        $saved = $this->forecastService->upsertMonths($distributorId, $data['year'], $data['months']);
+        $data = $request->validated();
+
+        try {
+            $saved = $this->forecastService->upsertMonths($distributorId, $data['year'], $data['months']);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
 
         return response()->json(ApiResponse::success('Forecast de distribuidor guardado exitosamente', $saved), 201);
     }

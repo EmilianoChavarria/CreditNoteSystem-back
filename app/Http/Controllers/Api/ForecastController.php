@@ -10,9 +10,12 @@ use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
 use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Http\Resources\ForecastCreditNoteResource;
+use App\Models\ForecastAnnualTarget;
 use App\Services\DistributorForecastService;
+use App\Services\ForecastAnnualTargetService;
 use App\Services\ForecastCreditNoteService;
 use App\Services\ForecastExportService;
+use App\Services\ForecastRoleService;
 use App\Services\ForecastService;
 use App\Services\SimpleExcelExportService;
 use App\Support\ApiResponse;
@@ -30,6 +33,8 @@ class ForecastController extends Controller
         private readonly ForecastCreditNoteService $forecastCreditNoteService,
         private readonly ForecastExportService $forecastExportService,
         private readonly SimpleExcelExportService $excelExportService,
+        private readonly ForecastAnnualTargetService $annualTargets,
+        private readonly ForecastRoleService $roleService,
     ) {
     }
 
@@ -248,10 +253,18 @@ class ForecastController extends Controller
 
         $headers = array_merge(['Customer Number', 'Customer Name', 'Is Group', 'Year'], self::TEMPLATE_MONTHS, ['Total Forecast']);
 
+        // El objetivo anual ya cargado viaja de vuelta en la plantilla: subirla sin
+        // tocar esa columna no borra el techo del cliente.
+        $targets = $this->annualTargets->map(
+            ForecastAnnualTarget::TYPE_CLIENT,
+            $clients->pluck('idCliente')->all(),
+            $year
+        );
+
         $rows = $clients->map(fn (array $client) => array_merge(
             [$client['idCliente'], $client['razonSocial'], $client['isGroup'] ? 'true' : 'false', $year],
             array_fill(0, count(self::TEMPLATE_MONTHS), ''),
-            ['']
+            [$targets[(int) $client['idCliente']] ?? '']
         ))->values()->all();
 
         $filename = 'forecast_template_' . ($salesEngineerId ?? 'all') . '_' . $year . '.csv';
@@ -374,9 +387,58 @@ class ForecastController extends Controller
 
     public function store(StoreForecastRequest $request)
     {
-        $data  = $request->validated();
-        $saved = $this->forecastService->upsert($data['idClient'], $data['year'], $data['months']);
+        $data = $request->validated();
+
+        try {
+            $saved = $this->forecastService->upsert($data['idClient'], $data['year'], $data['months']);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 422), 422);
+        }
 
         return response()->json(ApiResponse::success('Forecast guardado exitosamente', $saved), 201);
+    }
+
+    /** Objetivo anual (techo) de un cliente/grupo o cliente extranjero. */
+    public function setAnnualTarget(Request $request, string $tipo, int $id, int $year)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('No autenticado', null, 401), 401);
+        }
+
+        if (!$this->roleService->isForecastAdmin($actor) && !$this->roleService->isSalesEngineerManager($actor)) {
+            return response()->json(ApiResponse::error('No tienes permiso para modificar el objetivo anual', null, 403), 403);
+        }
+
+        $validated = $request->validate([
+            'amount' => ['present', 'nullable', 'numeric', 'min:0'],
+        ]);
+
+        $type   = $tipo === 'clienteExtranjero'
+            ? ForecastAnnualTarget::TYPE_DISTRIBUTOR
+            : ForecastAnnualTarget::TYPE_CLIENT;
+        $amount = $validated['amount'] === null ? null : (float) $validated['amount'];
+
+        // Un objetivo por debajo de lo ya cargado dejaría la fila permanentemente en rojo.
+        $current = $this->annualTargets->currentTotal($type, $id, $year);
+
+        if ($amount !== null && $amount + 0.01 < $current) {
+            return response()->json(ApiResponse::error(\sprintf(
+                'El objetivo anual (%s) no puede ser menor que el forecast ya cargado (%s).',
+                number_format($amount, 2),
+                number_format($current, 2)
+            ), null, 422), 422);
+        }
+
+        $this->annualTargets->set($type, $id, $year, $amount);
+
+        return response()->json(ApiResponse::success('Objetivo anual actualizado', [
+            'tipo'         => $tipo,
+            'id'           => $id,
+            'year'         => $year,
+            'annualTarget' => $amount,
+            'currentTotal' => $current,
+        ]));
     }
 }

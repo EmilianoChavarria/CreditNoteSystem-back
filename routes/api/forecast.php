@@ -21,6 +21,9 @@ Route::middleware(['jwt'])->group(function () {
         ->whereIn('tipo', ['cliente', 'grupo']);
     Route::get('forecast/credit-notes/grupo/{id}/{year}/{month}/breakdown', [ForecastController::class, 'groupMonthBreakdown'])
         ->whereNumber(['year', 'month']);
+    Route::put('forecast/annual-target/{tipo}/{id}/{year}', [ForecastController::class, 'setAnnualTarget'])
+        ->whereIn('tipo', ['cliente', 'clienteExtranjero'])
+        ->whereNumber(['id', 'year']);
     Route::get('forecast/template/export', [ForecastController::class, 'exportTemplate']);
     Route::get('forecast/export/excel', [ForecastController::class, 'exportExcel']);
     Route::get('forecast/{idClient}/{year}/{month}/invoices', [ForecastController::class, 'invoicesByMonth'])->whereNumber(['idClient', 'year', 'month']);
