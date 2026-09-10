@@ -126,11 +126,11 @@ class ForecastAnnualTargetService
     }
 
     /**
-     * Forecast guardado del año: [mes => monto].
+     * Forecast guardado del año: [mes => monto]. Solo trae los meses con registro.
      *
      * @return array<int, float>
      */
-    private function storedMonths(string $type, int|string $id, int $year): array
+    public function storedMonths(string $type, int|string $id, int $year): array
     {
         $this->assertType($type);
 
