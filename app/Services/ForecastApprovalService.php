@@ -11,6 +11,7 @@ use App\Models\ClientGroup;
 use App\Models\ClientGroupMember;
 use App\Models\Distributor;
 use App\Models\NationalCustomer;
+use App\Models\ForecastAnnualTarget;
 use App\Models\ForecastChangeRequest;
 use App\Models\ForecastChangeRequestHistory;
 use App\Models\ForecastSale;
@@ -30,6 +31,7 @@ class ForecastApprovalService
         private readonly NotificationService $notificationService,
         private readonly EmailSenderService  $emailSender,
         private readonly ForecastRoleService $roleService,
+        private readonly ForecastAnnualTargetService $annualTargets,
     ) {
     }
 
@@ -47,6 +49,18 @@ class ForecastApprovalService
 
         if ($hasPending) {
             return ['success' => false, 'code' => 422, 'message' => 'Ya existe una solicitud pendiente para este mes'];
+        }
+
+        // El objetivo anual es un techo: la suma de los 12 meses no puede rebasarlo.
+        $exceeded = $this->annualTargets->check(
+            ForecastAnnualTarget::TYPE_CLIENT,
+            $idClient,
+            $year,
+            [$month => $amount]
+        );
+
+        if ($exceeded !== null) {
+            return ['success' => false, 'code' => 422, 'message' => $exceeded['message']];
         }
 
         $previousAmount = ForecastSale::where('idClient', $idClient)
@@ -206,10 +220,26 @@ class ForecastApprovalService
             $changesForEmail = [];
             $autoApproved    = [];
 
+            // Todos los meses propuestos del mismo año se evalúan juntos contra el
+            // objetivo anual: si en conjunto lo rebasan, ninguno de ese año se envía.
+            $blockedYears = $this->blockedYears(ForecastAnnualTarget::TYPE_CLIENT, $idClient, $rows, 'amount');
+
             foreach ($rows as $row) {
                 $year   = (int) $row['year'];
                 $month  = (int) $row['month'];
                 $amount = (float) $row['amount'];
+
+                if (isset($blockedYears[$year])) {
+                    $errors[] = [
+                        'idClient'   => $idClient,
+                        'clientName' => $clientName,
+                        'year'       => $year,
+                        'month'      => $month,
+                        'message'    => $blockedYears[$year],
+                    ];
+
+                    continue;
+                }
 
                 $hasPending = ForecastChangeRequest::where('idClient', $idClient)
                     ->where('year', $year)
@@ -332,6 +362,34 @@ class ForecastApprovalService
      * decisión es todo o nada para que el aviso al SALES ENGINEER salga en un
      * único correo por cliente con todos sus meses.
      */
+    /**
+     * Años del lote cuya suma propuesta rebasa el objetivo anual: [year => mensaje].
+     * Los meses de esos años se rechazan completos, no a medias.
+     *
+     * @param  array<int, array<string, mixed>> $rows
+     * @return array<int, string>
+     */
+    private function blockedYears(string $type, int $targetId, array $rows, string $amountKey): array
+    {
+        $byYear = [];
+
+        foreach ($rows as $row) {
+            $byYear[(int) $row['year']][(int) $row['month']] = (float) $row[$amountKey];
+        }
+
+        $blocked = [];
+
+        foreach ($byYear as $year => $proposed) {
+            $exceeded = $this->annualTargets->check($type, $targetId, $year, $proposed);
+
+            if ($exceeded !== null) {
+                $blocked[$year] = $exceeded['message'];
+            }
+        }
+
+        return $blocked;
+    }
+
     public function approve(User $actor, int $requestId): array
     {
         $changeRequest = ForecastChangeRequest::find($requestId);
@@ -385,6 +443,25 @@ class ForecastApprovalService
         foreach ($requests as $request) {
             if (!$this->canActOnRequest($actor, $request)) {
                 return ['success' => false, 'code' => 403, 'message' => 'No eres el aprobador designado para todas las solicitudes de este cliente'];
+            }
+        }
+
+        // Entre el envío y la aprobación otros meses pudieron moverse: se revalida
+        // el techo anual antes de aplicar los montos.
+        if ($approved) {
+            $blocked = $this->blockedYears(
+                ForecastAnnualTarget::TYPE_CLIENT,
+                $idClient,
+                $requests->map(fn ($r) => [
+                    'year'   => (int) $r->year,
+                    'month'  => (int) $r->month,
+                    'amount' => (float) $r->proposedAmount,
+                ])->all(),
+                'amount'
+            );
+
+            if (!empty($blocked)) {
+                return ['success' => false, 'code' => 422, 'message' => reset($blocked)];
             }
         }
 
