@@ -17,6 +17,8 @@ class ForecastFinalApprovedSummaryMail extends Mailable
     public function __construct(
         public string $clientName,
         public array  $changes,
+        /** Panorama de los 12 meses; ver ForecastYearOverviewService::build(). */
+        public array  $overview = [],
     ) {
     }
 

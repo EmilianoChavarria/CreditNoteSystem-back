@@ -21,6 +21,8 @@ class ForecastRejectedSummaryMail extends Mailable
         public string $clientName,
         public int    $year,
         public array  $changes,
+        /** Panorama de los 12 meses; ver ForecastYearOverviewService::build(). */
+        public array  $overview = [],
     ) {
     }
 

@@ -20,6 +20,8 @@ class ForecastPendingApprovalMail extends Mailable
         public int    $year,
         public string $proposedAmount,
         public string $previousAmount,
+        /** Panorama de los 12 meses; ver ForecastYearOverviewService::build(). */
+        public array  $overview = [],
     ) {
     }
 
