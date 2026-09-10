@@ -32,6 +32,7 @@ class ForecastApprovalService
         private readonly EmailSenderService  $emailSender,
         private readonly ForecastRoleService $roleService,
         private readonly ForecastAnnualTargetService $annualTargets,
+        private readonly ForecastYearOverviewService $yearOverview,
     ) {
     }
 
@@ -155,6 +156,12 @@ class ForecastApprovalService
             year:           $year,
             proposedAmount: (string) $amount,
             previousAmount: (string) $previousAmount,
+            overview:       $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_CLIENT,
+                $idClient,
+                $year,
+                [['month' => $month, 'previousAmount' => (float) $previousAmount, 'proposedAmount' => $amount]]
+            ),
         ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
@@ -307,6 +314,7 @@ class ForecastApprovalService
 
                     $changesForEmail[] = [
                         'month'          => $month,
+                        'year'           => $year,
                         'monthLabel'     => self::monthLabel($month, $year),
                         'previousAmount' => $previousAmount,
                         'proposedAmount' => $amount,
@@ -330,6 +338,12 @@ class ForecastApprovalService
                     clientName:    $clientName,
                     year:          (int) $rows[0]['year'],
                     changes:       $changesForEmail,
+                    overview:      $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_CLIENT,
+                        $idClient,
+                        (int) $rows[0]['year'],
+                        $changesForEmail
+                    ),
                 ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
             }
         }
@@ -501,6 +515,7 @@ class ForecastApprovalService
 
             $changes = $rows->map(fn(ForecastChangeRequest $r) => [
                 'month'          => (int) $r->month,
+                'year'           => (int) $r->year,
                 'monthLabel'     => self::monthLabel((int) $r->month, (int) $r->year),
                 'previousAmount' => (float) $r->previousAmount,
                 'proposedAmount' => (float) $r->proposedAmount,
@@ -516,22 +531,39 @@ class ForecastApprovalService
                 relatedId: (int) $rows->first()->id,
             );
 
+            $overviewYear = (int) $rows->first()->year;
+            // En un rechazo los montos siguen como estaban: se resaltan los meses
+            // que se pidieron cambiar, pero con su objetivo vigente.
+            $overview     = $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_CLIENT,
+                $idClient,
+                $overviewYear,
+                $approved ? $changes : array_map(
+                    // Rechazo: el mes se resalta, pero su objetivo no se movió, así que
+                    // no se manda 'previousAmount' (dibujaría un "antes → después" igual).
+                    fn (array $c) => ['month' => $c['month'], 'year' => $c['year']],
+                    $changes
+                )
+            );
+
             $mailable = $approved
                 ? new ForecastRequestApprovedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     approverName:  (string) $actor->fullName,
                     clientId:      $idClient,
                     clientName:    $clientName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 )
                 : new ForecastRejectedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     rejectorName:  (string) $actor->fullName,
                     clientId:      $idClient,
                     clientName:    $clientName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 );
 
             $this->sendEmail($mailable, (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
@@ -792,6 +824,8 @@ class ForecastApprovalService
         }
 
         $changes = array_map(fn(ForecastChangeRequest $r) => [
+            'month'          => (int) $r->month,
+            'year'           => (int) $r->year,
             'monthLabel'     => self::monthLabel((int) $r->month, (int) $r->year),
             'previousAmount' => (float) $r->previousAmount,
             'proposedAmount' => (float) $r->proposedAmount,
@@ -808,7 +842,16 @@ class ForecastApprovalService
             ]);
         } else {
             $this->sendEmail(
-                new ForecastFinalApprovedSummaryMail(clientName: $clientName, changes: $changes),
+                new ForecastFinalApprovedSummaryMail(
+                    clientName: $clientName,
+                    changes:    $changes,
+                    overview:   $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_CLIENT,
+                        $idClient,
+                        (int) ($changes[0]['year'] ?? now()->year),
+                        $changes
+                    ),
+                ),
                 $emails,
                 bcc: array_values(array_filter([(string) ($forecastAdmin?->email ?? '')])),
             );

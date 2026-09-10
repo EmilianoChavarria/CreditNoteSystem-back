@@ -26,6 +26,7 @@ class DistributorForecastApprovalService
         private readonly EmailSenderService $emailSender,
         private readonly DistributorForecastService $distributorForecastService,
         private readonly ForecastAnnualTargetService $annualTargets,
+        private readonly ForecastYearOverviewService $yearOverview,
     ) {
     }
 
@@ -164,6 +165,12 @@ class DistributorForecastApprovalService
             year:           $year,
             proposedAmount: (string) $forecast,
             previousAmount: (string) $previousForecast,
+            overview:       $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                $distributorId,
+                $year,
+                [['month' => $month, 'previousAmount' => (float) $previousForecast, 'proposedAmount' => (float) $forecast]]
+            ),
         ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
 
         return ['success' => true, 'changeRequest' => $changeRequest->load('history.actor', 'submittedBy', 'approver')];
@@ -327,6 +334,7 @@ class DistributorForecastApprovalService
 
                     $changesForEmail[] = [
                         'month'          => $month,
+                        'year'           => $year,
                         'monthLabel'     => ForecastApprovalService::monthLabel($month, $year),
                         'previousAmount' => $previousForecast,
                         'proposedAmount' => (float) $forecast,
@@ -350,6 +358,12 @@ class DistributorForecastApprovalService
                     clientName:    (string) $distributor->businessName,
                     year:          (int) $rows[0]['year'],
                     changes:       $changesForEmail,
+                    overview:      $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                        $distributorId,
+                        (int) $rows[0]['year'],
+                        $changesForEmail
+                    ),
                 ), (string) $approver->email, cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
             }
         }
@@ -518,6 +532,7 @@ class DistributorForecastApprovalService
 
             $changes = $rows->map(fn(DistributorForecastChangeRequest $r) => [
                 'month'          => (int) $r->month,
+                'year'           => (int) $r->year,
                 'monthLabel'     => ForecastApprovalService::monthLabel((int) $r->month, (int) $r->year),
                 'previousAmount' => (float) $r->previousForecast,
                 'proposedAmount' => (float) $r->proposedForecast,
@@ -534,22 +549,39 @@ class DistributorForecastApprovalService
                 isDistributor: true,
             );
 
+            $overviewYear = (int) $rows->first()->year;
+            // En un rechazo los montos siguen como estaban: se resaltan los meses
+            // que se pidieron cambiar, pero con su objetivo vigente.
+            $overview     = $this->yearOverview->build(
+                ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                $distributorId,
+                $overviewYear,
+                $approved ? $changes : array_map(
+                    // Rechazo: el mes se resalta, pero su objetivo no se movió, así que
+                    // no se manda 'previousAmount' (dibujaría un "antes → después" igual).
+                    fn (array $c) => ['month' => $c['month'], 'year' => $c['year']],
+                    $changes
+                )
+            );
+
             $mailable = $approved
                 ? new ForecastRequestApprovedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     approverName:  (string) $actor->fullName,
                     clientId:      $distributorId,
                     clientName:    $distributorName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 )
                 : new ForecastRejectedSummaryMail(
                     submitterName: (string) ($submitter?->fullName ?? ''),
                     rejectorName:  (string) $actor->fullName,
                     clientId:      $distributorId,
                     clientName:    $distributorName,
-                    year:          (int) $rows->first()->year,
+                    year:          $overviewYear,
                     changes:       $changes,
+                    overview:      $overview,
                 );
 
             $this->sendEmail($mailable, (string) ($submitter?->email ?? ''), cc: array_filter([(string) ($forecastAdmin?->email ?? '')]));
@@ -646,6 +678,8 @@ class DistributorForecastApprovalService
         }
 
         $changes = array_map(fn(DistributorForecastChangeRequest $r) => [
+            'month'          => (int) $r->month,
+            'year'           => (int) $r->year,
             'monthLabel'     => ForecastApprovalService::monthLabel((int) $r->month, (int) $r->year),
             'previousAmount' => (float) $r->previousForecast,
             'proposedAmount' => (float) $r->proposedForecast,
@@ -665,7 +699,16 @@ class DistributorForecastApprovalService
             ]);
         } else {
             $this->sendEmail(
-                new ForecastFinalApprovedSummaryMail(clientName: $distributorName, changes: $changes),
+                new ForecastFinalApprovedSummaryMail(
+                    clientName: $distributorName,
+                    changes:    $changes,
+                    overview:   $this->yearOverview->build(
+                        ForecastAnnualTarget::TYPE_DISTRIBUTOR,
+                        (int) ($distributor?->id ?? 0),
+                        (int) ($changes[0]['year'] ?? now()->year),
+                        $changes
+                    ),
+                ),
                 $emails,
                 bcc: array_values(array_filter([
                     (string) ($distributor?->salesManager?->email ?? ''),
