@@ -12,7 +12,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/** Resumen: ventas sumadas por cliente dentro del grupo. */
+/** Resumen: ventas sumadas (subtotal, sin IVA) por cliente dentro del grupo. */
 class ForecastGroupSummarySheet implements
     FromArray,
     WithHeadings,
@@ -39,7 +39,7 @@ class ForecastGroupSummarySheet implements
                 $section['clientId'],
                 $section['razonSocial'],
                 $invoices->count(),
-                round((float) $invoices->sum('total'), 2),
+                round((float) $invoices->sum('subTotal'), 2),
                 $section['moneda'] ?? '',
             ];
         }
@@ -65,7 +65,7 @@ class ForecastGroupSummarySheet implements
 
     public function headings(): array
     {
-        return ['ID Cliente', 'Cliente', 'No. Facturas', 'Total', 'Moneda'];
+        return ['ID Cliente', 'Cliente', 'No. Facturas', 'Subtotal (sin IVA)', 'Moneda'];
     }
 
     public function columnWidths(): array
