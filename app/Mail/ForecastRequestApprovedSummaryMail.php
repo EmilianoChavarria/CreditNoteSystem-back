@@ -7,25 +7,29 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-class ForecastFinalApprovedMail extends Mailable
+class ForecastRequestApprovedSummaryMail extends Mailable
 {
     use Queueable, SerializesModels, HasOverrideNotice;
 
+    /**
+     * @param array<int, array{month:int, monthLabel:string, previousAmount:float, proposedAmount:float}> $changes
+     */
     public function __construct(
         public string $submitterName,
         public string $approverName,
         public int    $clientId,
         public string $clientName,
-        public int    $month,
         public int    $year,
-        public string $proposedAmount,
-        public string $previousAmount,
+        public array  $changes,
     ) {
     }
 
     public function build(): self
     {
-        return $this->subject("Actualización de objetivo de ventas — {$this->month}/{$this->year}")
-            ->view('emails.forecast_final_approved');
+        $count  = count($this->changes);
+        $suffix = $count === 1 ? '1 mes' : "{$count} meses";
+
+        return $this->subject("Forecast aprobado — {$this->clientName} ({$suffix}, {$this->year})")
+            ->view('emails.forecast_request_approved_summary');
     }
 }

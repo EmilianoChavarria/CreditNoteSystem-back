@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Forecast aprobado</title>
+    <title>Objetivo de ventas actualizado</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f7; padding: 40px 0;">
@@ -30,45 +30,31 @@
                             </p>
 
                             <p style="margin: 0 0 30px; color: #4a5568; font-size: 15px; line-height: 1.6;">
-                                Le informamos que su objetivo de ventas ha sido <strong style="color: #38a169;">actualizado</strong> para el período indicado a continuación.
+                                Le informamos que su objetivo de ventas ha sido
+                                <strong style="color: #38a169;">actualizado</strong>
+                                {{ count($changes) === 1 ? 'para el período indicado a continuación' : 'para los períodos indicados a continuación' }}.
                             </p>
 
                             <table width="100%" cellpadding="0" cellspacing="0"
-                                style="background-color: #EDEDED; border-radius: 6px; margin: 0 0 30px;">
-                                <tr>
-                                    <td style="padding: 24px;">
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="padding-bottom: 16px;">
-                                                    <p style="margin: 0; color: #718096; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Período</p>
-                                                    <p style="margin: 8px 0 0; color: #2d3748; font-size: 16px;">{{ $month }}/{{ $year }}</p>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="padding-bottom: 16px;">
-                                                    <p style="margin: 0; color: #718096; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Objetivo anterior</p>
-                                                    <p style="margin: 8px 0 0; color: #2d3748; font-size: 16px;">${{ number_format((float) $previousAmount, 2) }}</p>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <p style="margin: 0; color: #718096; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Nuevo objetivo de ventas</p>
-                                                    <p style="margin: 8px 0 0; color: #38a169; font-size: 20px; font-weight: 700;">${{ number_format((float) $proposedAmount, 2) }}</p>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
+                                style="border-collapse: collapse; margin: 0 0 30px; border: 1px solid #e2e8f0;">
+                                <tr style="background-color: #f7fafc;">
+                                    <th align="left" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #718096; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Período</th>
+                                    <th align="right" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #718096; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Objetivo anterior</th>
+                                    <th align="right" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #718096; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Nuevo objetivo</th>
                                 </tr>
+                                @foreach ($changes as $change)
+                                    <tr>
+                                        <td style="padding: 12px; border-bottom: 1px solid #edf2f7; color: #2d3748; font-size: 14px; font-weight: 600;">{{ $change['monthLabel'] }}</td>
+                                        <td align="right" style="padding: 12px; border-bottom: 1px solid #edf2f7; color: #4a5568; font-size: 14px;">${{ number_format((float) $change['previousAmount'], 2) }}</td>
+                                        <td align="right" style="padding: 12px; border-bottom: 1px solid #edf2f7; color: #38a169; font-size: 16px; font-weight: 700;">${{ number_format((float) $change['proposedAmount'], 2) }}</td>
+                                    </tr>
+                                @endforeach
                             </table>
 
                             <p style="margin: 0 0 20px; color: #4a5568; font-size: 14px; line-height: 1.6;">
                                 Si tiene alguna duda al respecto, comuníquese con su ejecutivo de ventas asignado.
                             </p>
 
-                            <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6;">
-                                Consulta el detalle completo en la plataforma:
-                                <a href="https://timken.ittec.mx/" style="color: #ff8200; text-decoration: none;">https://timken.ittec.mx/</a>
-                            </p>
                         </td>
                     </tr>
 

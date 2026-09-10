@@ -77,6 +77,45 @@ class NationalCustomerService
             ->all();
     }
 
+    /**
+     * Nombres SAP del padrón, solo los que tienen uno cargado.
+     *
+     * @param  array<int, string|int> $customerNumbers
+     * @return array<string, string> [customerNumber => sapName]
+     */
+    public function sapNamesFor(array $customerNumbers): array
+    {
+        $numbers = collect($customerNumbers)->map(fn ($n) => (string) $n)->unique()->values();
+
+        if ($numbers->isEmpty()) {
+            return [];
+        }
+
+        return NationalCustomer::whereIn('customerNumber', $numbers->all())
+            ->whereNotNull('sapName')
+            ->where('sapName', '!=', '')
+            ->pluck('sapName', 'customerNumber')
+            ->map(fn ($name) => (string) $name)
+            ->all();
+    }
+
+    /**
+     * Números de cliente cuyo nombre SAP casa con el término buscado.
+     *
+     * @return array<int, string>
+     */
+    public function numbersMatchingSapName(string $term): array
+    {
+        if ($term === '') {
+            return [];
+        }
+
+        return NationalCustomer::where('sapName', 'like', "%{$term}%")
+            ->pluck('customerNumber')
+            ->map(fn ($n) => (string) $n)
+            ->all();
+    }
+
     /** Valida que el cliente exista en la BD externa con un RFC utilizable. */
     public function existsInInvoices(string $customerNumber): bool
     {
@@ -109,6 +148,7 @@ class NationalCustomerService
 
             $query->where(function ($q) use ($search, $matchingIds) {
                 $q->where('customerNumber', 'like', "%{$search}%")
+                    ->orWhere('sapName', 'like', "%{$search}%")
                     ->orWhere('emails', 'like', "%{$search}%");
 
                 if (!empty($matchingIds)) {

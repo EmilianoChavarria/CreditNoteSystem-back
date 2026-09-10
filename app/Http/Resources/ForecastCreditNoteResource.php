@@ -16,6 +16,10 @@ class ForecastCreditNoteResource extends JsonResource
             'requestStatus'    => $this->whenLoaded('request', fn () => $this->request?->status),
             'entityType'       => $this->entityType,
             'entityId'         => $this->entityId,
+            // Resueltos en el historial global (ForecastCreditNoteService::getScopedHistory()).
+            'clientName'       => $this->clientName ?? null,
+            'groupId'          => $this->groupId,
+            'groupName'        => $this->groupName ?? null,
             'customerNumber'   => $this->customerNumber,
             'year'             => $this->year,
             'month'            => $this->month,

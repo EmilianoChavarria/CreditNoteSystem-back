@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\ResolvesAuthenticatedUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastChangeRequest;
+use App\Http\Requests\Forecast\StoreForecastChangeRequestBatch;
 use App\Services\ForecastApprovalService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,30 @@ class ForecastApprovalController extends Controller
         }
 
         return response()->json(ApiResponse::success('Solicitud de cambio enviada', $result['changeRequest']), 201);
+    }
+
+    public function submitBatch(StoreForecastChangeRequestBatch $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->approvalService->canSubmitChange($actor)) {
+            return response()->json(ApiResponse::error('No tienes permisos para proponer cambios de forecast', null, 403), 403);
+        }
+
+        $result = $this->approvalService->submitBatch($actor, $request->validated()['items']);
+
+        if (!$result['success']) {
+            return response()->json(ApiResponse::error($result['message'], ['errors' => $result['errors'] ?? []], $result['code']), $result['code']);
+        }
+
+        return response()->json(ApiResponse::success('Solicitudes de cambio enviadas', [
+            'created' => $result['created'],
+            'errors'  => $result['errors'],
+        ]), 201);
     }
 
     public function pendingForApprover(Request $request)
@@ -85,6 +110,10 @@ class ForecastApprovalController extends Controller
         return response()->json(ApiResponse::success('Historial de modificaciones', $history));
     }
 
+    /**
+     * Aprueba en bloque todas las solicitudes pendientes de un cliente. La
+     * aprobación de forecast es todo o nada: no se resuelve mes por mes.
+     */
     public function approve(Request $request, int $id)
     {
         $actor = $this->resolveAuthenticatedUser($request);
@@ -106,6 +135,7 @@ class ForecastApprovalController extends Controller
         return response()->json(ApiResponse::success($result['message']));
     }
 
+    /** @see self::approve() */
     public function reject(Request $request, int $id)
     {
         $actor = $this->resolveAuthenticatedUser($request);
@@ -125,5 +155,38 @@ class ForecastApprovalController extends Controller
         }
 
         return response()->json(ApiResponse::success($result['message']));
+    }
+
+    public function approveClientGroup(Request $request, int $idClient)
+    {
+        return $this->resolveGroup($request, $idClient, true);
+    }
+
+    public function rejectClientGroup(Request $request, int $idClient)
+    {
+        return $this->resolveGroup($request, $idClient, false);
+    }
+
+    private function resolveGroup(Request $request, int $idClient, bool $approved)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        if (!$this->approvalService->canApprove($actor)) {
+            return response()->json(ApiResponse::error('No tienes permisos para aprobar cambios', null, 403), 403);
+        }
+
+        $result = $approved
+            ? $this->approvalService->approveClientGroup($actor, $idClient)
+            : $this->approvalService->rejectClientGroup($actor, $idClient);
+
+        if (!$result['success']) {
+            return response()->json(ApiResponse::error($result['message'], null, $result['code']), $result['code']);
+        }
+
+        return response()->json(ApiResponse::success($result['message'], ['resolved' => $result['resolved'] ?? 0]));
     }
 }

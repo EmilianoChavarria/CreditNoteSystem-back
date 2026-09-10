@@ -237,19 +237,6 @@ class NotificationService
         );
     }
 
-    public function notifyForecastStepApproved(ForecastChangeRequest $changeRequest, User $approver, string $clientName = ''): void
-    {
-        $client = $clientName ? " ({$clientName})" : '';
-
-        $this->createAndBroadcast(
-            userId: (int) $changeRequest->submittedByUserId,
-            type: 'forecast_step_approved',
-            relatedId: (int) $changeRequest->id,
-            title: 'Tu solicitud avanzó en el flujo de aprobación',
-            message: "{$approver->fullName} aprobó el cambio de monto para el mes {$changeRequest->month}/{$changeRequest->year} — Cliente #{$changeRequest->idClient}{$client}. Pendiente de aprobación final por GENERAL MANAGER.",
-        );
-    }
-
     public function notifyForecastApproved(ForecastChangeRequest $changeRequest, User $approver, string $clientName = ''): void
     {
         $client = $clientName ? " ({$clientName})" : '';
@@ -293,19 +280,6 @@ class NotificationService
         );
     }
 
-    public function notifyDistributorForecastStepApproved(DistributorForecastChangeRequest $changeRequest, User $approver, string $distributorName = ''): void
-    {
-        $distributor = $distributorName ? " ({$distributorName})" : '';
-
-        $this->createAndBroadcast(
-            userId: (int) $changeRequest->submittedByUserId,
-            type: 'distributor_forecast_step_approved',
-            relatedId: (int) $changeRequest->id,
-            title: 'Tu solicitud avanzó en el flujo de aprobación',
-            message: "{$approver->fullName} aprobó el cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}. Pendiente de aprobación final por GENERAL MANAGER.",
-        );
-    }
-
     public function notifyDistributorForecastApproved(DistributorForecastChangeRequest $changeRequest, User $approver, string $distributorName = ''): void
     {
         $distributor = $distributorName ? " ({$distributorName})" : '';
@@ -329,6 +303,41 @@ class NotificationService
             relatedId: (int) $changeRequest->id,
             title: 'Tu solicitud de cambio fue rechazada',
             message: "{$rejector->fullName} rechazó el cambio de objetivo para el mes {$changeRequest->month}/{$changeRequest->year} — Distribuidor #{$changeRequest->distributorId}{$distributor}.",
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Notificaciones agrupadas (la aprobación de forecast es todo o nada por
+    // cliente / distribuidor, así que el aviso también sale en conjunto)
+    // -------------------------------------------------------------------------
+
+    /** @param array<int, string> $monthLabels */
+    public function notifyForecastGroupResolved(
+        int $submitterUserId,
+        User $actor,
+        int $clientId,
+        string $clientName,
+        array $monthLabels,
+        bool $approved,
+        ?int $relatedId = null,
+        bool $isDistributor = false,
+    ): void {
+        $entity = $isDistributor ? 'Distribuidor' : 'Cliente';
+        $client = $clientName ? " ({$clientName})" : '';
+        $months = implode(', ', $monthLabels);
+        $count  = count($monthLabels);
+        $noun   = $count === 1 ? 'el mes' : "los {$count} meses";
+
+        $prefix = $isDistributor ? 'distributor_forecast' : 'forecast';
+
+        $this->createAndBroadcast(
+            userId: $submitterUserId,
+            type: $approved ? "{$prefix}_approved" : "{$prefix}_rejected",
+            relatedId: $relatedId,
+            title: $approved ? 'Tus solicitudes de cambio fueron aprobadas' : 'Tus solicitudes de cambio fueron rechazadas',
+            message: $approved
+                ? "{$actor->fullName} aprobó {$noun} del {$entity} #{$clientId}{$client}: {$months}. Los nuevos objetivos de ventas han sido confirmados."
+                : "{$actor->fullName} rechazó {$noun} del {$entity} #{$clientId}{$client}: {$months}.",
         );
     }
 

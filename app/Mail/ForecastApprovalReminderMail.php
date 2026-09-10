@@ -17,12 +17,17 @@ class ForecastApprovalReminderMail extends Mailable
     public function __construct(
         public string $approverName,
         public array  $items,
+        public string $clientName = '',
     ) {
     }
 
     public function build(): self
     {
-        return $this->subject('Recordatorio: forecasts pendientes de tu aprobación')
+        $subject = $this->clientName !== ''
+            ? "Recordatorio: forecast pendiente de tu aprobación — {$this->clientName}"
+            : 'Recordatorio: forecasts pendientes de tu aprobación';
+
+        return $this->subject($subject)
             ->view('emails.forecast_approval_reminder');
     }
 }

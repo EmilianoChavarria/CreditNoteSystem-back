@@ -24,6 +24,7 @@ class StoreNationalCustomerRequest extends FormRequest
     {
         return [
             'customerNumber'   => ['required', 'string', 'max:50'],
+            'sapName'          => ['nullable', 'string', 'max:255'],
             'emails'           => ['nullable', 'string', 'max:500'],
             'returnPercentage' => ['nullable', 'numeric', 'between:0,100'],
             'currency'         => ['nullable', Rule::in(NationalCustomer::CURRENCIES)],

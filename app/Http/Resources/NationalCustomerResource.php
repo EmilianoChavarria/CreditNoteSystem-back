@@ -12,6 +12,8 @@ class NationalCustomerResource extends JsonResource
         return [
             'id'               => $this->id,
             'customerNumber'   => $this->customerNumber,
+            // Nombre SAP: en forecast se muestra en lugar de la razón social.
+            'sapName'          => $this->sapName,
             'emails'           => $this->emails,
             'returnPercentage' => $this->returnPercentage,
             'currency'         => $this->currency,

@@ -23,6 +23,7 @@ class NationalCustomer extends Model
 
     protected $fillable = [
         'customerNumber',
+        'sapName',
         'emails',
         'returnPercentage',
         'currency',

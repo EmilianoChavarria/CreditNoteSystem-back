@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Exports\ForecastGroupInvoicesExport;
 use App\Exports\ForecastInvoicesExport;
+use App\Http\Controllers\Concerns\ResolvesAuthenticatedUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Forecast\StoreForecastRequest;
 use App\Http\Requests\Forecast\UpdateClientExtRequest;
@@ -11,7 +12,9 @@ use App\Http\Requests\Forecast\UpdateForecastEmailsRequest;
 use App\Http\Resources\ForecastCreditNoteResource;
 use App\Services\DistributorForecastService;
 use App\Services\ForecastCreditNoteService;
+use App\Services\ForecastExportService;
 use App\Services\ForecastService;
+use App\Services\SimpleExcelExportService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -19,10 +22,14 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ForecastController extends Controller
 {
+    use ResolvesAuthenticatedUser;
+
     public function __construct(
         private readonly ForecastService $forecastService,
         private readonly DistributorForecastService $distributorForecastService,
-        private readonly ForecastCreditNoteService $forecastCreditNoteService
+        private readonly ForecastCreditNoteService $forecastCreditNoteService,
+        private readonly ForecastExportService $forecastExportService,
+        private readonly SimpleExcelExportService $excelExportService,
     ) {
     }
 
@@ -115,6 +122,41 @@ class ForecastController extends Controller
     }
 
     /** Historial de NC generadas desde forecast para un cliente/grupo. */
+    /**
+     * Historial global de NC de forecast. El alcance depende del rol: el sales
+     * engineer ve su cartera, el manager la de sus ingenieros (o la de uno) y el
+     * FORECAST ADMIN todas.
+     */
+    public function creditNoteHistoryScoped(Request $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $year       = $request->query('year');
+        $month      = $request->query('month');
+        $engineerId = $request->query('salesEngineerId');
+        $entityType = $request->query('tipo');
+        $entityId   = $request->query('id');
+
+        try {
+            $history = $this->forecastCreditNoteService->getScopedHistory(
+                $actor,
+                is_numeric($year) ? (int) $year : null,
+                is_numeric($engineerId) ? (int) $engineerId : null,
+                in_array($entityType, ['cliente', 'grupo'], true) ? $entityType : null,
+                is_numeric($entityId) ? (int) $entityId : null,
+                is_numeric($month) ? (int) $month : null,
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 403), 403);
+        }
+
+        return response()->json(ApiResponse::success('Historial de notas de crédito', ForecastCreditNoteResource::collection($history)));
+    }
+
     public function creditNoteHistory(string $tipo, string $id)
     {
         if (!in_array($tipo, ['cliente', 'grupo'], true)) {
@@ -166,6 +208,36 @@ class ForecastController extends Controller
     ];
 
     /** Template CSV para carga masiva de forecast: por sales engineer (?salesEngineerId=) o de todos los clientes. */
+    /**
+     * Excel de la vista de forecast: por cliente/distribuidor, un renglón de
+     * forecast y otro de ventas con los 12 meses y el total. El alcance depende
+     * del rol (ver ForecastExportService::resolveScope()).
+     */
+    public function exportExcel(Request $request)
+    {
+        $actor = $this->resolveAuthenticatedUser($request);
+
+        if (!$actor) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $year       = (int) $request->query('year', now()->year);
+        $engineerId = $request->query('salesEngineerId');
+        $engineerId = is_numeric($engineerId) ? (int) $engineerId : null;
+
+        try {
+            $export = $this->forecastExportService->build($actor, $year, $engineerId);
+        } catch (\RuntimeException $e) {
+            return response()->json(ApiResponse::error($e->getMessage(), null, 403), 403);
+        }
+
+        return response($this->excelExportService->buildSheets($export['sheets']), 200, [
+            'Content-Type'        => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+            'Cache-Control'       => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
+
     public function exportTemplate(Request $request)
     {
         $salesEngineerId = $request->query('salesEngineerId');
@@ -212,29 +284,45 @@ class ForecastController extends Controller
         return $csv;
     }
 
-    public function invoicesByMonth(string $idClient, int $year, int $month)
+    public function invoicesByMonth(Request $request, string $idClient, int $year, int $month)
     {
+        $currency = $this->requestedCurrency($request);
+
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
-            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year, $currency);
             return response()->json(ApiResponse::success('Facturas del mes por grupo', $data));
         }
 
-        $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year);
+        $invoices = $this->forecastService->getInvoicesByMonth($idClient, $month, $year, $currency);
 
         return response()->json(ApiResponse::success('Facturas del mes', $invoices));
     }
 
-    public function invoiceProductsByMonth(string $idClient, int $year, int $month)
+    public function invoiceProductsByMonth(Request $request, string $idClient, int $year, int $month)
     {
-        $data = $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year);
+        $data = $this->forecastService->getInvoiceProductsByMonth($idClient, $month, $year, $this->requestedCurrency($request));
 
         return response()->json(ApiResponse::success('Productos por factura del mes', $data));
     }
 
-    public function exportInvoicesByMonth(string $idClient, int $year, int $month)
+    /**
+     * Moneda forzada por el consumidor (?currency=USD). Sin ella, cada cliente se
+     * expresa en la moneda que tiene asignada, que es lo que necesita la vista de
+     * notas de crédito.
+     */
+    private function requestedCurrency(Request $request): ?string
     {
+        $currency = mb_strtoupper(trim((string) $request->query('currency', '')));
+
+        return in_array($currency, ['USD', 'MXN'], true) ? $currency : null;
+    }
+
+    public function exportInvoicesByMonth(Request $request, string $idClient, int $year, int $month)
+    {
+        $forced = $this->requestedCurrency($request);
+
         if (\App\Models\ClientGroup::where('id', $idClient)->exists()) {
-            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year);
+            $data = $this->forecastService->getGroupInvoicesByMonth($idClient, $month, $year, $forced);
 
             $sections = collect($data['sections'])->map(function ($section) use ($month, $year) {
                 $section['products'] = $this->productsByFolio((string) $section['clientId'], $month, $year, $section['moneda'] ?? null);
@@ -250,14 +338,14 @@ class ForecastController extends Controller
             );
         }
 
-        $currency   = $this->forecastService->resolveClientCurrency($idClient);
+        $currency   = $forced ?? $this->forecastService->resolveClientCurrency($idClient);
         $invoices   = $this->forecastService->getInvoicesByMonth($idClient, $month, $year, $currency);
         $clientName = $this->forecastService->getClientName($idClient);
 
         $filename = "facturas_{$clientName}_{$year}_{$month}.xlsx";
 
         return Excel::download(
-            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year), $idClient, $currency),
+            new ForecastInvoicesExport($invoices, $clientName, $month, $year, null, $this->productsByFolio($idClient, $month, $year, $currency), $idClient, $currency),
             $filename
         );
     }

@@ -7,6 +7,7 @@ use App\Models\ForecastCreditNote;
 use App\Models\RequestClassification;
 use App\Models\RequestReason;
 use App\Models\RequestType;
+use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -37,6 +38,8 @@ class ForecastCreditNoteService
         private readonly RequestNumberService $requestNumberService,
         private readonly BanxicoService $banxico,
         private readonly RequestAttachmentService $requestAttachmentService,
+        private readonly ForecastRoleService $roleService,
+        private readonly SalesEngineerAssignmentService $assignmentService,
     ) {
     }
 
@@ -54,6 +57,129 @@ class ForecastCreditNoteService
             : $query->where('entityType', 'cliente')->where('entityId', (int) $id)->whereNull('groupId');
 
         return $query->orderByDesc('year')->orderByDesc('month')->get();
+    }
+
+    /**
+     * Historial global de NC de forecast, acotado a lo que el rol puede ver:
+     * - SALES ENGINEER: solo su cartera (sus clientes y los grupos que lleva).
+     * - SALES ENGINEER / MANAGER: la cartera de los ingenieros a su cargo, o la
+     *   de uno solo cuando se manda salesEngineerId.
+     * - FORECAST ADMIN: todo; salesEngineerId lo acota a un ingeniero.
+     *
+     * @return array{notes: Collection, engineers: array<int, array{id:int, fullName:string}>}
+     *
+     * @throws \RuntimeException si el ingeniero pedido no está a cargo del manager.
+     */
+    public function getScopedHistory(
+        User $actor,
+        ?int $year = null,
+        ?int $engineerId = null,
+        ?string $entityType = null,
+        ?int $entityId = null,
+        ?int $month = null,
+    ): Collection {
+        $query = ForecastCreditNote::with('request')
+            ->when($year, fn ($q) => $q->where('year', $year))
+            ->when($month, fn ($q) => $q->where('month', $month));
+
+        $engineerIds = $this->resolveEngineerScope($actor, $engineerId);
+
+        if ($engineerIds !== null) {
+            $clientIds = [];
+            $groupIds  = [];
+
+            foreach ($engineerIds as $id) {
+                $clientIds = array_merge($clientIds, $this->forecastService->clientIdsForEngineer($id));
+                $groupIds  = array_merge($groupIds, ClientGroup::where('responsibleUserId', $id)->pluck('id')->all());
+            }
+
+            $clientIds = array_values(array_unique($clientIds));
+            $groupIds  = array_values(array_unique($groupIds));
+
+            // Una NC pertenece a la cartera si su grupo lo lleva el ingeniero, o si
+            // el cliente al que se le emitió es de sus clientes (con o sin grupo).
+            $query->where(function ($q) use ($clientIds, $groupIds) {
+                $q->whereRaw('1 = 0');
+
+                if (!empty($groupIds)) {
+                    $q->orWhereIn('groupId', $groupIds);
+                }
+
+                if (!empty($clientIds)) {
+                    $q->orWhereIn('entityId', $clientIds);
+                }
+            });
+        }
+
+        // Filtro opcional por cliente/grupo elegido en la vista.
+        if ($entityId) {
+            $entityType === 'grupo'
+                ? $query->where('groupId', $entityId)
+                : $query->whereNull('groupId')->where('entityId', $entityId);
+        }
+
+        $notes = $query->orderByDesc('year')->orderByDesc('month')->orderByDesc('createdAt')->get();
+
+        return $this->withEntityNames($notes);
+    }
+
+    /**
+     * Ingenieros de ventas cuyo historial puede consultar el usuario.
+     *
+     * @return array<int, int>|null null = sin límite de cartera (FORECAST ADMIN)
+     */
+    private function resolveEngineerScope(User $actor, ?int $engineerId): ?array
+    {
+        if ($this->roleService->isForecastAdmin($actor)) {
+            return $engineerId ? [$engineerId] : null;
+        }
+
+        if ($this->roleService->isSalesEngineerManager($actor)) {
+            $assigned = $this->assignmentService->getAssignedUsers($actor)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if ($engineerId === null) {
+                return $assigned;
+            }
+
+            if (!in_array($engineerId, $assigned, true)) {
+                throw new \RuntimeException('El ingeniero de ventas seleccionado no está a tu cargo.');
+            }
+
+            return [$engineerId];
+        }
+
+        // SALES ENGINEER: siempre su propia cartera.
+        return [(int) $actor->id];
+    }
+
+    /**
+     * Adjunta a cada NC el nombre del cliente y, si aplica, el del grupo: el
+     * historial global se lista sin haber elegido una entidad.
+     *
+     * @param  Collection<int, ForecastCreditNote> $notes
+     * @return Collection<int, ForecastCreditNote>
+     */
+    private function withEntityNames(Collection $notes): Collection
+    {
+        if ($notes->isEmpty()) {
+            return $notes;
+        }
+
+        $clientNames = $this->forecastService->clientNames(
+            $notes->pluck('entityId')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all()
+        );
+
+        $groupNames = ClientGroup::whereIn('id', $notes->pluck('groupId')->filter()->unique()->values()->all())
+            ->pluck('name', 'id')
+            ->all();
+
+        return $notes->each(function (ForecastCreditNote $note) use ($clientNames, $groupNames): void {
+            $note->clientName = $clientNames[(int) $note->entityId] ?? null;
+            $note->groupName  = $note->groupId ? ($groupNames[(int) $note->groupId] ?? null) : null;
+        });
     }
 
     /**

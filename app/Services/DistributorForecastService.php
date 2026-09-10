@@ -36,7 +36,7 @@ class DistributorForecastService
         return $this->buildForecastRows(
             Distributor::where('salesEngineerId', $salesEngineerId)
                 ->orderBy('businessName')
-                ->get(['id', 'businessName']),
+                ->get(['id', 'businessName', 'countrycode']),
             $year
         );
     }
@@ -45,7 +45,7 @@ class DistributorForecastService
     public function getAll(int $year): Collection
     {
         return $this->buildForecastRows(
-            Distributor::orderBy('businessName')->get(['id', 'businessName']),
+            Distributor::orderBy('businessName')->get(['id', 'businessName', 'countrycode']),
             $year
         );
     }
@@ -79,6 +79,8 @@ class DistributorForecastService
                 'isGroup'     => false,
                 'idCliente'   => $distributor->id,
                 'razonSocial' => $distributor->businessName,
+                // Permite filtrar por zona (ARG = Argentina, el resto Centroamérica).
+                'countrycode' => $distributor->countrycode,
                 'year'        => $year,
                 'months'      => $months->map(fn($m) => $this->buildMonthEntry($m, $forecast, $modifications))->values(),
             ];

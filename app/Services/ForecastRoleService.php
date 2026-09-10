@@ -16,15 +16,13 @@ class ForecastRoleService
     }
 
     /**
-     * FORECAST ADMIN entra aquí porque supervisa todo el flujo: ve cualquier
-     * solicitud pendiente y puede resolverla aunque no sea el aprobador designado.
+     * El flujo termina en el SALES ENGINEER MANAGER. FORECAST ADMIN entra aquí
+     * porque lo supervisa completo: ve cualquier solicitud pendiente y puede
+     * resolverla aunque no sea el aprobador designado.
      */
     public function canApprove(User $user): bool
     {
-        $role = $this->normalizeRole($user);
-
         return $this->isSalesEngineerManager($user)
-            || $role === 'GENERAL MANAGER'
             || $this->isForecastAdmin($user);
     }
 
@@ -38,14 +36,6 @@ class ForecastRoleService
         $role = $this->normalizeRole($user);
 
         return str_contains($role, 'SALES ENGINEER') && str_contains($role, 'MANAGER');
-    }
-
-    public function findGeneralManager(): ?User
-    {
-        return User::whereHas('role', fn($q) => $q->whereRaw('UPPER(roleName) = ?', ['GENERAL MANAGER']))
-            ->where('isActive', true)
-            ->whereNull('deletedAt')
-            ->first();
     }
 
     public function findForecastAdmin(): ?User
