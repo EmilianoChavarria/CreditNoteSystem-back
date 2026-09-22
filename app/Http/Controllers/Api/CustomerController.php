@@ -7,6 +7,7 @@ use App\Http\Requests\Customers\SearchCustomerRequest;
 use App\Http\Requests\Customers\StoreCustomerLocalRequest;
 use App\Http\Requests\Customers\StoreCustomerRequest;
 use App\Http\Requests\Customers\UpdateCustomerRequest;
+use App\Http\Requests\Customers\UpdateCustomerReturnsEmailsRequest;
 use App\Http\Resources\CustomerResource;
 use App\Models\Customer;
 use App\Services\CustomerQueryService;
@@ -112,6 +113,16 @@ class CustomerController extends Controller
         return response()->json(
             ApiResponse::success('Customer actualizado exitosamente', CustomerResource::make($customer))
         );
+    }
+
+    /**
+     * Guardar los correos de recordatorio de política de devoluciones de un customer
+     */
+    public function updateReturnsEmails(int $idCliente, UpdateCustomerReturnsEmailsRequest $request)
+    {
+        $this->customerQueryService->updateReturnsEmails($idCliente, $request->validated()['emails']);
+
+        return response()->json(ApiResponse::success('Correos de recordatorio actualizados exitosamente'));
     }
 
     /**

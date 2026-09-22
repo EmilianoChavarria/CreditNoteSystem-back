@@ -10,5 +10,6 @@ Route::middleware(['jwt'])->group(function () {
     Route::post('customers', [CustomerController::class, 'store']);
     Route::post('customers/saveLocal', [CustomerController::class, 'storeInLocalTable']);
     Route::put('customers/{id}', [CustomerController::class, 'update']);
+    Route::put('customers/{idCliente}/returns-emails', [CustomerController::class, 'updateReturnsEmails'])->whereNumber('idCliente');
     Route::delete('customers/{id}', [CustomerController::class, 'destroy']);
 });

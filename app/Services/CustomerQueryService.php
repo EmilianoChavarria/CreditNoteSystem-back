@@ -23,6 +23,37 @@ class CustomerQueryService
 
     private array $userCache = [];
 
+    /**
+     * Guarda los correos de recordatorio de política de devoluciones de un cliente.
+     *
+     * @param string[] $emails
+     */
+    public function updateReturnsEmails(int $idCliente, array $emails): void
+    {
+        if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosDevoluciones')) {
+            throw new \RuntimeException('La columna correosDevoluciones no existe en ' . self::CLIENT_EXT_TABLE . '. Agrégala a la BD antes de continuar.');
+        }
+
+        $value = implode(';', $emails);
+        $clienteId = (string) $idCliente;
+
+        $exists = DB::connection(self::CONNECTION)
+            ->table(self::CLIENT_EXT_TABLE)
+            ->where('idCliente', $clienteId)
+            ->exists();
+
+        if ($exists) {
+            DB::connection(self::CONNECTION)
+                ->table(self::CLIENT_EXT_TABLE)
+                ->where('idCliente', $clienteId)
+                ->update(['correosDevoluciones' => $value]);
+        } else {
+            DB::connection(self::CONNECTION)
+                ->table(self::CLIENT_EXT_TABLE)
+                ->insert(['idCliente' => $clienteId, 'correosDevoluciones' => $value]);
+        }
+    }
+
     public function paginated(?int $perPage, string $search)
     {
         [$clientColumns, $clientExtColumns] = $this->getClientColumns();
