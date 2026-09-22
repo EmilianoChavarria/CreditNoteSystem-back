@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <style>
 * { margin: 0; box-sizing: border-box; }
-body { font-family: Arial, sans-serif; font-size: 8pt; color: #000; padding: 50px;}
+body { font-family: Arial, sans-serif; font-size: 8pt; color: #000; padding: 30px 35px;}
 table { width: 100%; border-collapse: collapse; }
 td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
 .label { font-size: 7pt; color: #333; }
@@ -18,6 +18,8 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
 .small { font-size: 6.5pt; }
 .italic-small { font-size: 6.5pt; font-style: italic; }
 .logo { font-size: 22pt; font-weight: 900; letter-spacing: -1px; }
+.comments-box { border: 1px solid #000; padding: 3px 5px; margin: 15px 0; }
+.comments-body { margin-top: 3px; font-size: 7.5pt; line-height: 1.2; word-wrap: break-word; }
 </style>
 </head>
 <body>
@@ -126,14 +128,12 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
 </table>
 
 {{-- COMMENTS --}}
-<table style="margin-top:15px; margin-bottom:15px;">
-  <tr>
-    <td>
-      <div class="label">Comentarios / Comments</div>
-      <div style="margin-top:3px; font-size:8pt;">{!! nl2br(e(wordwrap((string)($r->comments ?? ''), 85, "\n", true))) !!}</div>
-    </td>
-  </tr>
-</table>
+{{-- Se usa un div y no una tabla: DomPDF no puede partir una celda entre
+     paginas, y con comentarios largos generaba paginas en blanco. --}}
+<div class="comments-box">
+  <div class="label">Comentarios / Comments</div>
+  <div class="comments-body">{!! nl2br(e(wordwrap((string)($r->comments ?? ''), 110, "\n", true))) !!}</div>
+</div>
 
 {{-- IMPORTANT NOTE --}}
 <table style="margin-bottom:15px;">
