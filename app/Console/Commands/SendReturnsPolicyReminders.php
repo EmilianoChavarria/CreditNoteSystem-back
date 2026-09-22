@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Se ejecuta el día 1 de cada mes: revisa qué dígito vence el mes SIGUIENTE
  * y notifica solo a los clientes de ese dígito que tengan al menos un
- * correo registrado en `correosDevoluciones`.
+ * correo registrado en `correosForecast` (columna reutilizada; sin uso previo).
  */
 class SendReturnsPolicyReminders extends Command
 {
@@ -55,8 +55,8 @@ class SendReturnsPolicyReminders extends Command
             return Command::SUCCESS;
         }
 
-        if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosDevoluciones')) {
-            $this->warn('La columna correosDevoluciones no existe todavía. Nada que enviar.');
+        if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosForecast')) {
+            $this->warn('La columna correosForecast no existe todavía. Nada que enviar.');
             return Command::SUCCESS;
         }
 
@@ -64,9 +64,9 @@ class SendReturnsPolicyReminders extends Command
             ->table(self::CLIENT_TABLE . ' as cl')
             ->join(self::CLIENT_EXT_TABLE . ' as cle', 'cle.idCliente', '=', 'cl.idCliente')
             ->whereRaw('RIGHT(cl.idCliente, 1) = ?', [(string) $digit])
-            ->whereNotNull('cle.correosDevoluciones')
-            ->where('cle.correosDevoluciones', '!=', '')
-            ->select(['cl.idCliente', 'cl.razonSocial', 'cle.correosDevoluciones'])
+            ->whereNotNull('cle.correosForecast')
+            ->where('cle.correosForecast', '!=', '')
+            ->select(['cl.idCliente', 'cl.razonSocial', 'cle.correosForecast'])
             ->get();
 
         if ($clients->isEmpty()) {
@@ -78,7 +78,7 @@ class SendReturnsPolicyReminders extends Command
         $sent = 0;
 
         foreach ($clients as $client) {
-            $emails = array_values(array_filter(array_map('trim', explode(';', (string) $client->correosDevoluciones))));
+            $emails = array_values(array_filter(array_map('trim', explode(';', (string) $client->correosForecast))));
 
             if (empty($emails)) {
                 continue;

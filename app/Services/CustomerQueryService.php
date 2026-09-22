@@ -30,8 +30,8 @@ class CustomerQueryService
      */
     public function updateReturnsEmails(int $idCliente, array $emails): void
     {
-        if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosDevoluciones')) {
-            throw new \RuntimeException('La columna correosDevoluciones no existe en ' . self::CLIENT_EXT_TABLE . '. Agrégala a la BD antes de continuar.');
+        if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosForecast')) {
+            throw new \RuntimeException('La columna correosForecast no existe en ' . self::CLIENT_EXT_TABLE . '.');
         }
 
         $value = implode(';', $emails);
@@ -46,11 +46,11 @@ class CustomerQueryService
             DB::connection(self::CONNECTION)
                 ->table(self::CLIENT_EXT_TABLE)
                 ->where('idCliente', $clienteId)
-                ->update(['correosDevoluciones' => $value]);
+                ->update(['correosForecast' => $value]);
         } else {
             DB::connection(self::CONNECTION)
                 ->table(self::CLIENT_EXT_TABLE)
-                ->insert(['idCliente' => $clienteId, 'correosDevoluciones' => $value]);
+                ->insert(['idCliente' => $clienteId, 'correosForecast' => $value]);
         }
     }
 
