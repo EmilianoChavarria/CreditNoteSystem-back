@@ -2,6 +2,7 @@
 
 use App\Console\Commands\ReleaseStaleRequestNumberReservations;
 use App\Console\Commands\SendPendingApprovalReminders;
+use App\Console\Commands\SendReturnsPolicyReminders;
 use App\Console\Commands\SyncForecastSales;
 use App\Console\Commands\SyncProductCatalog;
 use Illuminate\Foundation\Inspiring;
@@ -31,3 +32,11 @@ Schedule::command(SyncProductCatalog::class)
     ->timezone('America/Mexico_City')
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/sync-product-catalog.log'));
+
+// Recordatorio de política anual de devoluciones: el día 1 de cada mes avisa
+// a los clientes cuyo dígito vence el mes siguiente (1 mes de anticipación).
+Schedule::command(SendReturnsPolicyReminders::class)
+    ->monthlyOn(1, '08:00')
+    ->timezone('America/Mexico_City')
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/returns-policy-reminders.log'));
