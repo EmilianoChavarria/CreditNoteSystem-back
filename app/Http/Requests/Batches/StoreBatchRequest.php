@@ -30,6 +30,7 @@ class StoreBatchRequest extends FormRequest
                     'productClassification',
                     'distributors',
                     'nationalCustomers',
+                    'customerReturnsEmails',
                 ]),
             ],
             'requestTypeId' => ['nullable', 'integer', 'exists:requesttype,id'],
