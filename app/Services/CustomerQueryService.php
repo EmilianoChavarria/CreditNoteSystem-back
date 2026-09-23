@@ -3,12 +3,8 @@
 namespace App\Services;
 
 use App\Models\User;
-use App\Services\Batches\Parsers\BulkFileParser;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
 
 class CustomerQueryService
 {
@@ -26,113 +22,6 @@ class CustomerQueryService
     ];
 
     private array $userCache = [];
-
-    public function __construct(private readonly BulkFileParser $fileParser)
-    {
-    }
-
-    /**
-     * Carga masiva de correos de recordatorio de devoluciones.
-     * Columnas: número de cliente + correos separados por ";" (o ",").
-     * Un mismo cliente puede aparecer en varias filas: sus correos se juntan.
-     * Reemplaza los correos guardados del cliente por los del archivo.
-     * Una fila inválida se reporta y no afecta a las demás; si un cliente tiene filas
-     * válidas e inválidas, se guardan solo las válidas.
-     *
-     * @return array{total: int, updated: int, failed: int, errors: array<int, array{row: int, customerNumber: ?string, message: string}>}
-     */
-    public function bulkUpdateReturnsEmails(UploadedFile $file): array
-    {
-        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
-        $storedPath = $file->store('tmp/returns-emails-bulk', 'local');
-
-        // total = filas leídas; updated/failed = filas válidas guardadas / filas con error.
-        $result = ['total' => 0, 'updated' => 0, 'failed' => 0, 'errors' => []];
-        $groups = [];
-
-        try {
-            foreach ($this->fileParser->parseByStoredFile($storedPath, $extension) as $row) {
-                $result['total']++;
-                $rowNumber = (int) ($row['_rowNumber'] ?? $result['total'] + 1);
-                $customerNumber = null;
-
-                try {
-                    $customerNumber = $this->firstValue($row, ['customer_number', 'customernumber', 'client_number', 'clientnumber', 'idcliente', 'id_cliente', 'numero_cliente', 'numero_de_cliente', 'cliente']);
-                    $rawEmails = $this->firstValue($row, ['emails', 'email', 'correos', 'correo']);
-
-                    if ($customerNumber === null) {
-                        throw new \RuntimeException('Falta el número de cliente.');
-                    }
-
-                    $emails = array_values(array_unique(array_filter(array_map('trim', preg_split('/[;,\r\n]+/', (string) $rawEmails) ?: []))));
-
-                    if (count($emails) === 0) {
-                        throw new \RuntimeException('Debe indicar al menos un correo electrónico.');
-                    }
-
-                    foreach ($emails as $email) {
-                        if (Validator::make(['e' => $email], ['e' => ['email']])->fails()) {
-                            throw new \RuntimeException("Correo inválido: '{$email}'.");
-                        }
-                    }
-
-                    $groups[$customerNumber]['rows'][] = $rowNumber;
-                    $groups[$customerNumber]['emails'] = array_merge($groups[$customerNumber]['emails'] ?? [], $emails);
-                } catch (\Throwable $e) {
-                    $result['failed']++;
-                    $result['errors'][] = [
-                        'row' => $rowNumber,
-                        'customerNumber' => $customerNumber,
-                        'message' => $e->getMessage(),
-                    ];
-                }
-            }
-
-            foreach ($groups as $customerNumber => $group) {
-                $customerNumber = (string) $customerNumber;
-
-                try {
-                    $exists = DB::connection(self::CONNECTION)
-                        ->table(self::CLIENT_TABLE)
-                        ->where('idCliente', $customerNumber)
-                        ->exists();
-
-                    if (!$exists) {
-                        throw new \RuntimeException("El cliente '{$customerNumber}' no existe.");
-                    }
-
-                    $this->updateReturnsEmails((int) $customerNumber, array_values(array_unique($group['emails'])));
-                    $result['updated'] += count($group['rows']);
-                } catch (\Throwable $e) {
-                    foreach ($group['rows'] as $rowNumber) {
-                        $result['failed']++;
-                        $result['errors'][] = [
-                            'row' => $rowNumber,
-                            'customerNumber' => $customerNumber,
-                            'message' => $e->getMessage(),
-                        ];
-                    }
-                }
-            }
-        } finally {
-            Storage::disk('local')->delete($storedPath);
-        }
-
-        usort($result['errors'], fn ($a, $b) => $a['row'] <=> $b['row']);
-
-        return $result;
-    }
-
-    private function firstValue(array $row, array $keys): ?string
-    {
-        foreach ($keys as $key) {
-            if (isset($row[$key]) && trim((string) $row[$key]) !== '') {
-                return trim((string) $row[$key]);
-            }
-        }
-
-        return null;
-    }
 
     /**
      * Guarda los correos de recordatorio de política de devoluciones de un cliente.
