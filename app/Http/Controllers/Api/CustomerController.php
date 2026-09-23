@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Customers\BulkUpdateCustomerReturnsEmailsRequest;
 use App\Http\Requests\Customers\SearchCustomerRequest;
 use App\Http\Requests\Customers\StoreCustomerLocalRequest;
 use App\Http\Requests\Customers\StoreCustomerRequest;
@@ -123,6 +124,16 @@ class CustomerController extends Controller
         $this->customerQueryService->updateReturnsEmails($idCliente, $request->validated()['emails']);
 
         return response()->json(ApiResponse::success('Correos de recordatorio actualizados exitosamente'));
+    }
+
+    /**
+     * Carga masiva de correos de recordatorio de devoluciones (número de cliente + correos separados por ;)
+     */
+    public function bulkUpdateReturnsEmails(BulkUpdateCustomerReturnsEmailsRequest $request)
+    {
+        $result = $this->customerQueryService->bulkUpdateReturnsEmails($request->file('file'));
+
+        return response()->json(ApiResponse::success('Carga masiva procesada', $result));
     }
 
     /**

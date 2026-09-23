@@ -3,8 +3,12 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Services\Batches\Parsers\BulkFileParser;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class CustomerQueryService
 {
@@ -22,6 +26,94 @@ class CustomerQueryService
     ];
 
     private array $userCache = [];
+
+    public function __construct(private readonly BulkFileParser $fileParser)
+    {
+    }
+
+    /**
+     * Carga masiva de correos de recordatorio de devoluciones.
+     * Columnas: número de cliente + correos separados por ";" (o ",").
+     * Reemplaza los correos guardados del cliente. Cada fila se procesa de forma independiente.
+     *
+     * @return array{total: int, updated: int, failed: int, errors: array<int, array{row: int, customerNumber: ?string, message: string}>}
+     */
+    public function bulkUpdateReturnsEmails(UploadedFile $file): array
+    {
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
+        $storedPath = $file->store('tmp/returns-emails-bulk', 'local');
+
+        $result = ['total' => 0, 'updated' => 0, 'failed' => 0, 'errors' => []];
+        $seen = [];
+
+        try {
+            foreach ($this->fileParser->parseByStoredFile($storedPath, $extension) as $row) {
+                $result['total']++;
+                $rowNumber = (int) ($row['_rowNumber'] ?? $result['total'] + 1);
+                $customerNumber = null;
+
+                try {
+                    $customerNumber = $this->firstValue($row, ['customer_number', 'customernumber', 'client_number', 'clientnumber', 'idcliente', 'id_cliente', 'numero_cliente', 'numero_de_cliente', 'cliente']);
+                    $rawEmails = $this->firstValue($row, ['emails', 'email', 'correos', 'correo']);
+
+                    if ($customerNumber === null) {
+                        throw new \RuntimeException('Falta el número de cliente.');
+                    }
+
+                    if (isset($seen[$customerNumber])) {
+                        throw new \RuntimeException("El cliente '{$customerNumber}' está repetido en el archivo (fila {$seen[$customerNumber]}).");
+                    }
+                    $seen[$customerNumber] = $rowNumber;
+
+                    $emails = array_values(array_unique(array_filter(array_map('trim', preg_split('/[;,\r\n]+/', (string) $rawEmails) ?: []))));
+
+                    if (count($emails) === 0) {
+                        throw new \RuntimeException('Debe indicar al menos un correo electrónico.');
+                    }
+
+                    foreach ($emails as $email) {
+                        if (Validator::make(['e' => $email], ['e' => ['email']])->fails()) {
+                            throw new \RuntimeException("Correo inválido: '{$email}'.");
+                        }
+                    }
+
+                    $exists = DB::connection(self::CONNECTION)
+                        ->table(self::CLIENT_TABLE)
+                        ->where('idCliente', $customerNumber)
+                        ->exists();
+
+                    if (!$exists) {
+                        throw new \RuntimeException("El cliente '{$customerNumber}' no existe.");
+                    }
+
+                    $this->updateReturnsEmails((int) $customerNumber, $emails);
+                    $result['updated']++;
+                } catch (\Throwable $e) {
+                    $result['failed']++;
+                    $result['errors'][] = [
+                        'row' => $rowNumber,
+                        'customerNumber' => $customerNumber,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+            }
+        } finally {
+            Storage::disk('local')->delete($storedPath);
+        }
+
+        return $result;
+    }
+
+    private function firstValue(array $row, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if (isset($row[$key]) && trim((string) $row[$key]) !== '') {
+                return trim((string) $row[$key]);
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Guarda los correos de recordatorio de política de devoluciones de un cliente.
