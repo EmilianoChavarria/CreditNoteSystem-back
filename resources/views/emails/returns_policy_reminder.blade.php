@@ -46,6 +46,20 @@
                                         ['Junio', 6], ['Julio', 7], ['Agosto', 8], ['Septiembre', 9], ['Octubre', 0],
                                     ];
                                 @endphp
+                                <tr>
+                                    <td style="padding: 12px 24px; border-bottom: 1px solid #d1d5db;">
+                                        <table width="100%" cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td style="color: #718096; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">
+                                                    Mes de devolución
+                                                </td>
+                                                <td align="right" style="color: #718096; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">
+                                                    Último dígito de número de cliente
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
                                 @foreach ($rows as $i => [$month, $digit])
                                 <tr>
                                     <td style="padding: 12px 24px; {{ $i !== count($rows) - 1 ? 'border-bottom: 1px solid #d1d5db;' : '' }} {{ $digit === $lastDigit ? 'background-color: #ffe8cc;' : '' }}">
@@ -54,8 +68,8 @@
                                                 <td style="color: #2d3748; font-size: 14px; {{ $digit === $lastDigit ? 'font-weight: 700;' : '' }}">
                                                     {{ $month }}
                                                 </td>
-                                                <td align="right" style="color: #718096; font-size: 13px;">
-                                                    último dígito de número de cliente {{ $digit }}
+                                                <td align="right" style="color: #2d3748; font-size: 14px; {{ $digit === $lastDigit ? 'font-weight: 700;' : '' }}">
+                                                    {{ $digit }}
                                                 </td>
                                             </tr>
                                         </table>
