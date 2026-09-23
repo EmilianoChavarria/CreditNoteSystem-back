@@ -9,6 +9,7 @@ Route::middleware(['jwt'])->group(function () {
     Route::get('batches/product-classification', [BatchController::class, 'productClassificationBatches']);
     Route::get('batches/distributors', [BatchController::class, 'distributorBatches']);
     Route::get('batches/national-customers', [BatchController::class, 'nationalCustomersBatches']);
+    Route::get('batches/customer-returns-emails', [BatchController::class, 'customerReturnsEmailsBatches']);
     Route::get('batches/forecast', [BatchController::class, 'forecastBatches']);
     Route::get('batches/{id}', [BatchController::class, 'show']);
     Route::get('batches/{id}/requests', [BatchController::class, 'requests']);

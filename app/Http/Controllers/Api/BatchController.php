@@ -101,6 +101,27 @@ class BatchController extends Controller
         return response()->json(ApiResponse::success('Cargas de clientes nacionales', $batches));
     }
 
+    public function customerReturnsEmailsBatches(Request $request)
+    {
+        $authUser = $request->attributes->get('authUser');
+
+        if (!$authUser || !isset($authUser->id)) {
+            return response()->json(ApiResponse::error('Usuario no autenticado', null, 401), 401);
+        }
+
+        $perPage = max(1, min(200, (int) $request->query('perPage', 15)));
+
+        $batches = Batch::query()
+            ->where('userId', (int) $authUser->id)
+            ->where('batchType', 'customerReturnsEmails')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+
+        $batches->setCollection(BatchResource::collection($batches->getCollection())->collection);
+
+        return response()->json(ApiResponse::success('Cargas de correos de devoluciones', $batches));
+    }
+
     public function forecastBatches(Request $request)
     {
         $authUser = $request->attributes->get('authUser');
