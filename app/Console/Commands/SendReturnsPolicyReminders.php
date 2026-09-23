@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Recuerda a los clientes, un mes antes, que su ventana de devoluciones
- * (definida por el último dígito de su número de cliente) está por vencer.
+ * Recuerda a los clientes que su ventana de devoluciones (definida por el
+ * último dígito de su número de cliente) vence este mes.
  *
  * Mapa dígito → mes de vencimiento:
  *  1 Ene, 2 Feb, 3 Mar, 4 Abr, 5 May, 6 Jun, 7 Jul, 8 Ago, 9 Sep, 0 Oct
  *
- * Se ejecuta el día 1 de cada mes: revisa qué dígito vence el mes SIGUIENTE
+ * Se ejecuta el día 1 de cada mes: revisa qué dígito vence ESTE mes
  * y notifica solo a los clientes de ese dígito que tengan al menos un
  * correo registrado en `correosForecast` (columna reutilizada; sin uso previo).
  */
@@ -38,7 +38,7 @@ class SendReturnsPolicyReminders extends Command
 
     protected $signature = 'reminders:returns-policy';
 
-    protected $description = 'Envía el recordatorio anual de política de devoluciones, un mes antes del vencimiento del último dígito del cliente';
+    protected $description = 'Envía el recordatorio anual de política de devoluciones a los clientes cuyo último dígito vence este mes';
 
     public function __construct(private readonly EmailSenderService $emailSender)
     {
@@ -47,7 +47,7 @@ class SendReturnsPolicyReminders extends Command
 
     public function handle(): int
     {
-        $deadlineMonth = now()->addMonthNoOverflow()->month;
+        $deadlineMonth = now()->month;
         $digit = self::MONTH_TO_DIGIT[$deadlineMonth] ?? null;
 
         if ($digit === null) {
