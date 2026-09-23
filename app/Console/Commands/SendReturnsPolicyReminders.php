@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Mail\ReturnsPolicyReminderMail;
+use App\Models\User;
 use App\Services\EmailSenderService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Schema;
  * Se ejecuta el día 1 de cada mes: revisa qué dígito vence el mes SIGUIENTE
  * y notifica solo a los clientes de ese dígito que tengan al menos un
  * correo registrado en `correosForecast` (columna reutilizada; sin uso previo).
+ * Cada correo lleva en copia al usuario `processorId` del cliente, si tiene uno asignado.
  *
  * Opcionalmente recibe un dígito (`reminders:returns-policy 3`) para notificar a
  * los clientes de ese dígito sin importar el mes en curso.
@@ -27,6 +29,9 @@ class SendReturnsPolicyReminders extends Command
     private const CONNECTION       = 'invoices';
     private const CLIENT_TABLE     = 'clientes_TME700618RC7';
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
+
+    /** Copia fija en todos los recordatorios, además del processor del cliente. */
+    private const ALWAYS_CC = 'jorge@ittec.mx';
 
     /** Mes de vencimiento => último dígito del número de cliente. */
     private const MONTH_TO_DIGIT = [
@@ -81,13 +86,16 @@ class SendReturnsPolicyReminders extends Command
             ->whereRaw('RIGHT(cl.idCliente, 1) = ?', [(string) $digit])
             ->whereNotNull('cle.correosForecast')
             ->where('cle.correosForecast', '!=', '')
-            ->select(['cl.idCliente', 'cl.razonSocial', 'cle.correosForecast'])
+            ->select(['cl.idCliente', 'cl.razonSocial', 'cle.correosForecast', 'cle.processorId'])
             ->get();
 
         if ($clients->isEmpty()) {
             $this->info("No hay clientes con correos registrados para el dígito {$digit}.");
             return Command::SUCCESS;
         }
+
+        $processorEmails = User::whereIn('id', $clients->pluck('processorId')->filter()->unique()->all())
+            ->pluck('email', 'id');
 
         $monthName = self::MONTH_NAMES[$deadlineMonth];
         $sent = 0;
@@ -99,6 +107,16 @@ class SendReturnsPolicyReminders extends Command
                 continue;
             }
 
+            $processorEmail = trim((string) ($processorEmails[$client->processorId] ?? ''));
+            $toLower = array_map('strtolower', $emails);
+            $cc = [];
+            foreach ([$processorEmail, self::ALWAYS_CC] as $candidate) {
+                $key = strtolower($candidate);
+                if ($candidate !== '' && !in_array($key, $toLower, true) && !in_array($candidate, $cc, true)) {
+                    $cc[] = $candidate;
+                }
+            }
+
             $this->emailSender->sendWithCopies(
                 new ReturnsPolicyReminderMail(
                     (string) $client->idCliente,
@@ -107,6 +125,7 @@ class SendReturnsPolicyReminders extends Command
                     $digit,
                 ),
                 $emails,
+                $cc,
             );
 
             $sent++;
