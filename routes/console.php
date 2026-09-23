@@ -34,7 +34,7 @@ Schedule::command(SyncProductCatalog::class)
     ->appendOutputTo(storage_path('logs/sync-product-catalog.log'));
 
 // Recordatorio de política anual de devoluciones: el día 1 de cada mes avisa
-// a los clientes cuyo dígito vence ESE mes.
+// a los clientes cuyo dígito vence el mes SIGUIENTE.
 Schedule::command(SendReturnsPolicyReminders::class)
     ->monthlyOn(1, '08:00')
     ->timezone('America/Mexico_City')

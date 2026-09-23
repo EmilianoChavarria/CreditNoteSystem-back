@@ -9,15 +9,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Recuerda a los clientes que su ventana de devoluciones (definida por el
- * último dígito de su número de cliente) vence este mes.
+ * Recuerda a los clientes, un mes antes, que su ventana de devoluciones
+ * (definida por el último dígito de su número de cliente) está por vencer.
  *
  * Mapa dígito → mes de vencimiento:
  *  1 Ene, 2 Feb, 3 Mar, 4 Abr, 5 May, 6 Jun, 7 Jul, 8 Ago, 9 Sep, 0 Oct
  *
- * Se ejecuta el día 1 de cada mes: revisa qué dígito vence ESTE mes
+ * Se ejecuta el día 1 de cada mes: revisa qué dígito vence el mes SIGUIENTE
  * y notifica solo a los clientes de ese dígito que tengan al menos un
  * correo registrado en `correosForecast` (columna reutilizada; sin uso previo).
+ *
+ * Opcionalmente recibe un dígito (`reminders:returns-policy 3`) para notificar a
+ * los clientes de ese dígito sin importar el mes en curso.
  */
 class SendReturnsPolicyReminders extends Command
 {
@@ -36,9 +39,9 @@ class SendReturnsPolicyReminders extends Command
         7 => 'Julio', 8 => 'Agosto', 9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
     ];
 
-    protected $signature = 'reminders:returns-policy';
+    protected $signature = 'reminders:returns-policy {digit? : Último dígito del número de cliente (0-9). Si se omite, se usa el que vence el mes siguiente}';
 
-    protected $description = 'Envía el recordatorio anual de política de devoluciones a los clientes cuyo último dígito vence este mes';
+    protected $description = 'Envía el recordatorio anual de política de devoluciones, un mes antes del vencimiento del último dígito del cliente';
 
     public function __construct(private readonly EmailSenderService $emailSender)
     {
@@ -47,12 +50,24 @@ class SendReturnsPolicyReminders extends Command
 
     public function handle(): int
     {
-        $deadlineMonth = now()->month;
-        $digit = self::MONTH_TO_DIGIT[$deadlineMonth] ?? null;
+        $digitArgument = $this->argument('digit');
 
-        if ($digit === null) {
-            $this->info("El mes de vencimiento ({$deadlineMonth}) no tiene dígito asociado. No se envían recordatorios.");
-            return Command::SUCCESS;
+        if ($digitArgument !== null) {
+            if (!preg_match('/^[0-9]$/', (string) $digitArgument)) {
+                $this->error("El dígito '{$digitArgument}' no es válido. Use un solo dígito de 0 a 9.");
+                return Command::FAILURE;
+            }
+
+            $digit = (int) $digitArgument;
+            $deadlineMonth = array_search($digit, self::MONTH_TO_DIGIT, true);
+        } else {
+            $deadlineMonth = now()->addMonthNoOverflow()->month;
+            $digit = self::MONTH_TO_DIGIT[$deadlineMonth] ?? null;
+
+            if ($digit === null) {
+                $this->info("El mes de vencimiento ({$deadlineMonth}) no tiene dígito asociado. No se envían recordatorios.");
+                return Command::SUCCESS;
+            }
         }
 
         if (!Schema::connection(self::CONNECTION)->hasColumn(self::CLIENT_EXT_TABLE, 'correosForecast')) {
