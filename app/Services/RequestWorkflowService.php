@@ -609,7 +609,7 @@ class RequestWorkflowService
                 return ['ok' => false, 'status' => 404, 'payload' => ['message' => 'Request no encontrada']];
             }
 
-            $nonCancellableStatuses = ['approved', 'released', 'rejected', 'cancelled', 'draft'];
+            $nonCancellableStatuses = ['released', 'cancelled', 'draft'];
             if (in_array($requestModel->status, $nonCancellableStatuses, true)) {
                 return ['ok' => false, 'status' => 422, 'payload' => ['message' => 'No se puede cancelar una solicitud con estatus "' . $requestModel->status . '"']];
             }
