@@ -105,12 +105,17 @@ class RequestCrudService
                     ->orWhereRaw('UPPER(roleName) LIKE ?', ['%CS LEADER%']);
             }))
             ->exists();
+        $isAssignedUser = WorkflowRequestCurrentStep::query()
+            ->where('requestId', $requestId)
+            ->where('status', 'pending')
+            ->where('assignedUserId', (int) $authUser->id)
+            ->exists();
 
-        if (!$isAdmin && !$isCreator && !$isRoleAssigned) {
+        if (!$isAdmin && !$isCreator && !$isRoleAssigned && !$isAssignedUser) {
             return ['status' => 403, 'message' => 'No tienes permisos para editar esta solicitud', 'data' => null];
         }
 
-        if (in_array((string) $requestModel->status, ['released', 'rejected', 'cancelled'], true)) {
+        if (in_array((string) $requestModel->status, ['released', 'cancelled'], true)) {
             return ['status' => 422, 'message' => 'No se puede editar una solicitud finalizada', 'data' => null];
         }
 
