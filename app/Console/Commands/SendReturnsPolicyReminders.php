@@ -30,8 +30,8 @@ class SendReturnsPolicyReminders extends Command
     private const CLIENT_TABLE     = 'clientes_TME700618RC7';
     private const CLIENT_EXT_TABLE = 'clientes_TME700618RC7_ext';
 
-    /** Copia fija en todos los recordatorios, además del processor del cliente. */
-    private const ALWAYS_CC = 'jorge@ittec.mx';
+    /** Copia oculta fija en todos los recordatorios (el processor del cliente va en CC). */
+    private const ALWAYS_BCC = 'jorge@ittec.mx';
 
     /** Mes de vencimiento => último dígito del número de cliente. */
     private const MONTH_TO_DIGIT = [
@@ -109,13 +109,12 @@ class SendReturnsPolicyReminders extends Command
 
             $processorEmail = trim((string) ($processorEmails[$client->processorId] ?? ''));
             $toLower = array_map('strtolower', $emails);
-            $cc = [];
-            foreach ([$processorEmail, self::ALWAYS_CC] as $candidate) {
-                $key = strtolower($candidate);
-                if ($candidate !== '' && !in_array($key, $toLower, true) && !in_array($candidate, $cc, true)) {
-                    $cc[] = $candidate;
-                }
-            }
+            $cc = ($processorEmail !== '' && !in_array(strtolower($processorEmail), $toLower, true))
+                ? [$processorEmail]
+                : [];
+            $bcc = in_array(strtolower(self::ALWAYS_BCC), array_merge($toLower, array_map('strtolower', $cc)), true)
+                ? []
+                : [self::ALWAYS_BCC];
 
             $this->emailSender->sendWithCopies(
                 new ReturnsPolicyReminderMail(
@@ -126,6 +125,7 @@ class SendReturnsPolicyReminders extends Command
                 ),
                 $emails,
                 $cc,
+                $bcc,
             );
 
             $sent++;
